@@ -13,6 +13,9 @@ concurrency:
 jobs:
   ci:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
     services:
       postgres:
         image: pgvector/pgvector:0.8.0-pg16
@@ -47,8 +50,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Init pgvector + pgcrypto
-        run: |
-          PGPASSWORD=cpa psql -h localhost -U cpa -d cpa_dev -c "CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS pgcrypto;"
+        run: PGPASSWORD=cpa psql -h localhost -U cpa -d cpa_dev -f tools/postgres/init.sql
 
       - name: Build
         run: pnpm build
