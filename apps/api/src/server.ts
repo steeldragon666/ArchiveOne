@@ -1,7 +1,7 @@
-import { startTracing } from '@cpa/observability';
+// MUST be the first import — registers OTel auto-instrumentations before
+// any module that fastify/pino/postgres-js depends on is loaded.
+import { sdk } from './tracer-init.js';
 import { buildApp } from './app.js';
-
-const sdk = startTracing({ serviceName: 'api', serviceVersion: '0.0.0' });
 
 const app = buildApp();
 
