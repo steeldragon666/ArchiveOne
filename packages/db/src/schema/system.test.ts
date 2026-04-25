@@ -1,6 +1,8 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { sql } from '../client.js';
+import { eq } from 'drizzle-orm';
+import { db, sql } from '../client.js';
+import { system } from './system.js';
 
 // NB on timestamptz handling: `client.ts` calls `drizzle(sql)`, which
 // monkey-patches the postgres-js client by replacing the default parser
@@ -30,6 +32,23 @@ test('system table id column is a v4 UUID generated app-side via crypto.randomUU
   // This test just asserts that crypto.randomUUID() produces a v4 UUID matching our regex.
   const id = crypto.randomUUID();
   assert.match(id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+});
+
+test('system table round-trips via ORM with Date objects', async () => {
+  const id = crypto.randomUUID();
+  // Insert via raw SQL (we'll exercise db.insert() once we have a write path that needs it)
+  await sql`INSERT INTO system (id, key, value) VALUES (${id}, 'orm_check', 'ok')`;
+
+  // Read via the ORM — drizzle should produce Date objects, not strings
+  const rows = await db.select().from(system).where(eq(system.id, id));
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0]?.key, 'orm_check');
+  assert.equal(rows[0]?.value, 'ok');
+  assert.ok(rows[0]?.createdAt instanceof Date, 'createdAt should be a Date on ORM read path');
+  assert.ok(rows[0]?.updatedAt instanceof Date, 'updatedAt should be a Date on ORM read path');
+  assert.equal(rows[0]?.deletedAt, null);
+
+  await sql`DELETE FROM system WHERE id = ${id}`;
 });
 
 after(async () => {
