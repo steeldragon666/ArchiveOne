@@ -3,4 +3,4 @@ dist/
 .next/
 .turbo/
 pnpm-lock.yaml
-*.md
+docs/plans/**/*.md
