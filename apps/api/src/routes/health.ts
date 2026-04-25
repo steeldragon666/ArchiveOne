@@ -4,7 +4,7 @@ import { z } from 'zod';
 const HealthResponse = z.object({
   status: z.literal('ok'),
   service: z.literal('api'),
-  uptimeSeconds: z.number().nonnegative(),
+  processUptimeSeconds: z.number().nonnegative(),
 });
 
 // Fastify plugins may be sync or async. This one has no awaits so it's
@@ -21,7 +21,7 @@ export function healthRoutes(app: FastifyInstance): void {
     () => ({
       status: 'ok' as const,
       service: 'api' as const,
-      uptimeSeconds: Math.floor(process.uptime()),
+      processUptimeSeconds: Math.floor(process.uptime()),
     }),
   );
 }

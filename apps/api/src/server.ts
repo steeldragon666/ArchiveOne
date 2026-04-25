@@ -18,7 +18,16 @@ try {
 
 const shutdown = async (signal: string): Promise<void> => {
   app.log.info({ signal }, 'shutting down');
-  await app.close();
+  try {
+    await Promise.race([
+      app.close(),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('app.close() timeout after 25s')), 25_000),
+      ),
+    ]);
+  } catch (err) {
+    app.log.error(err, 'shutdown forced');
+  }
   await sdk.shutdown();
   process.exit(0);
 };
