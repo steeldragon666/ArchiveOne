@@ -98,8 +98,14 @@ export function buildApp(): App {
     });
   });
 
-  // Double-cast required because exactOptionalPropertyTypes narrows
-  // FastifyInstance's Logger generic to pino.Logger when loggerInstance
-  // is provided, and TS won't widen back to FastifyBaseLogger directly.
+  // Double-cast through `unknown` is required because of two interacting
+  // TypeScript strictness settings in tsconfig.base.json:
+  //   1. `loggerInstance: pino.Logger` narrows Fastify's `Logger` generic
+  //      to `pino.Logger` (not the wider `FastifyBaseLogger`).
+  //   2. `exactOptionalPropertyTypes: true` prevents widening that narrow
+  //      back to `FastifyBaseLogger` at the `as App` boundary.
+  // We deliberately widen here so callers (incl. tests) consume `App`
+  // without leaking pino through the public surface. Verified empirically:
+  // direct `app as App` fails with TS2352. See P0 review item I3.
   return app as unknown as App;
 }
