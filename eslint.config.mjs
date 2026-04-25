@@ -33,6 +33,26 @@ export default tseslint.config(
     ...tseslint.configs.disableTypeChecked,
   },
   {
+    // Test files: each package has a sibling tsconfig.test.json that
+    // includes test files (the main tsconfig excludes them so the build
+    // never emits test artifacts). The default `projectService: true`
+    // resolves the closest tsconfig.json, which excludes test files; we
+    // override with the legacy `project` glob to pick up tsconfig.test.json
+    // directly. node:test's test() returns a Promise that doesn't need
+    // awaiting, so disable no-floating-promises here.
+    files: ['**/*.test.{ts,tsx,mts,cts}'],
+    languageOptions: {
+      parserOptions: {
+        projectService: false,
+        project: ['**/tsconfig.test.json'],
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+    rules: {
+      '@typescript-eslint/no-floating-promises': 'off',
+    },
+  },
+  {
     ignores: [
       '**/dist/**',
       '**/.next/**',
