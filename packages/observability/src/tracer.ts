@@ -1,3 +1,4 @@
+import { diag, DiagConsoleLogger, DiagLogLevel } from '@opentelemetry/api';
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { Resource } from '@opentelemetry/resources';
@@ -20,6 +21,11 @@ export interface TracerInit {
  * Returns the NodeSDK so callers can `await sdk.shutdown()` on graceful exit.
  */
 export function startTracing(init: TracerInit): NodeSDK {
+  // Surface internal OTel warnings + errors to stderr. Without this, exporter
+  // failures (network, auth) retry silently. WARN level avoids spam from
+  // routine debug-level diagnostics.
+  diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.WARN);
+
   const endpoint = process.env.GRAFANA_OTLP_ENDPOINT;
   const username = process.env.GRAFANA_OTLP_USERNAME;
   const password = process.env.GRAFANA_OTLP_PASSWORD;
