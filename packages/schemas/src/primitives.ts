@@ -18,9 +18,7 @@ export type Uuid = z.infer<typeof Uuid>;
  * to force callers to canonicalise upstream — silent normalisation in
  * an audit-chain context can mask content-addressing bugs.
  */
-export const Sha256Hash = z
-  .string()
-  .regex(/^[0-9a-f]{64}$/, 'must be 64 lowercase hex chars');
+export const Sha256Hash = z.string().regex(/^[0-9a-f]{64}$/, 'must be 64 lowercase hex chars');
 export type Sha256Hash = z.infer<typeof Sha256Hash>;
 
 /**

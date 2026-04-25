@@ -8,12 +8,12 @@ services:
       POSTGRES_DB: cpa_dev
     ports:
       # Host port 5433 to avoid clashing with native Postgres on 5432.
-      - "127.0.0.1:5433:5432"
+      - '127.0.0.1:5433:5432'
     volumes:
       - cpa-pgdata:/var/lib/postgresql/data
       - ./tools/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U cpa -d cpa_dev"]
+      test: ['CMD-SHELL', 'pg_isready -U cpa -d cpa_dev']
       interval: 5s
       timeout: 3s
       retries: 10

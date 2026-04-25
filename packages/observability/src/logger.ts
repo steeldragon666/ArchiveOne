@@ -19,8 +19,7 @@ function resolveLevel(explicit?: pino.LevelWithSilent): pino.LevelWithSilent {
   if (explicit !== undefined) return explicit;
   const fromEnv = process.env.LOG_LEVEL;
   if (fromEnv === undefined || fromEnv === '') return 'info';
-  if ((VALID_LEVELS as readonly string[]).includes(fromEnv))
-    return fromEnv as pino.LevelWithSilent;
+  if ((VALID_LEVELS as readonly string[]).includes(fromEnv)) return fromEnv as pino.LevelWithSilent;
   throw new Error(
     `Invalid LOG_LEVEL=${JSON.stringify(fromEnv)}; must be one of ${VALID_LEVELS.join('|')}`,
   );

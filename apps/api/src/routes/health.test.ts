@@ -35,7 +35,10 @@ test('GET /healthz returns 200 with the expected envelope', async () => {
   // Upper bound catches the field-confusion bug class — Date.now() (1.7e12) or
   // Date.now()/1000 (1.7e9) would both fail this. process.uptime() at test
   // run time is always under a few seconds.
-  assert.ok((body.processUptimeSeconds as number) < 60, 'processUptimeSeconds should be small (we just started)');
+  assert.ok(
+    (body.processUptimeSeconds as number) < 60,
+    'processUptimeSeconds should be small (we just started)',
+  );
 });
 
 test('GET /healthz response satisfies the zod schema (serializer enforces shape)', async () => {
