@@ -5,6 +5,8 @@ import { useQuery } from '@tanstack/react-query';
 import { AuthGuard } from '@/components/auth-guard';
 import { getSubjectTenant } from '../_lib/api';
 import { ChainStatusBadge } from './_components/chain-status-badge';
+import { EventFeed } from './_components/event-feed';
+import { PasteForm } from './_components/paste-form';
 
 /**
  * /subject-tenants/[id] — the demo screen scaffold.
@@ -72,9 +74,13 @@ function Inner({ subjectTenantId }: { subjectTenantId: string }) {
           {event_count} event{event_count === 1 ? '' : 's'}
         </span>
       </div>
-      {/* T24 fills these in */}
-      <div className="text-muted-foreground text-sm">[Paste form coming in T24]</div>
-      <div className="text-muted-foreground text-sm">[Event feed coming in T24]</div>
+      <section>
+        <PasteForm subjectTenantId={subjectTenantId} />
+      </section>
+      <section>
+        <h2 className="text-lg font-semibold mb-3">Events</h2>
+        <EventFeed subjectTenantId={subjectTenantId} />
+      </section>
     </main>
   );
 }
