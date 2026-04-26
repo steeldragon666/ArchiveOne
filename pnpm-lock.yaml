@@ -29,6 +29,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@cpa/agents':
+        specifier: workspace:*
+        version: link:../../packages/agents
       '@cpa/auth':
         specifier: workspace:*
         version: link:../../packages/auth

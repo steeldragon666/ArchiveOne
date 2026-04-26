@@ -13,6 +13,7 @@
     "lint": "eslint src"
   },
   "dependencies": {
+    "@cpa/agents": "workspace:*",
     "@cpa/auth": "workspace:*",
     "@cpa/db": "workspace:*",
     "@cpa/observability": "workspace:*",
