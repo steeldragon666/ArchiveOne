@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { requireSession } from '@cpa/auth';
+import { verifyChain } from '@cpa/db';
 import { sql } from '@cpa/db/client';
 import { createSubjectTenantBody, listSubjectTenantsQuery, type SubjectTenant } from '@cpa/schemas';
 
@@ -193,6 +194,44 @@ export function registerSubjectTenants(app: FastifyInstance): void {
           head_hash: heads[0]?.hash ?? null,
         };
       });
+    },
+  );
+
+  app.get<{ Params: { id: string } }>(
+    '/v1/subject-tenants/:id/chain-status',
+    { preHandler: requireSession },
+    async (req, reply) => {
+      const { id } = req.params;
+      const tenantId = req.user!.tenantId!;
+
+      // First confirm the subject is visible under RLS (returns 404 for
+      // unknown OR cross-firm). This guards against verifyChain quietly
+      // returning verified=true/event_count=0 if the GUC weren't set on
+      // its connection — we'd rather surface a 404 than a misleading
+      // "clean chain" response.
+      const visible = await sql.begin(async (tx) => {
+        await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+        const rows = await tx<{ id: string }[]>`
+          SELECT id FROM subject_tenant
+           WHERE id = ${id} AND deleted_at IS NULL
+        `;
+        return rows[0] != null;
+      });
+      if (!visible) {
+        return reply.status(404).send({
+          error: 'subject_tenant_not_found',
+          message: 'No subject_tenant with that id in this firm',
+          requestId: req.id,
+        });
+      }
+
+      // Set the session-scoped GUC on the pool before delegating to
+      // verifyChain (which uses the global `sql` client, not a transaction).
+      // This ensures the chain helper's SELECT runs RLS-scoped to the
+      // active firm even though it doesn't manage its own transaction.
+      await sql`SELECT set_config('app.current_tenant_id', ${tenantId}, false)`;
+      const status = await verifyChain(id);
+      return status;
     },
   );
 }

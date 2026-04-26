@@ -266,3 +266,66 @@ test('GET /v1/subject-tenants/:id: 404 cross-firm (RLS hides firm B row)', async
   assert.equal(res.statusCode, 404);
   await app.close();
 });
+
+test('GET /v1/subject-tenants/:id/chain-status: clean chain returns verified=true', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'GET',
+    url: `/v1/subject-tenants/${SUBJECT_A1}/chain-status`,
+    cookies: { cpa_session: await adminJwt() },
+  });
+  assert.equal(res.statusCode, 200);
+  const body = res.json<{
+    verified: boolean;
+    head_hash: string | null;
+    event_count: number;
+    first_break_at: number | null;
+  }>();
+  assert.equal(body.verified, true);
+  assert.equal(body.event_count, 2);
+  assert.equal(body.first_break_at, null);
+  assert.match(body.head_hash ?? '', /^[0-9a-f]{64}$/);
+  await app.close();
+});
+
+test('GET /v1/subject-tenants/:id/chain-status: tampered hash → verified=false', async () => {
+  // Tamper with the FIRST event's hash via privilegedSql (RLS-bypassing).
+  // verifyChain replays the chain in (captured_at, received_at, id) order;
+  // a corrupted first event surfaces as first_break_at=0.
+  const [first] = await privilegedSql<{ id: string; hash: string }[]>`
+    SELECT id, hash FROM event WHERE subject_tenant_id = ${SUBJECT_A1}
+    ORDER BY captured_at, received_at, id LIMIT 1
+  `;
+  assert.ok(first);
+  const original = first.hash;
+  // Stable corrupt hex (passes the format CHECK but is wrong).
+  const corrupt = '0123456789abcdef' + original.substring(16);
+  await privilegedSql`UPDATE event SET hash = ${corrupt} WHERE id = ${first.id}`;
+  try {
+    const app = buildApp();
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/subject-tenants/${SUBJECT_A1}/chain-status`,
+      cookies: { cpa_session: await adminJwt() },
+    });
+    assert.equal(res.statusCode, 200);
+    const body = res.json<{ verified: boolean; first_break_at: number | null }>();
+    assert.equal(body.verified, false);
+    assert.equal(body.first_break_at, 0);
+    await app.close();
+  } finally {
+    // Restore so subsequent tests still see a clean chain.
+    await privilegedSql`UPDATE event SET hash = ${original} WHERE id = ${first.id}`;
+  }
+});
+
+test('GET /v1/subject-tenants/:id/chain-status: 404 cross-firm', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'GET',
+    url: `/v1/subject-tenants/${SUBJECT_B1}/chain-status`,
+    cookies: { cpa_session: await adminJwt() },
+  });
+  assert.equal(res.statusCode, 404);
+  await app.close();
+});
