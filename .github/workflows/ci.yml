@@ -38,6 +38,8 @@ jobs:
       DATABASE_URL_APP: postgres://cpa_app:cpa_app_dev_pwd@localhost:5432/cpa_dev
       # Session JWT secret — used by W2/W3/W4 unit tests that sign JWTs
       SESSION_JWT_SECRET: ci-test-32-bytes-of-entropy-padd!
+      # Classifier implementation — 'stub' uses deterministic regex fallback (no API key needed in CI)
+      CLASSIFIER_IMPL: stub
 
     steps:
       - uses: actions/checkout@v4
@@ -102,6 +104,8 @@ jobs:
       DATABASE_URL_APP: postgres://cpa_app:cpa_app_dev_pwd@localhost:5432/cpa_dev
       # Session JWT secret — fixture mints JWTs the API will accept
       SESSION_JWT_SECRET: ci-test-32-bytes-of-entropy-padd!
+      # Classifier implementation — 'stub' uses deterministic regex fallback (no API key needed in CI)
+      CLASSIFIER_IMPL: stub
       # Override Playwright webServer URLs (default ports stand)
       NODE_ENV: test
 
