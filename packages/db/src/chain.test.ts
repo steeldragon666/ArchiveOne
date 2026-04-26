@@ -50,6 +50,42 @@ test('hashEvent: prev=null produces stable hex hash', () => {
   assert.match(h, /^[0-9a-f]{64}$/);
 });
 
+test('canonicaliseEvent rejects NaN in payload (would silently corrupt the chain)', () => {
+  assert.throws(
+    () =>
+      canonicaliseEvent({
+        subject_tenant_id: 'a',
+        kind: 'HYPOTHESIS',
+        payload: { value: NaN },
+        classification: null,
+        captured_at: new Date('2026-04-27T00:00:00Z'),
+        captured_by_user_id: 'u',
+        override_of_event_id: null,
+        override_new_kind: null,
+        override_reason: null,
+      }),
+    /non-finite number/,
+  );
+});
+
+test('canonicaliseEvent rejects Infinity in payload', () => {
+  assert.throws(
+    () =>
+      canonicaliseEvent({
+        subject_tenant_id: 'a',
+        kind: 'HYPOTHESIS',
+        payload: { value: Infinity },
+        classification: null,
+        captured_at: new Date('2026-04-27T00:00:00Z'),
+        captured_by_user_id: 'u',
+        override_of_event_id: null,
+        override_new_kind: null,
+        override_reason: null,
+      }),
+    /non-finite number/,
+  );
+});
+
 test('insertEventWithChain: first event has prev_hash=null', async () => {
   const e = await insertEventWithChain({
     tenant_id: TENANT_ID, subject_tenant_id: SUBJECT_ID, kind: 'HYPOTHESIS',
