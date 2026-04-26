@@ -20,8 +20,11 @@ import { registerSignout } from './routes/auth/signout.js';
 import { healthRoutes } from './routes/health.js';
 import { registerListTenants } from './routes/tenants/list.js';
 import { registerSwitchTenant } from './routes/tenants/switch.js';
+import { registerAddUser } from './routes/users/add.js';
 import { registerGetUser } from './routes/users/get.js';
 import { registerListUsers } from './routes/users/list.js';
+import { registerRemoveUser } from './routes/users/remove.js';
+import { registerUpdateUser } from './routes/users/update.js';
 import { registerWhoami } from './routes/whoami.js';
 
 const DEFAULT_DEV_SESSION_SECRET = 'dev-only-32-bytes-of-entropy-pad!';
@@ -136,6 +139,9 @@ export function buildApp(): App {
   app.register((instance, _opts, done) => {
     registerListUsers(instance);
     registerGetUser(instance);
+    registerAddUser(instance);
+    registerUpdateUser(instance);
+    registerRemoveUser(instance);
     done();
   });
 
