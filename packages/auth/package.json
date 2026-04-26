@@ -20,6 +20,7 @@
   "dependencies": {
     "@cpa/db": "workspace:*",
     "@cpa/schemas": "workspace:*",
+    "@fastify/cookie": "^11.0.2",
     "fastify": "^5.2.0",
     "fastify-plugin": "^5.0.1",
     "jose": "^5.9.6",

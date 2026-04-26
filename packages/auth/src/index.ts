@@ -5,3 +5,4 @@
 export * from './jwt.js';
 export * from './oidc.js';
 export * from './users.js';
+export * from './session.js';

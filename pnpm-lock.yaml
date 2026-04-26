@@ -72,6 +72,9 @@ importers:
       '@cpa/schemas':
         specifier: workspace:*
         version: link:../schemas
+      '@fastify/cookie':
+        specifier: ^11.0.2
+        version: 11.0.2
       fastify:
         specifier: ^5.2.0
         version: 5.8.5
