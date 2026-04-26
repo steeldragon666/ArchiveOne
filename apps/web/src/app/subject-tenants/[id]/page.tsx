@@ -1,11 +1,13 @@
 'use client';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { use } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AuthGuard } from '@/components/auth-guard';
 import { getSubjectTenant } from '../_lib/api';
 import { ChainStatusBadge } from './_components/chain-status-badge';
 import { EventFeed } from './_components/event-feed';
+import { FilterTabs, parseFilter } from './_components/filter-tabs';
 import { PasteForm } from './_components/paste-form';
 
 /**
@@ -31,6 +33,9 @@ export default function SubjectTenantDetailPage({
 }
 
 function Inner({ subjectTenantId }: { subjectTenantId: string }) {
+  const searchParams = useSearchParams();
+  const filter = parseFilter(searchParams.get('filter'));
+
   const detail = useQuery({
     queryKey: ['subject-tenant', subjectTenantId],
     queryFn: () => getSubjectTenant(subjectTenantId),
@@ -77,9 +82,10 @@ function Inner({ subjectTenantId }: { subjectTenantId: string }) {
       <section>
         <PasteForm subjectTenantId={subjectTenantId} />
       </section>
-      <section>
-        <h2 className="text-lg font-semibold mb-3">Events</h2>
-        <EventFeed subjectTenantId={subjectTenantId} />
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold">Events</h2>
+        <FilterTabs subjectTenantId={subjectTenantId} active={filter} />
+        <EventFeed subjectTenantId={subjectTenantId} filter={filter} />
       </section>
     </main>
   );
