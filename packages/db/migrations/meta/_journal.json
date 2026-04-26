@@ -43,6 +43,13 @@
       "when": 1777170300000,
       "tag": "0005_tenant_user_active_uniq",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1777239950543,
+      "tag": "0006_fair_network",
+      "breakpoints": true
     }
   ]
 }

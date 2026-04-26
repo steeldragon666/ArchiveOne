@@ -5,3 +5,5 @@ export * from './subject_tenant.js';
 export * from './tenant_user.js';
 export * from './subject_tenant_user.js';
 export * from './delegation_token.js';
+export * from './event.js';
+export * from './agent_call_cache.js';
