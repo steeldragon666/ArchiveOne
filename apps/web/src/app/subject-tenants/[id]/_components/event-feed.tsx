@@ -1,8 +1,10 @@
 'use client';
 import { useQuery } from '@tanstack/react-query';
-import type { ListEventsFilter } from '@cpa/schemas';
+import { useState } from 'react';
+import type { Event as ApiEvent, ListEventsFilter } from '@cpa/schemas';
 import { listEvents } from '../../_lib/api';
 import { EventCard } from './event-card';
+import { OverrideModal } from './override-modal';
 
 /**
  * Reverse-chronological feed of classified events for one claimant.
@@ -29,6 +31,11 @@ export function EventFeed({
       listEvents({ subject_tenant_id: subjectTenantId, filter, limit }),
   });
 
+  // The override modal is shared across all cards in the feed — only
+  // one can be open at a time, so we hoist its state here and pass an
+  // onOverride handler to each card.
+  const [overrideTarget, setOverrideTarget] = useState<ApiEvent | null>(null);
+
   if (isPending) {
     return <p className="text-sm text-muted-foreground">Loading events…</p>;
   }
@@ -47,10 +54,24 @@ export function EventFeed({
     );
   }
   return (
-    <div className="space-y-3">
-      {data.events.map((event) => (
-        <EventCard key={event.id} event={event} />
-      ))}
-    </div>
+    <>
+      <div className="space-y-3">
+        {data.events.map((event) => (
+          <EventCard
+            key={event.id}
+            event={event}
+            onOverride={setOverrideTarget}
+          />
+        ))}
+      </div>
+      <OverrideModal
+        subjectTenantId={subjectTenantId}
+        event={overrideTarget}
+        open={overrideTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setOverrideTarget(null);
+        }}
+      />
+    </>
   );
 }

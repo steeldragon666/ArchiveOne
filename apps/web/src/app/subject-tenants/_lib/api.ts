@@ -101,3 +101,17 @@ export async function createEvent(input: CreateEventInput): Promise<ApiEvent> {
   });
   return body.event;
 }
+
+export async function overrideEvent(
+  id: string,
+  input: OverrideEventInput,
+): Promise<ApiEvent> {
+  const body = await apiFetch<{ override_event: ApiEvent }>(
+    `/v1/events/${id}/override`,
+    {
+      method: 'POST',
+      body: JSON.stringify(input),
+    },
+  );
+  return body.override_event;
+}
