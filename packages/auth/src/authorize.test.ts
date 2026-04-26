@@ -15,7 +15,7 @@ const buildApp = (
     });
   }
   const hook = preHandler === 'session' ? requireSession : requireAdmin;
-  app.get('/x', { preHandler: hook }, async () => ({ ok: true }));
+  app.get('/x', { preHandler: hook }, () => ({ ok: true }));
   return app;
 };
 

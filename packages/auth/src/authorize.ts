@@ -1,4 +1,4 @@
-import type { preHandlerHookHandler } from 'fastify';
+import type { FastifyReply, FastifyRequest } from 'fastify';
 
 /**
  * preHandler that gates access to authenticated routes:
@@ -13,22 +13,22 @@ import type { preHandlerHookHandler } from 'fastify';
  * Most identity-routes need this. Use requireAdmin for the strictly-admin
  * surface (firm management).
  */
-export const requireSession: preHandlerHookHandler = async (req, reply) => {
+export async function requireSession(req: FastifyRequest, reply: FastifyReply): Promise<void> {
   if (!req.user) {
-    void reply
+    await reply
       .status(401)
       .send({ error: 'unauthenticated', message: 'No session', requestId: req.id });
     return;
   }
   if (req.user.tenantId === null) {
-    void reply.status(403).send({
+    await reply.status(403).send({
       error: 'no_active_tenant',
       message: 'No active firm — contact your firm admin to be added',
       requestId: req.id,
     });
     return;
   }
-};
+}
 
 /**
  * preHandler that gates access to admin-only routes:
@@ -38,22 +38,20 @@ export const requireSession: preHandlerHookHandler = async (req, reply) => {
  *
  * Note: doesn't itself enforce tenantId !== null because role === 'admin'
  * already implies tenantId is set (the role comes from a tenant_user row).
- * Belt-and-suspenders: if tenantId IS null and role IS admin, that's an
- * inconsistent JWT — still rejected by the role check but logged at WARN.
  */
-export const requireAdmin: preHandlerHookHandler = async (req, reply) => {
+export async function requireAdmin(req: FastifyRequest, reply: FastifyReply): Promise<void> {
   if (!req.user) {
-    void reply
+    await reply
       .status(401)
       .send({ error: 'unauthenticated', message: 'No session', requestId: req.id });
     return;
   }
   if (req.user.role !== 'admin') {
-    void reply.status(403).send({
+    await reply.status(403).send({
       error: 'forbidden',
       message: 'Admin role required',
       requestId: req.id,
     });
     return;
   }
-};
+}
