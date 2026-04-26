@@ -18,6 +18,7 @@ import { registerGoogleAuth } from './routes/auth/google.js';
 import { registerMicrosoftAuth } from './routes/auth/microsoft.js';
 import { registerSignout } from './routes/auth/signout.js';
 import { healthRoutes } from './routes/health.js';
+import { registerSubjectTenants } from './routes/subject-tenants.js';
 import { registerListTenants } from './routes/tenants/list.js';
 import { registerSwitchTenant } from './routes/tenants/switch.js';
 import { registerAddUser } from './routes/users/add.js';
@@ -142,6 +143,10 @@ export function buildApp(): App {
     registerAddUser(instance);
     registerUpdateUser(instance);
     registerRemoveUser(instance);
+    done();
+  });
+  app.register((instance, _opts, done) => {
+    registerSubjectTenants(instance);
     done();
   });
 
