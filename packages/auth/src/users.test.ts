@@ -44,7 +44,11 @@ test('findOrCreateUser: finds existing user by (primaryIdp, externalId); does NO
     displayName: 'Existing T5 User',
   });
   assert.equal(user.id, USER_EXISTING_ID);
-  assert.equal(user.email, 't5-existing@example.com', 'email is NOT overwritten on subsequent login');
+  assert.equal(
+    user.email,
+    't5-existing@example.com',
+    'email is NOT overwritten on subsequent login',
+  );
 });
 
 test('findOrCreateUser: concurrent calls for same external_id resolve to same user (race-free)', async () => {

@@ -56,7 +56,12 @@ test('verifySession: rejects wrong secret', async () => {
 });
 
 test('signSession: handles null activeTenantId for users with no tenant_user rows', async () => {
-  const claims: SessionClaims = { ...baseClaims, activeTenantId: null, activeRole: null, availableTenants: [] };
+  const claims: SessionClaims = {
+    ...baseClaims,
+    activeTenantId: null,
+    activeRole: null,
+    availableTenants: [],
+  };
   const jwt = await signSession(claims, TEST_SECRET, { ttlSeconds: 3600 });
   const verified = await verifySession(jwt, TEST_SECRET);
   assert.equal(verified.activeTenantId, null);
