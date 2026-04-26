@@ -1,4 +1,4 @@
-import { sql } from '@cpa/db/client';
+import { sql, privilegedSql } from '@cpa/db/client';
 
 export interface FindOrCreateUserInput {
   primaryIdp: 'microsoft' | 'google';
@@ -59,18 +59,46 @@ export async function findOrCreateUser(input: FindOrCreateUserInput): Promise<Us
   return rows[0];
 }
 
+interface PrivilegedTenantUserRow {
+  tenant_id: string;
+  name: string;
+  slug: string;
+  role: 'admin' | 'consultant' | 'viewer';
+  is_default: boolean;
+}
+
 /**
  * Look up the user's active tenant + all firms they belong to.
  *
- * IMPLEMENTATION DEFERRED TO T6.
+ * Privileged query — bypasses RLS so we can see the user's memberships
+ * across all tenants. THIS function determines the tenant scope; it
+ * cannot itself be tenant-scoped.
  *
- * Why deferred: tenant_user is RLS-protected, and this lookup CANNOT
- * itself be tenant-scoped (it's the thing that DETERMINES the tenant
- * scope at login). It needs a privileged DB client that bypasses RLS,
- * which T6 introduces alongside the session middleware. Stub here so
- * the type signature is fixed and downstream tasks (T7, T8, T10) can
- * import it.
+ * Active = the row with is_default=true if present, else the
+ * earliest-created row.
  */
-export function lookupActiveTenant(_userId: string): Promise<ActiveTenantResult> {
-  throw new Error('lookupActiveTenant: not yet implemented (T6 introduces privilegedSql)');
+export async function lookupActiveTenant(userId: string): Promise<ActiveTenantResult> {
+  const rows = await privilegedSql<PrivilegedTenantUserRow[]>`
+    SELECT tu.tenant_id, t.name, t.slug, tu.role, tu.is_default
+      FROM tenant_user tu
+      JOIN tenant t ON t.id = tu.tenant_id AND t.deleted_at IS NULL
+     WHERE tu.user_id = ${userId}
+       AND tu.deleted_at IS NULL
+     ORDER BY tu.is_default DESC, tu.created_at ASC
+  `;
+
+  const availableTenants = rows.map((r) => ({
+    tenantId: r.tenant_id,
+    name: r.name,
+    slug: r.slug,
+    role: r.role,
+    isDefault: r.is_default,
+  }));
+
+  const active = availableTenants[0] ?? null;
+  return {
+    activeTenantId: active?.tenantId ?? null,
+    activeRole: active?.role ?? null,
+    availableTenants,
+  };
 }
