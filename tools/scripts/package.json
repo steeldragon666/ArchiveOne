@@ -4,10 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "tsx --env-file=../../.env --test \"*.test.ts\"",
+    "test": "tsx --env-file-if-exists=../../.env --test \"*.test.ts\"",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "onboard-tenant": "tsx --env-file=../../.env onboard-tenant.ts"
+    "onboard-tenant": "tsx --env-file-if-exists=../../.env onboard-tenant.ts"
   },
   "dependencies": {
     "@cpa/db": "workspace:*"
