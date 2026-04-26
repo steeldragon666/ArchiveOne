@@ -8,6 +8,8 @@ export default [
     //   config files outside the TS project service.
     // - src/components/ui/** and src/hooks/use-toast.ts are vendored from
     //   shadcn — kept as-is so future `shadcn add` runs don't fight lint.
+    // - e2e/** is run by Playwright's own ts loader; outside the Next
+    //   tsconfig project service so the type-checked rules can't resolve it.
     ignores: [
       '.next/**',
       'node_modules/**',
@@ -20,6 +22,7 @@ export default [
       'playwright-report/**',
       'src/components/ui/**',
       'src/hooks/use-toast.ts',
+      'e2e/**',
     ],
   },
 ];
