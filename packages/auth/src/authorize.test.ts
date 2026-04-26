@@ -9,8 +9,9 @@ const buildApp = (
 ) => {
   const app = Fastify({ logger: false });
   if (setUser) {
-    app.addHook('onRequest', async (req) => {
+    app.addHook('onRequest', (req, _reply, done) => {
       req.user = setUser;
+      done();
     });
   }
   const hook = preHandler === 'session' ? requireSession : requireAdmin;

@@ -15,16 +15,18 @@ import type { preHandlerHookHandler } from 'fastify';
  */
 export const requireSession: preHandlerHookHandler = async (req, reply) => {
   if (!req.user) {
-    return reply
+    void reply
       .status(401)
       .send({ error: 'unauthenticated', message: 'No session', requestId: req.id });
+    return;
   }
   if (req.user.tenantId === null) {
-    return reply.status(403).send({
+    void reply.status(403).send({
       error: 'no_active_tenant',
       message: 'No active firm — contact your firm admin to be added',
       requestId: req.id,
     });
+    return;
   }
 };
 
@@ -41,15 +43,17 @@ export const requireSession: preHandlerHookHandler = async (req, reply) => {
  */
 export const requireAdmin: preHandlerHookHandler = async (req, reply) => {
   if (!req.user) {
-    return reply
+    void reply
       .status(401)
       .send({ error: 'unauthenticated', message: 'No session', requestId: req.id });
+    return;
   }
   if (req.user.role !== 'admin') {
-    return reply.status(403).send({
+    void reply.status(403).send({
       error: 'forbidden',
       message: 'Admin role required',
       requestId: req.id,
     });
+    return;
   }
 };
