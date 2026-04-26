@@ -25,3 +25,11 @@ Thumbs.db
 
 # coverage
 coverage/
+
+# ruflo runtime (daemon logs, sessions, memory db) — config files committed
+.claude-flow/data/
+.claude-flow/logs/
+.claude-flow/sessions/
+.claude-flow/neural/
+.claude-flow/*.log
+.claude/memory.db
