@@ -4,7 +4,12 @@ import Fastify from 'fastify';
 import { requireAdmin, requireSession } from './authorize.js';
 
 const buildApp = (
-  setUser?: { id: string; email: string; tenantId: string | null; role: 'admin' | 'consultant' | 'viewer' | null },
+  setUser?: {
+    id: string;
+    email: string;
+    tenantId: string | null;
+    role: 'admin' | 'consultant' | 'viewer' | null;
+  },
   preHandler: 'session' | 'admin' = 'session',
 ) => {
   const app = Fastify({ logger: false });
