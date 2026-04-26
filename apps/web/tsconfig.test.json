@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["dom", "dom.iterable", "es2023"],
+    "noEmit": true,
+    "rootDir": "./src",
+    "exactOptionalPropertyTypes": false,
+    "verbatimModuleSyntax": false,
+    "moduleResolution": "bundler",
+    "module": "esnext"
+  },
+  "include": ["src/**/*.test.ts", "src/**/*.test.tsx"]
+}
