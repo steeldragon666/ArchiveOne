@@ -18,6 +18,7 @@ import { registerGoogleAuth } from './routes/auth/google.js';
 import { registerMicrosoftAuth } from './routes/auth/microsoft.js';
 import { registerSignout } from './routes/auth/signout.js';
 import { healthRoutes } from './routes/health.js';
+import { registerListTenants } from './routes/tenants/list.js';
 import { registerWhoami } from './routes/whoami.js';
 
 const DEFAULT_DEV_SESSION_SECRET = 'dev-only-32-bytes-of-entropy-pad!';
@@ -114,6 +115,10 @@ export function buildApp(): App {
   });
   app.register((instance, _opts, done) => {
     registerWhoami(instance);
+    done();
+  });
+  app.register((instance, _opts, done) => {
+    registerListTenants(instance);
     done();
   });
 
