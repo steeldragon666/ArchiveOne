@@ -46,6 +46,29 @@ test('findOrCreateUser: finds existing user by (primaryIdp, externalId); does NO
   assert.equal(user.email, 't5-existing@example.com', 'email is NOT overwritten on subsequent login');
 });
 
+test('findOrCreateUser: concurrent calls for same external_id resolve to same user (race-free)', async () => {
+  const RACE_EXTERNAL_ID = 'microsoft:test-t6-race-oid';
+  try {
+    const [a, b] = await Promise.all([
+      findOrCreateUser({
+        primaryIdp: 'microsoft',
+        externalId: RACE_EXTERNAL_ID,
+        email: 'race@example.com',
+        displayName: 'Race A',
+      }),
+      findOrCreateUser({
+        primaryIdp: 'microsoft',
+        externalId: RACE_EXTERNAL_ID,
+        email: 'race@example.com',
+        displayName: 'Race B',
+      }),
+    ]);
+    assert.equal(a.id, b.id, 'both calls resolve to same user_id');
+  } finally {
+    await sql`DELETE FROM "user" WHERE external_id = ${RACE_EXTERNAL_ID}`;
+  }
+});
+
 test('findOrCreateUser: bumps last_login_at on existing user', async () => {
   // postgres-js may return timestamptz as string OR Date depending on parser
   // registration timing in this workspace; normalise via new Date(...).

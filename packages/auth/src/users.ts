@@ -41,24 +41,22 @@ export interface ActiveTenantResult {
  * Note: user table is GLOBAL (no RLS) — direct sql writes work as cpa_app.
  */
 export async function findOrCreateUser(input: FindOrCreateUserInput): Promise<UserRow> {
-  const existing = await sql<UserRow[]>`
-    UPDATE "user"
-       SET last_login_at = NOW()
-     WHERE primary_idp = ${input.primaryIdp}
-       AND external_id = ${input.externalId}
-       AND deleted_at IS NULL
-    RETURNING id, email, display_name AS "displayName", primary_idp AS "primaryIdp", external_id AS "externalId"
-  `;
-  if (existing[0]) return existing[0];
-
+  // Race-free single-roundtrip pattern. The unique index on
+  // (primary_idp, external_id) WHERE deleted_at IS NULL means concurrent
+  // logins for the same external user will both target the same row;
+  // the second one's ON CONFLICT branch updates last_login_at without
+  // touching email or display_name. RETURNING * gives us the row either
+  // way.
   const newId = crypto.randomUUID();
-  const created = await sql<UserRow[]>`
+  const rows = await sql<UserRow[]>`
     INSERT INTO "user" (id, email, display_name, primary_idp, external_id, last_login_at)
     VALUES (${newId}, ${input.email}, ${input.displayName}, ${input.primaryIdp}, ${input.externalId}, NOW())
+    ON CONFLICT (primary_idp, external_id) WHERE deleted_at IS NULL
+    DO UPDATE SET last_login_at = NOW()
     RETURNING id, email, display_name AS "displayName", primary_idp AS "primaryIdp", external_id AS "externalId"
   `;
-  if (!created[0]) throw new Error('findOrCreateUser: INSERT did not return a row');
-  return created[0];
+  if (!rows[0]) throw new Error('findOrCreateUser: INSERT/ON CONFLICT did not return a row');
+  return rows[0];
 }
 
 /**

@@ -29,6 +29,13 @@
       "when": 1777167891000,
       "tag": "0003_nullif_unset_guc",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1777168822472,
+      "tag": "0004_user_idp_external_id_unique",
+      "breakpoints": true
     }
   ]
 }
