@@ -33,3 +33,4 @@ coverage/
 .claude-flow/neural/
 .claude-flow/*.log
 .claude/memory.db
+.swarm/
