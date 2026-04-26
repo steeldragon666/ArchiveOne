@@ -12,14 +12,3 @@ docs/plans/**/*.md
 # fight prettier. We own these files but treat them as vendored.
 apps/web/src/components/ui/**
 apps/web/src/hooks/use-toast.ts
-
-# ruflo-vendored content (we don't own these — see .claude-flow/ + .mcp.json)
-.claude/skills/
-.claude/agents/
-.claude/commands/
-.claude/helpers/
-.claude/statusline.mjs
-.claude/statusline.sh
-.mcp.json
-.claude-flow/
-CLAUDE.md
