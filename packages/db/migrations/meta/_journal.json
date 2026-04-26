@@ -36,6 +36,13 @@
       "when": 1777168822472,
       "tag": "0004_user_idp_external_id_unique",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1777170300000,
+      "tag": "0005_tenant_user_active_uniq",
+      "breakpoints": true
     }
   ]
 }
