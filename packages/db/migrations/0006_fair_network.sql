@@ -37,3 +37,77 @@ CREATE INDEX "event_feed_idx" ON "event" USING btree ("subject_tenant_id","captu
 CREATE INDEX "event_kind_idx" ON "event" USING btree ("subject_tenant_id","kind");--> statement-breakpoint
 CREATE INDEX "event_override_idx" ON "event" USING btree ("override_of_event_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "event_idempotency_unique" ON "event" USING btree ("idempotency_key") WHERE "event"."idempotency_key" IS NOT NULL;
+--> statement-breakpoint
+-- ============================================================
+-- DB-level CHECK constraints (enforce invariants the type system can't)
+-- ============================================================
+
+-- Enum CHECK: kind must be one of the 13 known evidence kinds.
+-- (drizzle's text-with-enum is a TS hint only — postgres won't reject
+-- bad values without an explicit CHECK.)
+ALTER TABLE "event" ADD CONSTRAINT event_kind_valid CHECK (
+  kind IN (
+    'HYPOTHESIS', 'DESIGN', 'EXPERIMENT', 'OBSERVATION', 'ITERATION',
+    'NEW_KNOWLEDGE', 'UNCERTAINTY', 'TIME_LOG', 'ASSOCIATE_FLAG',
+    'EXPENDITURE_NOTE', 'SUPPORTING', 'INELIGIBLE', 'OVERRIDE'
+  )
+);
+
+-- override_new_kind, when set, must be one of the 12 classifiable kinds (NOT 'OVERRIDE').
+ALTER TABLE "event" ADD CONSTRAINT event_override_new_kind_valid CHECK (
+  override_new_kind IS NULL OR override_new_kind IN (
+    'HYPOTHESIS', 'DESIGN', 'EXPERIMENT', 'OBSERVATION', 'ITERATION',
+    'NEW_KNOWLEDGE', 'UNCERTAINTY', 'TIME_LOG', 'ASSOCIATE_FLAG',
+    'EXPENDITURE_NOTE', 'SUPPORTING', 'INELIGIBLE'
+  )
+);
+
+-- OVERRIDE invariants: kind='OVERRIDE' iff override_of_event_id + override_new_kind
+-- + override_reason are all populated; non-OVERRIDE iff all three are null.
+-- Either path enforces structural integrity that callers can't accidentally violate.
+ALTER TABLE "event" ADD CONSTRAINT event_override_invariants CHECK (
+  (kind = 'OVERRIDE'
+    AND override_of_event_id IS NOT NULL
+    AND override_new_kind IS NOT NULL
+    AND override_reason IS NOT NULL)
+  OR
+  (kind <> 'OVERRIDE'
+    AND override_of_event_id IS NULL
+    AND override_new_kind IS NULL
+    AND override_reason IS NULL)
+);
+
+-- Hash columns: hex-encoded SHA-256 are always exactly 64 lowercase hex chars.
+-- prev_hash is nullable (first event in a chain); when set, same constraint applies.
+ALTER TABLE "event" ADD CONSTRAINT event_hash_format CHECK (hash ~ '^[0-9a-f]{64}$');
+ALTER TABLE "event" ADD CONSTRAINT event_prev_hash_format CHECK (
+  prev_hash IS NULL OR prev_hash ~ '^[0-9a-f]{64}$'
+);
+ALTER TABLE "event" ADD CONSTRAINT event_idempotency_key_format CHECK (
+  idempotency_key IS NULL OR idempotency_key ~ '^[0-9a-f]{64}$'
+);
+
+-- agent_call_cache idempotency_key is the PK and always populated; same format.
+ALTER TABLE "agent_call_cache" ADD CONSTRAINT agent_call_cache_idempotency_key_format
+  CHECK (idempotency_key ~ '^[0-9a-f]{64}$');
+
+--> statement-breakpoint
+-- ============================================================
+-- RLS for event table — direct tenant_id (denormalised for index efficiency)
+-- ============================================================
+
+ALTER TABLE "event" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "event" FORCE ROW LEVEL SECURITY;
+
+CREATE POLICY "event_tenant_isolation" ON "event"
+  USING (tenant_id = current_setting('app.current_tenant_id', true)::uuid)
+  WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true)::uuid);
+
+-- agent_call_cache is intentionally NOT RLS-protected:
+-- content-addressed by SHA-256(prompt_version || raw_text); identical inputs
+-- across tenants legitimately share a cache entry. No tenant data leaks because
+-- the only thing the key reveals is "someone classified text X" — which the
+-- requester already knows.
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON "event" TO cpa_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON "agent_call_cache" TO cpa_app;
