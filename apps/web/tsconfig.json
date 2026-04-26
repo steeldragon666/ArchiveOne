@@ -11,6 +11,12 @@
     "allowJs": true,
     "isolatedModules": true,
     "verbatimModuleSyntax": false,
+    // shadcn's vendored components ship with optional properties whose
+    // types don't include `undefined`, which clashes with the repo-wide
+    // exactOptionalPropertyTypes. Relax it here so every new
+    // `shadcn add ...` doesn't immediately fail typecheck. The rest of
+    // the workspace keeps the strict default from tsconfig.base.json.
+    "exactOptionalPropertyTypes": false,
     "plugins": [{ "name": "next" }],
     "paths": {
       "@/*": ["./src/*"]
