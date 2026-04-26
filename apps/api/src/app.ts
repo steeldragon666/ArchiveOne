@@ -1,3 +1,4 @@
+import cookie from '@fastify/cookie';
 import Fastify from 'fastify';
 import type {
   FastifyBaseLogger,
@@ -72,6 +73,11 @@ export function buildApp(): App {
 
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
+
+  // Cookie parsing for session reads. No global secret — JWTs carry their
+  // own integrity via jose; cookies are just transport. Registered before
+  // routes so session-aware handlers can read req.cookies.
+  app.register(cookie);
 
   app.register(healthRoutes);
 
