@@ -3,6 +3,9 @@
   "globalEnv": ["NODE_ENV"],
   "globalPassThroughEnv": [
     "DATABASE_URL",
+    "DATABASE_URL_APP",
+    "DATABASE_POOL_MAX",
+    "SESSION_JWT_SECRET",
     "ANTHROPIC_API_KEY",
     "VOYAGE_API_KEY",
     "GRAFANA_OTLP_ENDPOINT",
