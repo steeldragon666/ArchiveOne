@@ -3,3 +3,4 @@
 // Imported via the `@cpa/integrations/docusign` subpath export.
 export * from './types.js';
 export * from './client.js';
+export * from './webhook.js';
