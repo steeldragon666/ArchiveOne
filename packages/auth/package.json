@@ -1,0 +1,36 @@
+{
+  "name": "@cpa/auth",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "test": "cross-env LOG_LEVEL=silent tsx --test \"src/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src"
+  },
+  "dependencies": {
+    "@cpa/db": "workspace:*",
+    "@cpa/schemas": "workspace:*",
+    "@fastify/cookie": "^11.0.2",
+    "fastify": "^5.2.0",
+    "fastify-plugin": "^5.0.1",
+    "jose": "^5.9.6",
+    "openid-client": "^5.7.1",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "cross-env": "^7.0.3",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
+}

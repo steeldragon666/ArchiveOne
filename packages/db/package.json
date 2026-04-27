@@ -21,7 +21,7 @@
   },
   "scripts": {
     "build": "tsc -b",
-    "test": "tsx --test \"src/**/*.test.ts\"",
+    "test": "tsx --env-file-if-exists=../../.env --test \"src/**/*.test.ts\"",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
     "generate": "drizzle-kit generate",
@@ -35,7 +35,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
-    "drizzle-kit": "^0.29.1",
+    "drizzle-kit": "^0.31.10",
     "tsx": "^4.19.2",
     "typescript": "^5.6.3"
   }

@@ -1,3 +1,4 @@
+import cookie from '@fastify/cookie';
 import Fastify from 'fastify';
 import type {
   FastifyBaseLogger,
@@ -12,7 +13,24 @@ import {
   type ZodTypeProvider,
 } from 'fastify-type-provider-zod';
 import { createLogger } from '@cpa/observability';
+import { sessionPlugin } from '@cpa/auth';
+import { registerGoogleAuth } from './routes/auth/google.js';
+import { registerMicrosoftAuth } from './routes/auth/microsoft.js';
+import { registerSignout } from './routes/auth/signout.js';
 import { healthRoutes } from './routes/health.js';
+import { registerListTenants } from './routes/tenants/list.js';
+import { registerSwitchTenant } from './routes/tenants/switch.js';
+import { registerAddUser } from './routes/users/add.js';
+import { registerGetUser } from './routes/users/get.js';
+import { registerListUsers } from './routes/users/list.js';
+import { registerRemoveUser } from './routes/users/remove.js';
+import { registerUpdateUser } from './routes/users/update.js';
+import { registerWhoami } from './routes/whoami.js';
+
+const DEFAULT_DEV_SESSION_SECRET = 'dev-only-32-bytes-of-entropy-pad!';
+const DEFAULT_SESSION_COOKIE_NAME = 'cpa_session';
+const DEFAULT_SESSION_TTL_SECONDS = 86400; // 24h per W2 design Q3
+const DEFAULT_POST_LOGIN_REDIRECT = '/';
 
 /**
  * The Fastify app type, widened to FastifyBaseLogger for portability
@@ -73,7 +91,106 @@ export function buildApp(): App {
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
 
+  // Cookie parsing for session reads. No global secret — JWTs carry their
+  // own integrity via jose; cookies are just transport. Registered before
+  // routes so session-aware handlers can read req.cookies.
+  app.register(cookie);
+
+  // Session middleware: verifies cpa_session cookie, attaches req.user,
+  // sets app.current_tenant_id GUC for RLS-scoped queries.
+  // Production must set SESSION_JWT_SECRET (the dev default is a constant
+  // string and is NOT secure for any non-local environment).
+  const sessionSecret = process.env['SESSION_JWT_SECRET'] ?? DEFAULT_DEV_SESSION_SECRET;
+  const cookieName = process.env['SESSION_COOKIE_NAME'] ?? DEFAULT_SESSION_COOKIE_NAME;
+  app.register(sessionPlugin, { secret: sessionSecret, cookieName });
+
   app.register(healthRoutes);
+
+  // Identity routes — always registered (no env dependencies):
+  // - POST /v1/auth/signout: clears the session cookie (idempotent)
+  // - GET  /v1/whoami: returns the current user + tenant + memberships
+  // Wrapped in app.register so Fastify resolves the instance type to
+  // its plugin-default shape (which the helpers accept), avoiding the
+  // pino-narrowed type leak from the outer buildApp scope.
+  app.register((instance, _opts, done) => {
+    registerSignout(instance, {
+      cookieName,
+      cookieSecure: process.env['NODE_ENV'] === 'production',
+    });
+    done();
+  });
+  app.register((instance, _opts, done) => {
+    registerWhoami(instance);
+    done();
+  });
+  app.register((instance, _opts, done) => {
+    registerListTenants(instance);
+    done();
+  });
+  app.register((instance, _opts, done) => {
+    registerSwitchTenant(instance, {
+      sessionSecret,
+      cookieName,
+      cookieSecure: process.env['NODE_ENV'] === 'production',
+      ttlSeconds,
+    });
+    done();
+  });
+  app.register((instance, _opts, done) => {
+    registerListUsers(instance);
+    registerGetUser(instance);
+    registerAddUser(instance);
+    registerUpdateUser(instance);
+    registerRemoveUser(instance);
+    done();
+  });
+
+  // OIDC routes only register when both clientId AND clientSecret are
+  // present. In tests + bare-bones dev, env vars are unset and the
+  // routes simply don't exist; the rest of the API still works. This
+  // avoids a network call to Issuer.discover during cold start when
+  // we don't even have credentials configured.
+  const cookieSecure = process.env['NODE_ENV'] === 'production';
+  const ttlSeconds = Number(process.env['SESSION_TTL_SECONDS'] ?? DEFAULT_SESSION_TTL_SECONDS);
+
+  const msClientId = process.env['MICROSOFT_OIDC_CLIENT_ID'];
+  const msClientSecret = process.env['MICROSOFT_OIDC_CLIENT_SECRET'];
+  if (msClientId && msClientSecret) {
+    app.register(async (instance) => {
+      await registerMicrosoftAuth(instance, {
+        tenantId: process.env['MICROSOFT_OIDC_TENANT'] ?? 'common',
+        clientId: msClientId,
+        clientSecret: msClientSecret,
+        redirectUri:
+          process.env['MICROSOFT_OIDC_REDIRECT_URI'] ??
+          'http://localhost:3000/v1/auth/microsoft/callback',
+        sessionSecret,
+        cookieName,
+        cookieSecure,
+        ttlSeconds,
+        postLoginRedirect: DEFAULT_POST_LOGIN_REDIRECT,
+      });
+    });
+  }
+
+  const gClientId = process.env['GOOGLE_OIDC_CLIENT_ID'];
+  const gClientSecret = process.env['GOOGLE_OIDC_CLIENT_SECRET'];
+  if (gClientId && gClientSecret) {
+    app.register(async (instance) => {
+      await registerGoogleAuth(instance, {
+        clientId: gClientId,
+        clientSecret: gClientSecret,
+        redirectUri:
+          process.env['GOOGLE_OIDC_REDIRECT_URI'] ??
+          'http://localhost:3000/v1/auth/google/callback',
+        sessionSecret,
+        cookieName,
+        cookieSecure,
+        ttlSeconds,
+        postLoginRedirect: DEFAULT_POST_LOGIN_REDIRECT,
+      });
+    });
+  }
 
   // Single error envelope across all routes — { error, message, requestId }.
   // Errors with a numeric `statusCode` use that; everything else 500s.
@@ -98,8 +215,14 @@ export function buildApp(): App {
     });
   });
 
-  // Double-cast required because exactOptionalPropertyTypes narrows
-  // FastifyInstance's Logger generic to pino.Logger when loggerInstance
-  // is provided, and TS won't widen back to FastifyBaseLogger directly.
+  // Double-cast through `unknown` is required because of two interacting
+  // TypeScript strictness settings in tsconfig.base.json:
+  //   1. `loggerInstance: pino.Logger` narrows Fastify's `Logger` generic
+  //      to `pino.Logger` (not the wider `FastifyBaseLogger`).
+  //   2. `exactOptionalPropertyTypes: true` prevents widening that narrow
+  //      back to `FastifyBaseLogger` at the `as App` boundary.
+  // We deliberately widen here so callers (incl. tests) consume `App`
+  // without leaking pino through the public surface. Verified empirically:
+  // direct `app as App` fails with TS2352. See P0 review item I3.
   return app as unknown as App;
 }

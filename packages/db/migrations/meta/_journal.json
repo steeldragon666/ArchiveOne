@@ -8,6 +8,41 @@
       "when": 1777136798313,
       "tag": "0000_organic_saracen",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1777164391105,
+      "tag": "0001_pink_diamondback",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1777165241151,
+      "tag": "0002_enable_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1777167891000,
+      "tag": "0003_nullif_unset_guc",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1777168822472,
+      "tag": "0004_user_idp_external_id_unique",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1777170300000,
+      "tag": "0005_tenant_user_active_uniq",
+      "breakpoints": true
     }
   ]
 }
