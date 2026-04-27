@@ -105,3 +105,47 @@ export async function countPending(): Promise<number> {
   );
   return result?.n ?? 0;
 }
+
+/**
+ * React hook that re-polls `countPending()` so the F16 banner can
+ * react to enqueue/sync events without a global event bus.
+ *
+ * Default 2s cadence — fast enough that a freshly-captured voice
+ * event shows up in the indicator within a heartbeat, slow enough
+ * not to thrash SQLite when the queue is idle. The same trade-off
+ * the network-detector hook makes.
+ *
+ * Defensive against pre-migration boot: if `getDb()` errors before
+ * the table exists, the hook stays at 0 rather than throwing into
+ * a layout effect.
+ */
+import { useEffect, useState } from 'react';
+
+export function useQueueDepth(pollMs = 2000): number {
+  const [depth, setDepth] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    async function tick(): Promise<void> {
+      try {
+        const n = await countPending();
+        if (!cancelled) setDepth(n);
+      } catch {
+        // pre-migration boot or transient handle issue — keep last value
+      }
+      if (!cancelled) {
+        timer = setTimeout(tick, pollMs);
+      }
+    }
+
+    void tick();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [pollMs]);
+
+  return depth;
+}
