@@ -1,3 +1,8 @@
+-- DO NOT REGENERATE THIS MIGRATION VIA `pnpm --filter @cpa/db generate`.
+-- The block at the bottom is hand-authored: 7 CHECK constraints, 5 RLS policies,
+-- and GRANTs to cpa_app. drizzle-kit will silently regenerate this file and
+-- clobber them. If you need to change a P3 table's shape, write a new migration.
+
 CREATE TABLE "brand_config" (
 	"tenant_id" uuid PRIMARY KEY NOT NULL,
 	"display_name" text NOT NULL,
@@ -133,3 +138,73 @@ ALTER TABLE "time_entry" ADD CONSTRAINT "time_entry_apportioned_by_user_id_user_
 CREATE UNIQUE INDEX "media_artefact_content_dedupe_unique" ON "media_artefact" USING btree ("tenant_id","subject_tenant_id","content_hash");--> statement-breakpoint
 CREATE UNIQUE INDEX "subject_tenant_employee_active_email_unique" ON "subject_tenant_employee" USING btree ("subject_tenant_id","email") WHERE "subject_tenant_employee"."deactivated_at" IS NULL;--> statement-breakpoint
 CREATE UNIQUE INDEX "time_entry_payroll_source_dedupe_unique" ON "time_entry" USING btree ("source","external_id") WHERE "time_entry"."external_id" IS NOT NULL;
+--> statement-breakpoint
+-- ============================================================
+-- DB-level CHECK constraints
+-- ============================================================
+
+ALTER TABLE "subject_tenant_employee" ADD CONSTRAINT employee_email_format
+  CHECK (email ~ '^[^@\s]+@[^@\s]+\.[^@\s]+$');
+
+ALTER TABLE "magic_link_token" ADD CONSTRAINT magic_link_token_hash_format
+  CHECK (token_hash ~ '^[0-9a-f]{64}$');
+
+ALTER TABLE "mobile_session" ADD CONSTRAINT mobile_session_refresh_hash_format
+  CHECK (refresh_token_hash ~ '^[0-9a-f]{64}$');
+
+ALTER TABLE "media_artefact" ADD CONSTRAINT media_content_hash_format
+  CHECK (content_hash ~ '^[0-9a-f]{64}$');
+
+ALTER TABLE "time_entry" ADD CONSTRAINT time_entry_apportionment_range
+  CHECK (apportionment_pct IS NULL OR (apportionment_pct >= 0 AND apportionment_pct <= 100));
+
+ALTER TABLE "time_entry" ADD CONSTRAINT time_entry_duration_positive
+  CHECK (duration_minutes > 0 AND ended_at > started_at);
+
+ALTER TABLE "brand_config" ADD CONSTRAINT brand_config_color_format
+  CHECK (primary_color ~ '^#[0-9a-fA-F]{6}$' AND accent_color ~ '^#[0-9a-fA-F]{6}$');
+
+--> statement-breakpoint
+-- ============================================================
+-- RLS — same FORCE + USING + WITH CHECK pattern as 0002 / 0006
+-- magic_link_token NOT RLS (lookup by hash before tenant context)
+-- mobile_session NOT directly RLS (accessed via employee_id which IS RLS)
+-- ============================================================
+
+ALTER TABLE "subject_tenant_employee" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "subject_tenant_employee" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "employee_tenant_isolation" ON "subject_tenant_employee"
+  USING (tenant_id = current_setting('app.current_tenant_id', true)::uuid)
+  WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true)::uuid);
+
+ALTER TABLE "media_artefact" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "media_artefact" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "media_artefact_tenant_isolation" ON "media_artefact"
+  USING (tenant_id = current_setting('app.current_tenant_id', true)::uuid)
+  WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true)::uuid);
+
+ALTER TABLE "time_entry" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "time_entry" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "time_entry_tenant_isolation" ON "time_entry"
+  USING (tenant_id = current_setting('app.current_tenant_id', true)::uuid)
+  WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true)::uuid);
+
+ALTER TABLE "signing_request" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "signing_request" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "signing_request_tenant_isolation" ON "signing_request"
+  USING (tenant_id = current_setting('app.current_tenant_id', true)::uuid)
+  WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true)::uuid);
+
+ALTER TABLE "brand_config" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "brand_config" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "brand_config_tenant_isolation" ON "brand_config"
+  USING (tenant_id = current_setting('app.current_tenant_id', true)::uuid)
+  WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true)::uuid);
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON "subject_tenant_employee" TO cpa_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON "magic_link_token" TO cpa_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON "mobile_session" TO cpa_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON "media_artefact" TO cpa_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON "time_entry" TO cpa_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON "signing_request" TO cpa_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON "brand_config" TO cpa_app;
