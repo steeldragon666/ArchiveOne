@@ -19,6 +19,7 @@ import { registerGoogleAuth } from './routes/auth/google.js';
 import { registerMicrosoftAuth } from './routes/auth/microsoft.js';
 import { registerSignout } from './routes/auth/signout.js';
 import { healthRoutes } from './routes/health.js';
+import { registerAuditScore } from './routes/audit-score.js';
 import { registerBrandConfig } from './routes/brand-config.js';
 import { registerEmployees } from './routes/employees.js';
 import { registerMagicLinkRedeem } from './routes/magic-link.js';
@@ -193,6 +194,10 @@ export function buildApp(): App {
   });
   app.register((instance, _opts, done) => {
     registerBrandConfig(instance);
+    done();
+  });
+  app.register((instance, _opts, done) => {
+    registerAuditScore(instance);
     done();
   });
 
