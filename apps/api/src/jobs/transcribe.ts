@@ -152,16 +152,14 @@ export async function runTranscribeJob(input: TranscribeJobInput): Promise<void>
   // risk because the id was created server-side in the same flow that
   // enqueued the job.
   //
-  // postgres-js encoding for jsonb varies by JS shape:
-  //   - OBJECTS: `${JSON.stringify(obj)}::jsonb` works (PG parses text
-  //     as JSON via the cast). This is the chain.ts pattern that P2
-  //     proves out.
-  //   - ARRAYS: same expression double-encodes via the binary protocol
-  //     (the array text gets wrapped as a jsonb-string-scalar). For
-  //     arrays, drop the cast — see audit-score-recompute.ts.
-  // newPayload is an object, so the cast is the right path.
+  // postgres-js auto-encodes JS objects as jsonb when the column is
+  // jsonb-typed. Pass the object directly — no JSON.stringify, no
+  // explicit cast. (The chain.ts pattern that uses
+  // `${JSON.stringify(obj)}::jsonb` works for INSERTs but fails inside
+  // UPDATE SET, presumably because the prepared-statement bind path
+  // routes the parameter differently.)
   const updated = await privilegedSql<{ id: string }[]>`
-    UPDATE event SET payload = ${JSON.stringify(newPayload)}::jsonb
+    UPDATE event SET payload = ${privilegedSql.json(newPayload as Record<string, never>)}
      WHERE id = ${input.event_id}
     RETURNING id
   `;

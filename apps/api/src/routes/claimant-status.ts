@@ -193,25 +193,29 @@ export function registerClaimantStatus(app: FastifyInstance): void {
         logo_s3_key: null,
       };
 
-      // Step 2: last 5 events on the chain. The chain itself is
-      // tenant-denormalised (event.tenant_id = principal.tenantId), so
-      // a defensive AND on tenant_id catches any cross-firm slip even
-      // before RLS would apply.
-      const events = await sql<
-        {
-          id: string;
-          kind: string;
-          payload: unknown;
-          captured_at: Date | string;
-        }[]
-      >`
-        SELECT id, kind, payload, captured_at
-          FROM event
-         WHERE subject_tenant_id = ${claimant_id}
-           AND tenant_id = ${principal.tenantId}
-         ORDER BY captured_at DESC, received_at DESC, id DESC
-         LIMIT 5
-      `;
+      // Step 2: last 5 events on the chain. event has FORCE ROW LEVEL
+      // SECURITY (migration 0006) and `sql` connects as cpa_app (RLS
+      // enforced), so the GUC must be set in-transaction or every row
+      // is filtered out. Wrap in sql.begin + set_config — the same
+      // pattern used by routes/events.ts and routes/mobile-events.ts.
+      const events = await sql.begin(async (tx) => {
+        await tx`SELECT set_config('app.current_tenant_id', ${principal.tenantId}, true)`;
+        return await tx<
+          {
+            id: string;
+            kind: string;
+            payload: unknown;
+            captured_at: Date | string;
+          }[]
+        >`
+          SELECT id, kind, payload, captured_at
+            FROM event
+           WHERE subject_tenant_id = ${claimant_id}
+             AND tenant_id = ${principal.tenantId}
+           ORDER BY captured_at DESC, received_at DESC, id DESC
+           LIMIT 5
+        `;
+      });
 
       const response: ClaimantStatusResponse = {
         subject_tenant: { id: subject.id, name: subject.name, kind: subject.kind },

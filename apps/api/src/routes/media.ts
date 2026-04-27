@@ -242,7 +242,7 @@ export function registerMedia(app: FastifyInstance): void {
             ${body.content_hash},
             ${body.mime_type},
             ${body.size_bytes},
-            ${body.exif ? JSON.stringify(body.exif) : null}::jsonb,
+            ${body.exif ? privilegedSql.json(body.exif as Record<string, never>) : null},
             'pending',
             'pending'
           )
