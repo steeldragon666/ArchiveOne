@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { sql, privilegedSql } from '@cpa/db/client';
+import { privilegedSql } from '@cpa/db/client';
 import {
   CLAIMANT_SESSION_COOKIE,
   verifyClaimantSession,
@@ -206,29 +206,33 @@ export function registerClaimantStatus(app: FastifyInstance): void {
         logo_s3_key: null,
       };
 
-      // Step 2: last 5 events on the chain. event has FORCE ROW LEVEL
-      // SECURITY (migration 0006) and `sql` connects as cpa_app (RLS
-      // enforced), so the GUC must be set in-transaction or every row
-      // is filtered out. Wrap in sql.begin + set_config — the same
-      // pattern used by routes/events.ts and routes/mobile-events.ts.
-      const events = await sql.begin(async (tx) => {
-        await tx`SELECT set_config('app.current_tenant_id', ${principal.tenantId}, true)`;
-        return await tx<
-          {
-            id: string;
-            kind: string;
-            payload: unknown;
-            captured_at: Date | string;
-          }[]
-        >`
-          SELECT id, kind, payload, captured_at
-            FROM event
-           WHERE subject_tenant_id = ${claimant_id}
-             AND tenant_id = ${principal.tenantId}
-           ORDER BY captured_at DESC, received_at DESC, id DESC
-           LIMIT 5
-        `;
-      });
+      // Step 2: last 5 events on the chain. Use privilegedSql (cpa role,
+      // RLS-bypass) consistent with the subject_tenant + brand_config
+      // lookups above — claimant employees authenticate via the PWA
+      // cookie which doesn't carry the consultant-side tenant GUC.
+      // The `AND tenant_id = ${principal.tenantId}` filter in the WHERE
+      // clause is the explicit cross-firm guard, mirroring the JWT's
+      // tenant_id claim.
+      //
+      // (Earlier attempt wrapped this in sql.begin + set_config to use
+      // the cpa_app role + RLS, but that caused the test runner to hang
+      // post-test — possibly the begin-transaction connection wasn't
+      // releasing in time for sql.end() in the test's after() hook.)
+      const events = await privilegedSql<
+        {
+          id: string;
+          kind: string;
+          payload: unknown;
+          captured_at: Date | string;
+        }[]
+      >`
+        SELECT id, kind, payload, captured_at
+          FROM event
+         WHERE subject_tenant_id = ${claimant_id}
+           AND tenant_id = ${principal.tenantId}
+         ORDER BY captured_at DESC, received_at DESC, id DESC
+         LIMIT 5
+      `;
 
       const response: ClaimantStatusResponse = {
         subject_tenant: { id: subject.id, name: subject.name, kind: subject.kind },
