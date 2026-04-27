@@ -177,3 +177,20 @@ export async function setEmailSender(
     body: JSON.stringify({ email_sender_domain }),
   });
 }
+
+/**
+ * Trigger the DKIM verification state machine (T-C9). Same shape as
+ * `checkCustomDomain` — `{ status, transitioned }`. The wizard
+ * refetches brand_config when transitioned:true so the UI flips from
+ * pending to verified without waiting for a manual reload.
+ */
+export interface EmailSenderCheckResponse {
+  status: string;
+  transitioned: boolean;
+}
+
+export async function checkEmailSender(): Promise<EmailSenderCheckResponse> {
+  return apiFetch<EmailSenderCheckResponse>('/v1/brand-config/email-sender/check', {
+    method: 'POST',
+  });
+}

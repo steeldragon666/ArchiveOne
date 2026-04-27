@@ -492,6 +492,46 @@ test('POST /v1/brand-config/email-sender: 400 on bad domain (T-C8)', async () =>
   await app.close();
 });
 
+test('POST /v1/brand-config/email-sender/check: pending → verified (T-C9 stub)', async () => {
+  // Put TENANT_A in pending state.
+  await privilegedSql`
+    UPDATE brand_config
+       SET email_sender_domain = 'mail.firma.example.com',
+           email_sender_dkim_status = 'pending'
+     WHERE tenant_id = ${TENANT_A}
+  `;
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'POST',
+    url: '/v1/brand-config/email-sender/check',
+    cookies: { cpa_session: await adminJwt() },
+  });
+  assert.equal(res.statusCode, 200);
+  const body = res.json<{ status: string; transitioned: boolean }>();
+  assert.equal(body.status, 'verified');
+  assert.equal(body.transitioned, true);
+
+  // Restore seed.
+  await privilegedSql`
+    UPDATE brand_config
+       SET email_sender_domain = NULL,
+           email_sender_dkim_status = 'verified'
+     WHERE tenant_id = ${TENANT_A}
+  `;
+  await app.close();
+});
+
+test('POST /v1/brand-config/email-sender/check: 403 for non-admin (T-C9)', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'POST',
+    url: '/v1/brand-config/email-sender/check',
+    cookies: { cpa_session: await viewerJwt() },
+  });
+  assert.equal(res.statusCode, 403);
+  await app.close();
+});
+
 test('DELETE /v1/brand-config/custom-domain: 200 resets to unconfigured (T-C6)', async () => {
   const app = buildApp();
   // First put TENANT_A in cname_pending state.

@@ -593,5 +593,34 @@ export function registerBrandConfig(app: FastifyInstance): void {
     },
   );
 
-  // POST /v1/brand-config/email-sender/check   → registered in T-C9
+  /**
+   * POST /v1/brand-config/email-sender/check  (admin-only)
+   *
+   * Manual trigger for the DKIM verification state machine (T-C9). The
+   * wizard wires this to a "Verify DNS" button so users don't sit
+   * watching DNS propagation. Internally it just calls
+   * `advanceEmailSenderState`; the same handler runs from a periodic
+   * background job once that scheduling lands.
+   *
+   * v1 stubs the verification — the state machine flips pending →
+   * verified directly. Real impl resolves the 3 selectorN._domainkey
+   * TXT records + validates DKIM tokens.
+   */
+  app.post(
+    '/v1/brand-config/email-sender/check',
+    { preHandler: requireSession },
+    async (req, reply) => {
+      if (req.user!.role !== 'admin') {
+        return reply.status(403).send({
+          error: 'forbidden',
+          message: 'Admin role required',
+          requestId: req.id,
+        });
+      }
+      const tenantId = req.user!.tenantId!;
+      const { advanceEmailSenderState } = await import('../jobs/email-sender-state-machine.js');
+      const result = await advanceEmailSenderState(tenantId);
+      return result;
+    },
+  );
 }

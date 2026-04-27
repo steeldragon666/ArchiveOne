@@ -5,7 +5,11 @@ import type { DkimStatusValue } from '@cpa/schemas';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
-import { setEmailSender, type SetEmailSenderResponse } from '../_lib/api';
+import {
+  checkEmailSender,
+  setEmailSender,
+  type SetEmailSenderResponse,
+} from '../_lib/api';
 
 /**
  * Email sender / DKIM wizard (T-C8).
@@ -53,6 +57,30 @@ export function EmailSenderWizard({
       }),
   });
 
+  const verify = useMutation({
+    mutationFn: () => checkEmailSender(),
+    onSuccess: (res) => {
+      void qc.invalidateQueries({ queryKey: ['brand-config'] });
+      if (res.transitioned) {
+        toast({ title: `DKIM ${res.status}` });
+      } else {
+        toast({
+          title: 'No change yet',
+          description:
+            res.status === 'pending'
+              ? 'TXT records not yet published. DNS can take up to 24 hours.'
+              : `Current status: ${res.status}`,
+        });
+      }
+    },
+    onError: (e) =>
+      toast({
+        title: 'Verify failed',
+        description: e instanceof Error ? e.message : 'Unknown error',
+        variant: 'destructive',
+      }),
+  });
+
   if (currentStatus === 'verified' && currentDomain) {
     return (
       <div className="space-y-2">
@@ -85,10 +113,17 @@ export function EmailSenderWizard({
         {!recentResponse && (
           <p className="text-xs text-muted-foreground">
             Once your DNS provider publishes the TXT records, click <strong>Verify DNS</strong>
-            below to check propagation. (Verify DNS lands in T-C9.)
+            below to check propagation. DNS changes can take up to 24 hours.
           </p>
         )}
-        {/* Verify-DNS button wires up in T-C9. */}
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => verify.mutate()}
+          disabled={verify.isPending}
+        >
+          {verify.isPending ? 'Verifying…' : 'Verify DNS'}
+        </Button>
       </div>
     );
   }
