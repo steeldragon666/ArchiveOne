@@ -55,28 +55,25 @@ before(async () => {
       (${EMPLOYEE_A1}, ${SUBJECT_A1}, ${TENANT_A}, 'c12-jane@acme.com', 'Jane', ${ADMIN_USER})
   `;
   // Insert 6 events so we can verify "last 5" + ordering.
-  // Use sql.json() — the canonical postgres-js helper for jsonb. The
-  // ${JSON.stringify(obj)}::jsonb pattern works in chain.ts INSERTs but
-  // fails in raw test-seed INSERTs (different prepared-statement path)
-  // — the value gets stored as a jsonb-string-scalar instead of an
-  // object, so the route's payload.raw_text extraction returns empty.
+  // The `${JSON.stringify(obj)}::jsonb` pattern stores as a jsonb-string
+  // scalar in the prepared-statement path raw test-seeds use; the route's
+  // eventSnippet handles both string- and object-shaped payloads
+  // defensively, so this is fine. (The earlier sql.json() approach worked
+  // for the row contents but caused the test runner to hang at process-
+  // exit time — the Parameter objects appear to hold a reference that
+  // blocks `privilegedSql.end()` from completing.)
   for (let i = 0; i < 6; i++) {
     const id = crypto.randomUUID();
     const hash = crypto.randomBytes(32).toString('hex');
     const captured = new Date(Date.now() - (6 - i) * 60_000).toISOString();
     const idempotency = crypto.randomBytes(32).toString('hex');
-    const payload = privilegedSql.json({
-      _v: 1,
-      source: 'paste',
-      raw_text: `Hypothesis number ${i} with extra padding text to test the 80-char snippet truncation behaviour properly.`,
-    });
     await privilegedSql`
       INSERT INTO event (
         id, tenant_id, subject_tenant_id, kind, payload, hash, idempotency_key,
         captured_at, captured_by_user_id
       ) VALUES (
         ${id}, ${TENANT_A}, ${SUBJECT_A1}, 'HYPOTHESIS',
-        ${payload},
+        ${JSON.stringify({ _v: 1, source: 'paste', raw_text: `Hypothesis number ${i} with extra padding text to test the 80-char snippet truncation behaviour properly.` })}::jsonb,
         ${hash}, ${idempotency},
         ${captured}::timestamptz, ${ADMIN_USER}
       )

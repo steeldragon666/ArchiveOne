@@ -108,8 +108,21 @@ export async function requireClaimantSession(
  */
 const eventSnippet = (kind: string, payload: unknown): string => {
   if (kind === 'VOICE') return 'Voice note';
-  if (typeof payload === 'object' && payload !== null) {
-    const rawText = (payload as { raw_text?: unknown }).raw_text;
+  // Defensive parse: postgres-js may surface jsonb columns as a JSON-string
+  // scalar instead of a parsed object when the row was written via the
+  // `${JSON.stringify(obj)}::jsonb` pattern (versus chain.ts INSERT which
+  // happens to roundtrip cleanly). Tolerate both shapes so the snippet
+  // extraction works regardless of the writer's encoding.
+  let p: unknown = payload;
+  if (typeof p === 'string') {
+    try {
+      p = JSON.parse(p);
+    } catch {
+      // Not JSON — fall through and let the caller see the empty snippet.
+    }
+  }
+  if (typeof p === 'object' && p !== null) {
+    const rawText = (p as { raw_text?: unknown }).raw_text;
     if (typeof rawText === 'string') {
       return rawText.length > 80 ? rawText.slice(0, 80) + '…' : rawText;
     }
