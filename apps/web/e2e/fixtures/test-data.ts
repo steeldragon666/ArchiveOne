@@ -150,6 +150,10 @@ export async function seedEvent(input: SeedEventInput): Promise<{ id: string; ha
   const hash = hashEvent(prevHash, eventForHashing);
   const id = crypto.randomUUID();
 
+  // captured_at bound as ISO string + ::timestamptz cast — same workaround
+  // as packages/db/src/chain.ts insertEventWithChain. postgres-js + Node 22
+  // doesn't round-trip Date params cleanly on the bind path.
+  const capturedAtIso = capturedAt.toISOString();
   await privilegedSql`
     INSERT INTO event (
       id, tenant_id, subject_tenant_id, kind,
@@ -162,7 +166,7 @@ export async function seedEvent(input: SeedEventInput): Promise<{ id: string; ha
       ${JSON.stringify(input.payload)}::jsonb, ${classification === null ? null : JSON.stringify(classification)}::jsonb,
       ${null}, ${null}, ${null},
       ${prevHash}, ${hash},
-      ${capturedAt}, ${input.capturedByUserId}
+      ${capturedAtIso}::timestamptz, ${input.capturedByUserId}
     )
   `;
 
