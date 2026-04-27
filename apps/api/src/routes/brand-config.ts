@@ -5,6 +5,7 @@ import { requireSession } from '@cpa/auth';
 import { sql, privilegedSql } from '@cpa/db/client';
 import {
   checkSubdomainAvailabilityBody,
+  setCustomDomainBody,
   updateBrandConfigBody,
   type BrandConfig,
 } from '@cpa/schemas';
@@ -46,6 +47,16 @@ const RESERVED_SUBDOMAINS: ReadonlySet<string> = new Set([
   'docs',
 ]);
 
+/**
+ * The CNAME target firms publish to point a custom domain at the
+ * platform (T-C6 / T-C7). Configurable via env so the same code flows
+ * through dev / staging / prod with their own CNAME apex hostnames;
+ * the default matches production today. The state-machine job in C7
+ * reads the same env var, so dev environments where the target differs
+ * stay consistent end-to-end.
+ */
+const PLATFORM_CNAME_TARGET = process.env['PLATFORM_CNAME_TARGET'] ?? 'platform-cnames.platform.com.au';
+
 interface BrandRow {
   tenant_id: string;
   display_name: string;
@@ -56,6 +67,7 @@ interface BrandRow {
   terms_of_service_url: string | null;
   custom_subdomain: string | null;
   custom_domain: string | null;
+  custom_domain_status?: BrandConfig['custom_domain_status'];
   landing_page_config: unknown;
 }
 
@@ -69,6 +81,12 @@ const toApi = (r: BrandRow): BrandConfig => ({
   terms_of_service_url: r.terms_of_service_url,
   custom_subdomain: r.custom_subdomain,
   custom_domain: r.custom_domain,
+  // custom_domain_status is admin-scoped — present on PATCH responses
+  // (admin-only) and the wizard's GET path, omitted from the public
+  // by-tenant lookup so mobile clients can't probe lifecycle state.
+  ...(r.custom_domain_status !== undefined
+    ? { custom_domain_status: r.custom_domain_status }
+    : {}),
   landing_page_config: r.landing_page_config ?? null,
 });
 
@@ -212,7 +230,8 @@ export function registerBrandConfig(app: FastifyInstance): void {
          WHERE tenant_id = ${tenantId}
         RETURNING tenant_id, display_name, primary_color, accent_color,
                   logo_s3_key, support_email, terms_of_service_url,
-                  custom_subdomain, custom_domain, landing_page_config
+                  custom_subdomain, custom_domain, custom_domain_status,
+                  landing_page_config
       `;
       const row = rows[0];
       if (!row) {
@@ -312,8 +331,154 @@ export function registerBrandConfig(app: FastifyInstance): void {
     },
   );
 
-  // POST /v1/brand-config/custom-domain        → registered in T-C6
-  // DELETE /v1/brand-config/custom-domain       → registered in T-C6
+  /**
+   * GET /v1/brand-config/admin  (admin-only)
+   *
+   * Admin-scoped read returning the same row as the public GET plus
+   * the lifecycle fields the wizard needs (`custom_domain_status`).
+   * The unauthed public path stays minimal — mobile clients don't need
+   * state-machine internals to render a logo, and exposing them there
+   * would let an attacker probe other firms' configuration progress.
+   */
+  app.get('/v1/brand-config/admin', { preHandler: requireSession }, async (req, reply) => {
+    if (req.user!.role !== 'admin') {
+      return reply.status(403).send({
+        error: 'forbidden',
+        message: 'Admin role required',
+        requestId: req.id,
+      });
+    }
+    const tenantId = req.user!.tenantId!;
+    const rows = await privilegedSql<BrandRow[]>`
+      SELECT tenant_id, display_name, primary_color, accent_color,
+             logo_s3_key, support_email, terms_of_service_url,
+             custom_subdomain, custom_domain, custom_domain_status,
+             landing_page_config
+        FROM brand_config
+       WHERE tenant_id = ${tenantId}
+    `;
+    const row = rows[0];
+    if (!row) {
+      return reply.status(404).send({
+        error: 'brand_config_not_found',
+        message: 'No brand_config for the active tenant',
+        requestId: req.id,
+      });
+    }
+    return { brand_config: toApi(row) };
+  });
+
+  /**
+   * POST /v1/brand-config/custom-domain  (admin-only)
+   *
+   * Wizard sets `custom_domain` + flips `custom_domain_status` to
+   * `cname_pending`, returning the CNAME record the firm must publish
+   * at their DNS provider. The state-machine job (T-C7) advances the
+   * status once the CNAME resolves to `PLATFORM_CNAME_TARGET`.
+   *
+   * Re-submitting with the same domain is idempotent (still
+   * `cname_pending`); switching domains resets ACM ARN to NULL because
+   * the old cert is no longer valid.
+   */
+  app.post(
+    '/v1/brand-config/custom-domain',
+    { preHandler: requireSession },
+    async (req, reply) => {
+      if (req.user!.role !== 'admin') {
+        return reply.status(403).send({
+          error: 'forbidden',
+          message: 'Admin role required',
+          requestId: req.id,
+        });
+      }
+      const parsed = setCustomDomainBody.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'invalid_body',
+          message: 'Body must be { custom_domain: <lowercase FQDN, 4-253 chars> }',
+          requestId: req.id,
+        });
+      }
+      const { custom_domain } = parsed.data;
+      const tenantId = req.user!.tenantId!;
+
+      // Uniqueness across firms — same shape as the subdomain check.
+      // The DB has a UNIQUE constraint too, so we'd 500 on a duplicate
+      // INSERT; surfacing 409 here is the friendlier path.
+      const existing = await privilegedSql<{ tenant_id: string }[]>`
+        SELECT tenant_id FROM brand_config WHERE custom_domain = ${custom_domain}
+      `;
+      const conflict = existing[0];
+      if (conflict && conflict.tenant_id !== tenantId) {
+        return reply.status(409).send({
+          error: 'domain_taken',
+          message: 'That domain is already registered to another firm',
+          requestId: req.id,
+        });
+      }
+
+      await privilegedSql`
+        UPDATE brand_config
+           SET custom_domain = ${custom_domain},
+               custom_domain_status = 'cname_pending',
+               custom_domain_acm_arn = NULL,
+               updated_at = NOW()
+         WHERE tenant_id = ${tenantId}
+      `;
+
+      return {
+        status: 'cname_pending',
+        cname_record: {
+          name: custom_domain,
+          type: 'CNAME',
+          value: PLATFORM_CNAME_TARGET,
+        },
+        instructions: [
+          `Create a CNAME record at your DNS provider:`,
+          `  Name:  ${custom_domain}`,
+          `  Type:  CNAME`,
+          `  Value: ${PLATFORM_CNAME_TARGET}`,
+          ``,
+          `DNS changes can take up to 24 hours to propagate. Once we detect`,
+          `the record we'll automatically issue an SSL certificate and bring`,
+          `your domain online.`,
+        ].join('\n'),
+      };
+    },
+  );
+
+  /**
+   * DELETE /v1/brand-config/custom-domain  (admin-only)
+   *
+   * Disconnects the firm from their custom domain. Resets the lifecycle
+   * fields back to their bootstrap defaults so the wizard's "Connect a
+   * domain" CTA is the only path forward. Idempotent — calling it on an
+   * already-unconfigured row is a no-op.
+   */
+  app.delete(
+    '/v1/brand-config/custom-domain',
+    { preHandler: requireSession },
+    async (req, reply) => {
+      if (req.user!.role !== 'admin') {
+        return reply.status(403).send({
+          error: 'forbidden',
+          message: 'Admin role required',
+          requestId: req.id,
+        });
+      }
+      const tenantId = req.user!.tenantId!;
+      await privilegedSql`
+        UPDATE brand_config
+           SET custom_domain = NULL,
+               custom_domain_status = 'unconfigured',
+               custom_domain_acm_arn = NULL,
+               updated_at = NOW()
+         WHERE tenant_id = ${tenantId}
+      `;
+      return { status: 'unconfigured' };
+    },
+  );
+
   // POST /v1/brand-config/custom-domain/check  → registered in T-C7
   // POST /v1/brand-config/email-sender          → registered in T-C8
   // POST /v1/brand-config/email-sender/check   → registered in T-C9

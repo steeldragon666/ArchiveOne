@@ -18,7 +18,8 @@ import {
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { useWhoami } from '@/hooks/use-whoami';
-import { getBrandConfig, updateBrandConfig } from '../_lib/api';
+import { getAdminBrandConfig, updateBrandConfig } from '../_lib/api';
+import { CustomDomainWizard } from './custom-domain-wizard';
 import { CustomSubdomainWizard } from './custom-subdomain-wizard';
 import { LogoUpload } from './logo-upload';
 import { ThemePicker } from './theme-picker';
@@ -55,7 +56,7 @@ export function BrandConfigForm() {
 function BrandReadView({ tenantId }: { tenantId: string }) {
   const brand = useQuery({
     queryKey: ['brand-config', tenantId],
-    queryFn: () => getBrandConfig(tenantId),
+    queryFn: () => getAdminBrandConfig(),
   });
 
   if (brand.isLoading) {
@@ -131,6 +132,22 @@ function BrandReadView({ tenantId }: { tenantId: string }) {
         </CardHeader>
         <CardContent>
           <CustomSubdomainWizard currentSubdomain={brand.data.custom_subdomain} />
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>Custom domain (optional)</CardTitle>
+          <CardDescription>
+            Bring your own domain — e.g. <code>platform.acmeconsulting.com.au</code>. We&apos;ll
+            verify a CNAME record at your DNS provider, then issue an SSL certificate
+            automatically.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <CustomDomainWizard
+            currentDomain={brand.data.custom_domain}
+            currentStatus={brand.data.custom_domain_status ?? 'unconfigured'}
+          />
         </CardContent>
       </Card>
     </div>

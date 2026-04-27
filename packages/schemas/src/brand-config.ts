@@ -22,6 +22,22 @@ export const hexColor = z.string().regex(HEX_COLOR, 'must be a 6-digit hex color
  * only and surfaced through a separate /v1/brand-config/admin route in
  * a future task (C7).
  */
+/**
+ * Custom-domain lifecycle status (T-C6 / T-C7). Mirrors
+ * `brand_config.custom_domain_status` in the DB schema. The state
+ * machine drives transitions:
+ *   unconfigured → cname_pending → cert_pending → active
+ *                                              ↘  failed
+ */
+export const customDomainStatus = z.enum([
+  'unconfigured',
+  'cname_pending',
+  'cert_pending',
+  'active',
+  'failed',
+]);
+export type CustomDomainStatusValue = z.infer<typeof customDomainStatus>;
+
 export const brandConfig = z.object({
   tenant_id: Uuid,
   display_name: z.string(),
@@ -32,6 +48,14 @@ export const brandConfig = z.object({
   terms_of_service_url: z.string().url().nullable(),
   custom_subdomain: z.string().nullable(),
   custom_domain: z.string().nullable(),
+  /**
+   * Lifecycle status — surfaced on admin endpoints only (PATCH response,
+   * future admin-GET). Public unauthed GET intentionally omits it; the
+   * mobile app doesn't need state-machine internals to render a logo.
+   * `.optional()` here so `BrandConfig` is the same type either side of
+   * the privacy boundary.
+   */
+  custom_domain_status: customDomainStatus.optional(),
   landing_page_config: z.unknown().nullable(),
 });
 export type BrandConfig = z.infer<typeof brandConfig>;
@@ -102,3 +126,33 @@ export const checkSubdomainAvailabilityBody = z
   })
   .strict();
 export type CheckSubdomainAvailabilityBody = z.infer<typeof checkSubdomainAvailabilityBody>;
+
+/**
+ * Custom-domain regex (T-C6).
+ *
+ * Lowercase FQDN, 4-253 chars, at least one label + TLD ≥2 chars.
+ * Mirrors the server-side validator on POST /v1/brand-config/custom-domain.
+ * Pure-format check — actual ownership / reachability is verified by
+ * the C7 state machine via DNS CNAME resolution.
+ */
+const CUSTOM_DOMAIN = /^([a-z0-9-]+\.)+[a-z]{2,}$/;
+export const customDomain = z
+  .string()
+  .min(4)
+  .max(253)
+  .regex(CUSTOM_DOMAIN, 'must be a lowercase FQDN like platform.acme.com.au');
+
+/**
+ * Custom-domain initiation body (T-C6).
+ *
+ * Wizard POSTs here; server sets `custom_domain` + `custom_domain_status`
+ * to `cname_pending` and returns the CNAME instructions the firm must
+ * publish. The state machine (T-C7) flips it to `cert_pending` once the
+ * CNAME resolves to our platform target.
+ */
+export const setCustomDomainBody = z
+  .object({
+    custom_domain: customDomain,
+  })
+  .strict();
+export type SetCustomDomainBody = z.infer<typeof setCustomDomainBody>;

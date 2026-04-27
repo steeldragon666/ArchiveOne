@@ -24,6 +24,17 @@ export async function getBrandConfig(tenantId: string): Promise<BrandConfig> {
   return res.brand_config;
 }
 
+/**
+ * Admin-scoped read (T-C6) — same shape as `getBrandConfig` plus the
+ * lifecycle fields (`custom_domain_status`) the wizard renders against.
+ * The flat public GET intentionally omits these to keep mobile clients
+ * lean; this path is the one the admin form uses on initial load.
+ */
+export async function getAdminBrandConfig(): Promise<BrandConfig> {
+  const res = await apiFetch<BrandConfigEnvelope>('/v1/brand-config/admin');
+  return res.brand_config;
+}
+
 export async function updateBrandConfig(body: UpdateBrandConfigBody): Promise<BrandConfig> {
   const res = await apiFetch<BrandConfigEnvelope>('/v1/brand-config', {
     method: 'PATCH',
@@ -88,4 +99,37 @@ export async function checkSubdomainAvailability(
       body: JSON.stringify({ subdomain }),
     },
   );
+}
+
+/**
+ * Custom domain wizard helpers (T-C6).
+ *
+ * `setCustomDomain` initiates the lifecycle (`cname_pending`) and
+ * returns the CNAME record the firm must publish.
+ * `disconnectCustomDomain` resets back to `unconfigured` — used by the
+ * "Disconnect" button on the active state. The C7 `checkCustomDomain`
+ * helper is added in T-C7 once the state machine lands.
+ */
+export interface CnameRecord {
+  name: string;
+  type: 'CNAME';
+  value: string;
+}
+export interface SetCustomDomainResponse {
+  status: 'cname_pending';
+  cname_record: CnameRecord;
+  instructions: string;
+}
+
+export async function setCustomDomain(custom_domain: string): Promise<SetCustomDomainResponse> {
+  return apiFetch<SetCustomDomainResponse>('/v1/brand-config/custom-domain', {
+    method: 'POST',
+    body: JSON.stringify({ custom_domain }),
+  });
+}
+
+export async function disconnectCustomDomain(): Promise<{ status: 'unconfigured' }> {
+  return apiFetch<{ status: 'unconfigured' }>('/v1/brand-config/custom-domain', {
+    method: 'DELETE',
+  });
 }
