@@ -93,11 +93,10 @@ export default function VoiceCaptureScreen() {
     setState({ kind: 'submitting' });
     try {
       await enqueueVoiceEvent({
-        kind: 'voice',
         audio_uri: rec.uri,
         audio_mime_type: rec.mime_type,
         duration_ms: rec.duration_ms,
-        captured_at: Date.now(),
+        captured_at_local: Date.now(),
       });
       router.replace('/(authed)');
     } catch (e) {

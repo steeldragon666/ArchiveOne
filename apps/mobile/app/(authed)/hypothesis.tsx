@@ -56,7 +56,7 @@ export default function HypothesisScreen() {
         predicted_outcome: predicted.trim(),
         success_criteria: success.trim(),
         uncertainty: uncertainty.trim(),
-        captured_at: Date.now(),
+        captured_at_local: Date.now(),
       });
       router.replace('/(authed)');
     } catch (e) {
@@ -115,7 +115,7 @@ export default function HypothesisScreen() {
       </View>
 
       <Pressable
-        onPress={handleSubmit}
+        onPress={() => void handleSubmit()}
         disabled={!canSubmit}
         style={[
           styles.submit,

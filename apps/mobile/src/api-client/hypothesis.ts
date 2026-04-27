@@ -3,23 +3,32 @@ import { enqueue } from '../sync/queue.js';
 /**
  * Mobile-side payload for a queued hypothesis-prompt event.
  *
- * Wire-format-equivalent to the hypothesis variant accepted by
- * /v1/mobile/events (T-A11). Mirrors what the voice path enqueues —
- * the dispatcher unpacks the payload and posts the discriminated-union
- * variant determined by `kind`.
+ * Wire-format-aligned with A11's discriminated-union body for
+ * POST /v1/mobile/events — `payload.source` selects the variant.
+ * The dispatcher reads the queued envelope verbatim and POSTs it.
  *
- * `captured_at` is the device-clock ms epoch — server stores as
- * `captured_at_local` in the event payload + uses NOW() for the row's
- * canonical captured_at. The pre-experiment framing (Body by Michael)
- * relies on this being captured BEFORE the work starts; the timestamp
- * is what makes it auditable.
+ * `captured_at_local` is the device-clock ms epoch — server stores it
+ * verbatim in the event payload + uses NOW() for the row's canonical
+ * captured_at. The pre-experiment framing (Body by Michael) relies on
+ * this being captured BEFORE the work starts; the timestamp is what
+ * makes it auditable.
  */
-export type EnqueueHypothesisPayload = {
-  kind: 'hypothesis_prompt';
+export type HypothesisEventVariant = {
+  source: 'hypothesis_prompt';
   predicted_outcome: string;
   success_criteria: string;
   uncertainty: string;
-  captured_at: number;
+};
+
+/**
+ * Envelope persisted in mobile_event_queue.payload (as JSON). Mirrors
+ * `CreateMobileEventBody` from @cpa/schemas. `subject_tenant_id` is
+ * omitted — the API derives it from the mobile JWT (see events.ts for
+ * the rationale).
+ */
+export type EnqueueHypothesisEnvelope = {
+  captured_at_local: number;
+  payload: HypothesisEventVariant;
 };
 
 /**
@@ -37,20 +46,22 @@ export async function enqueueHypothesisEvent(p: {
   predicted_outcome: string;
   success_criteria: string;
   uncertainty: string;
-  captured_at: number;
+  captured_at_local: number;
 }): Promise<string> {
   const local_id = globalThis.crypto.randomUUID();
-  const payload: EnqueueHypothesisPayload = {
-    kind: 'hypothesis_prompt',
-    predicted_outcome: p.predicted_outcome,
-    success_criteria: p.success_criteria,
-    uncertainty: p.uncertainty,
-    captured_at: p.captured_at,
+  const envelope: EnqueueHypothesisEnvelope = {
+    captured_at_local: p.captured_at_local,
+    payload: {
+      source: 'hypothesis_prompt',
+      predicted_outcome: p.predicted_outcome,
+      success_criteria: p.success_criteria,
+      uncertainty: p.uncertainty,
+    },
   };
   await enqueue({
     local_id,
     kind: 'event',
-    payload: JSON.stringify(payload),
+    payload: JSON.stringify(envelope),
   });
   return local_id;
 }
