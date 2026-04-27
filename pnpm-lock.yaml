@@ -279,10 +279,26 @@ importers:
         version: 5.9.3
 
   packages/integrations:
+    dependencies:
+      '@cpa/db':
+        specifier: workspace:*
+        version: link:../db
+      '@cpa/observability':
+        specifier: workspace:*
+        version: link:../observability
+      '@cpa/schemas':
+        specifier: workspace:*
+        version: link:../schemas
+      zod:
+        specifier: ^3.24.1
+        version: 3.25.76
     devDependencies:
       '@types/node':
         specifier: ^22.10.0
         version: 22.19.17
+      nock:
+        specifier: ^14.0.13
+        version: 14.0.13
       tsx:
         specifier: ^4.19.2
         version: 4.21.0

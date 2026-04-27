@@ -1,4 +1,6 @@
 // Barrel export for @cpa/integrations.
-// runtime/* hosts the I/O-side stubs we use in app code; the actual
-// SES / Stripe / Xero wiring lands per task in C10-C11+.
-export * from './runtime/email.js';
+// runtime/* hosts the cross-cutting helpers (oauth, retry, rate-limit,
+// webhook-verify, email, types). Per-provider clients (deepgram,
+// docusign, payroll/*) live in their own subpath exports — import
+// from '@cpa/integrations/deepgram' etc. directly.
+export * from './runtime/index.js';
