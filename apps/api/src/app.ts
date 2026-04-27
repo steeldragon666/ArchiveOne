@@ -218,10 +218,6 @@ export function buildApp(): App {
     done();
   });
   app.register((instance, _opts, done) => {
-    registerAuditScore(instance);
-    done();
-  });
-  app.register((instance, _opts, done) => {
     registerIntegrations(instance);
     done();
   });
@@ -234,10 +230,6 @@ export function buildApp(): App {
   // route (the handler needs the raw Buffer to HMAC-verify).
   app.register((instance, _opts, done) => {
     registerDocuSignWebhookPlugin(instance);
-    done();
-  });
-  app.register((instance, _opts, done) => {
-    registerTimeEntries(instance);
     done();
   });
 
