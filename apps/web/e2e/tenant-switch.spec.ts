@@ -40,8 +40,10 @@ test.describe('Tenant switcher', () => {
 
     await page.goto('/');
 
-    // Initial active firm: Alpha
-    await expect(page.getByText('E2E T7 Firm Alpha')).toBeVisible();
+    // Initial active firm: Alpha. Firm name appears twice (TenantSwitcher
+    // button + "Active firm: <strong>" label); scope to <strong> for an
+    // unambiguous "currently active firm" assertion.
+    await expect(page.locator('strong', { hasText: 'E2E T7 Firm Alpha' })).toBeVisible();
 
     // Open dropdown via the switcher button
     await page.getByRole('button', { name: /E2E T7 Firm Alpha/i }).click();
@@ -49,7 +51,9 @@ test.describe('Tenant switcher', () => {
     // Click Bravo in the dropdown
     await page.getByRole('menuitem', { name: /E2E T7 Firm Bravo/i }).click();
 
-    // Wait for the dashboard to re-render with the new active firm name visible
-    await expect(page.getByText('E2E T7 Firm Bravo')).toBeVisible({ timeout: 5_000 });
+    // Wait for the dashboard to re-render with Bravo as the new active firm.
+    await expect(page.locator('strong', { hasText: 'E2E T7 Firm Bravo' })).toBeVisible({
+      timeout: 5_000,
+    });
   });
 });

@@ -37,7 +37,10 @@ test.describe('Dashboard', () => {
 
     await page.goto('/');
     await expect(page.getByText('e2e-T6-admin@example.com')).toBeVisible();
-    await expect(page.getByText('E2E T6 Firm Alpha')).toBeVisible();
+    // Firm name appears twice on the dashboard (TenantSwitcher button +
+    // "Active firm: <strong>" label). Scope to the <strong> so the
+    // assertion is unambiguous and resilient to tenant-switcher refactors.
+    await expect(page.locator('strong', { hasText: 'E2E T6 Firm Alpha' })).toBeVisible();
     await expect(page.getByRole('link', { name: /Manage firm members/i })).toBeVisible();
   });
 });
