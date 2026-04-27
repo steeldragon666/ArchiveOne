@@ -124,13 +124,18 @@ test('verifyChain: clean chain returns verified=true', async () => {
 });
 
 test('verifyChain: tampered hash detected', async () => {
-  const [first] = await sql<{ id: string; hash: string }[]>`
+  // Read via privilegedSql (RLS-bypass) to symmetry-match the UPDATE
+  // below. Using `sql` here would hit the postgres-js GUC quirk: a
+  // pooled connection touched by a prior set_config(true) returns ''
+  // for current_setting(...,true) on subsequent reads, and the RLS
+  // policy's ::uuid cast on '' errors with "invalid input syntax".
+  const { privilegedSql } = await import('./client.js');
+  const [first] = await privilegedSql<{ id: string; hash: string }[]>`
     SELECT id, hash FROM event WHERE subject_tenant_id = ${SUBJECT_ID}
     ORDER BY captured_at, received_at, id LIMIT 1
   `;
   assert.ok(first);
   const originalHash = first.hash;
-  const { privilegedSql } = await import('./client.js');
   await privilegedSql`UPDATE event SET hash = 'deadbeef' || substring(hash from 9) WHERE id = ${first.id}`;
   const status = await verifyChain(SUBJECT_ID);
   assert.equal(status.verified, false);
