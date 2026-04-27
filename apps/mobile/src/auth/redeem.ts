@@ -1,5 +1,6 @@
 import Constants from 'expo-constants';
 import * as Application from 'expo-application';
+import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import type {
   MagicLinkRedeemBody,
@@ -45,21 +46,100 @@ export async function getDeviceFingerprint(): Promise<string> {
 }
 
 /**
+ * Resolve an Expo Push token, requesting OS permission first.
+ *
+ * Returns null on:
+ *   - Permission denied by the user (iOS prompt or Android settings)
+ *   - Web / simulator builds where `getExpoPushTokenAsync` rejects
+ *   - Any unexpected error from the Notifications module
+ *
+ * The redeem path treats null as "no push for this session" — the
+ * user can still capture events; the F8 refresh has its own update
+ * path for late-arriving tokens (see refreshTokenBody.push_token).
+ *
+ * Crucially, this never throws — push registration must NOT fail the
+ * magic-link redeem. The user got a legitimate magic link; if the OS
+ * is in some state that breaks token registration (notification
+ * service down, bad project config), they should still be signed in
+ * and able to use the app.
+ */
+export async function getExpoPushTokenSafe(): Promise<string | null> {
+  try {
+    if (!Constants.isDevice && Platform.OS !== 'android') {
+      // Simulators / web have no real APNs/FCM channel — skip the
+      // request rather than rejecting noisily.
+      return null;
+    }
+
+    const settings = await Notifications.getPermissionsAsync();
+    let granted =
+      settings.granted ||
+      settings.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL;
+    if (!granted) {
+      const requested = await Notifications.requestPermissionsAsync();
+      granted =
+        requested.granted ||
+        requested.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL;
+    }
+    if (!granted) return null;
+
+    // EAS project id resolution. `expoConfig.extra.eas.projectId` is the
+    // canonical location; `easConfig.projectId` is a legacy mirror still
+    // populated in some Expo SDK versions. Both come back as `any` from
+    // `expo-constants`'s type defs — narrow to string defensively so an
+    // accidentally numeric value can't crash the SDK call.
+    const extra: unknown = Constants.expoConfig?.extra;
+    const easExtra: unknown =
+      extra && typeof extra === 'object' && 'eas' in extra
+        ? (extra as { eas?: unknown }).eas
+        : undefined;
+    const fromExtra =
+      easExtra && typeof easExtra === 'object' && 'projectId' in easExtra
+        ? (easExtra as { projectId?: unknown }).projectId
+        : undefined;
+    const legacy: unknown = Constants.easConfig;
+    const fromLegacy =
+      legacy && typeof legacy === 'object' && 'projectId' in legacy
+        ? (legacy as { projectId?: unknown }).projectId
+        : undefined;
+    const rawProjectId: unknown = fromExtra ?? fromLegacy;
+    const projectId = typeof rawProjectId === 'string' ? rawProjectId : undefined;
+
+    const tokenResponse = projectId
+      ? await Notifications.getExpoPushTokenAsync({ projectId })
+      : await Notifications.getExpoPushTokenAsync();
+    return tokenResponse.data;
+  } catch {
+    // Notification service errors are non-fatal — see fn docstring.
+    return null;
+  }
+}
+
+/**
  * POST /v1/auth/magic-link/redeem.
  *
  * Wraps the network call so the redeem screen can stay declarative.
  * Returns the typed response or throws (caller is responsible for
  * surfacing the error to the user).
+ *
+ * If `pushToken` is omitted, the function attempts to acquire one via
+ * `getExpoPushTokenSafe()` so the resulting `mobile_session` row gets
+ * a non-null push_token from the start. Permission denial / simulator
+ * runs leave it null and skip the bind — the user is still redeemed.
  */
 export async function redeemMagicLink(args: {
   token: string;
   pushToken?: string;
 }): Promise<MagicLinkRedeemResponse> {
   const fingerprint = await getDeviceFingerprint();
+  // If the caller didn't pre-fetch the push token, attempt to acquire
+  // one now. The acquire helper returns null on permission denial /
+  // simulator runs and never throws, so this is a safe one-shot.
+  const pushToken = args.pushToken ?? (await getExpoPushTokenSafe());
   const body: MagicLinkRedeemBody = {
     token: args.token,
     device_fingerprint: fingerprint,
-    ...(args.pushToken ? { push_token: args.pushToken } : {}),
+    ...(pushToken ? { push_token: pushToken } : {}),
   };
 
   const url = `${getApiBaseUrl()}/v1/auth/magic-link/redeem`;

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 /**
- * POST /v1/auth/refresh (T-F8).
+ * POST /v1/auth/refresh (T-F8 + T-A12).
  *
  * Mobile clients hit this every ~50 minutes to swap a soon-to-expire
  * access token for a fresh one. Each refresh ALSO rotates the refresh
@@ -14,10 +14,19 @@ import { z } from 'zod';
  * the token is structurally valid, but it's being used from a device
  * different to the one the session is bound to. F5 verifier rejects on
  * the access-token side; this is the equivalent gate on refresh.
+ *
+ * `push_token` is OPTIONAL — when present, the server updates the
+ * mobile_session row's push_token column. This is the late-arrival
+ * path: the user redeemed the magic-link before granting push
+ * permission, so the F7 redeem captured a session without a token;
+ * once they accept the OS prompt the next refresh carries the new
+ * Expo Push token. Subsequent refreshes can also rotate the token
+ * (Expo issues new ones occasionally).
  */
 export const refreshTokenBody = z.object({
   refresh_token: z.string().min(1).max(200),
   device_fingerprint: z.string().min(1).max(200),
+  push_token: z.string().max(200).optional(),
 });
 export type RefreshTokenBody = z.infer<typeof refreshTokenBody>;
 

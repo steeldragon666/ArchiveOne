@@ -77,12 +77,12 @@ export function registerRefreshRoute(app: FastifyInstance): void {
       return reply.status(400).send(
         errEnvelope(
           'INVALID_BODY',
-          'Body must be { refresh_token, device_fingerprint }',
+          'Body must be { refresh_token, device_fingerprint, push_token? }',
           req.id,
         ),
       );
     }
-    const { refresh_token, device_fingerprint } = parsed.data;
+    const { refresh_token, device_fingerprint, push_token } = parsed.data;
     const refreshHash = crypto.createHash('sha256').update(refresh_token).digest('hex');
 
     // Step 1: lookup the session by hash.
@@ -129,13 +129,19 @@ export function registerRefreshRoute(app: FastifyInstance): void {
     // expires_at by 90d from now (sliding window). last_refreshed_at
     // bumps automatically via the column default — set it explicitly
     // for clarity.
+    //
+    // push_token: if the client supplies one, persist it. Absent
+    // push_token leaves the existing value untouched (COALESCE) — so a
+    // mid-life refresh from a client that hasn't yet captured a push
+    // token doesn't accidentally clear a valid one previously set.
     const { rawToken: newRefresh, tokenHash: newRefreshHash } = mintRefreshToken();
     const newExpires = new Date(now + REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000);
     const updated = await privilegedSql<{ id: string }[]>`
       UPDATE mobile_session
          SET refresh_token_hash = ${newRefreshHash},
              expires_at = ${newExpires.toISOString()}::timestamptz,
-             last_refreshed_at = NOW()
+             last_refreshed_at = NOW(),
+             push_token = COALESCE(${push_token ?? null}, push_token)
        WHERE id = ${session.id}
          AND revoked_at IS NULL
       RETURNING id
