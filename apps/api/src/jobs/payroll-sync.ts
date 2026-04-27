@@ -1,6 +1,6 @@
 import { privilegedSql } from '@cpa/db/client';
 import { decryptToken, getTokenEncryptionKey } from '@cpa/integrations/runtime';
-import { employmentHero, keypay, deputy } from '@cpa/integrations/payroll';
+import { employmentHero, keypay, deputy, xeroPayroll } from '@cpa/integrations/payroll';
 
 /**
  * Employment Hero sync orchestrator (T-B11).
@@ -32,14 +32,16 @@ import { employmentHero, keypay, deputy } from '@cpa/integrations/payroll';
 
 export type SyncResult = {
   tenant_id: string;
-  provider: 'employment_hero' | 'keypay' | 'deputy';
+  provider: 'employment_hero' | 'keypay' | 'deputy' | 'xero_payroll';
   employees: { upserted: number; deactivated: number };
   timesheets: {
     inserted: number;
     updated: number;
     skipped_unmatched: number;
-    /** Deputy-only — surfaced for `provider === 'deputy'` only; absent for EH/KeyPay. */
+    /** Deputy-only — surfaced for `provider === 'deputy'` only; absent for EH/KeyPay/Xero. */
     skipped_discarded?: number;
+    /** Xero-only — surfaced for `provider === 'xero_payroll'` only; absent for EH/KeyPay/Deputy. */
+    skipped_rejected?: number;
   };
   error?: string;
 };
@@ -66,6 +68,14 @@ export type DeputySyncDeps = {
   get_encryption_key?: () => string;
   sync_employees?: typeof deputy.syncEmployees;
   pull_timesheets?: typeof deputy.pullTimesheets;
+};
+
+export type XeroPayrollSyncDeps = {
+  sql_client?: typeof privilegedSql;
+  decrypt?: (blob: string, key: string) => string;
+  get_encryption_key?: () => string;
+  sync_employees?: typeof xeroPayroll.syncEmployees;
+  pull_timesheets?: typeof xeroPayroll.pullTimesheets;
 };
 
 interface IntegrationConnectionRow {
@@ -526,6 +536,182 @@ export async function syncDeputy(
     return {
       tenant_id: conn.tenant_id,
       provider: 'deputy',
+      employees: { upserted: 0, deactivated: 0 },
+      timesheets: { inserted: 0, updated: 0, skipped_unmatched: 0 },
+      error: msg,
+    };
+  }
+}
+
+/**
+ * Xero Payroll AU sync orchestrator (T-B20).
+ *
+ * Mirrors `syncDeputy` (Xero uses OAuth 2.0 like Deputy) with three
+ * notable differences:
+ *
+ *   1. `external_account_id` carries the Xero **tenant_id** (a GUID)
+ *      discovered after OAuth via `GET /connections`. Xero is multi-
+ *      tenant via the `Xero-tenant-id` header — every API call sets
+ *      this header alongside the bearer token. We pass it through as
+ *      `xero_tenant_id` rather than `install_url` (Deputy) /
+ *      `organisation_id` (EH) / `business_id` (KeyPay).
+ *
+ *   2. Token-expiry handling: Xero access tokens expire in ~30 minutes
+ *      (much shorter than Deputy's 24h). The OAuth helpers expose
+ *      `refreshAccessToken`, but for v1 we defer the auto-refresh-and-
+ *      persist dance to a follow-up task — if `expires_at` has passed
+ *      we throw with a clear message so the consultant can reconnect
+ *      manually. Xero rotates refresh tokens on every refresh, so the
+ *      auto-refresh implementation must persist BOTH the new
+ *      access_token AND the new refresh_token. (TODO: invoke
+ *      `xeroPayroll.refreshAccessToken`, encrypt both tokens, UPDATE
+ *      access_token_encrypted + refresh_token_encrypted + expires_at
+ *      in-place, and continue. Tracked separately because the encrypt
+ *      helper isn't exported from runtime yet.)
+ *
+ *   3. Timesheet result includes `skipped_rejected` — Xero AU's
+ *      consultant-rejected status. We surface it on the
+ *      `SyncResult.timesheets` object so audit/observability can spot
+ *      drift between Xero and our copy.
+ */
+export async function syncXeroPayroll(
+  connectionId: string,
+  deps: XeroPayrollSyncDeps = {},
+): Promise<SyncResult> {
+  const sql = deps.sql_client ?? privilegedSql;
+  const decrypt = deps.decrypt ?? decryptToken;
+  const getKey = deps.get_encryption_key ?? getTokenEncryptionKey;
+  const syncEmployees = deps.sync_employees ?? xeroPayroll.syncEmployees;
+  const pullTimesheets = deps.pull_timesheets ?? xeroPayroll.pullTimesheets;
+
+  const connRows = (await sql`
+    SELECT tenant_id, access_token_encrypted, external_account_id, last_synced_at, expires_at
+      FROM integration_connection
+     WHERE id = ${connectionId}
+       AND provider = 'xero_payroll'
+       AND sync_state <> 'failed'
+  `) as IntegrationConnectionRow[];
+  const conn = connRows[0];
+  if (!conn) {
+    throw new Error(`integration_connection not found or failed: ${connectionId}`);
+  }
+  if (!conn.external_account_id) {
+    await sql`
+      UPDATE integration_connection
+         SET sync_state = 'failed',
+             last_error = 'external_account_id (xero_tenant_id) required'
+       WHERE id = ${connectionId}
+    `;
+    return {
+      tenant_id: conn.tenant_id,
+      provider: 'xero_payroll',
+      employees: { upserted: 0, deactivated: 0 },
+      timesheets: { inserted: 0, updated: 0, skipped_unmatched: 0 },
+      error: 'external_account_id (xero_tenant_id) required',
+    };
+  }
+
+  // Token-expiry guard: v1 surfaces an error rather than refreshing
+  // automatically. Xero tokens expire in ~30 minutes — much tighter
+  // than Deputy's 24h — so this guard fires more frequently in
+  // practice and the auto-refresh follow-up is a higher priority.
+  if (conn.expires_at && conn.expires_at.getTime() <= Date.now()) {
+    const msg = 'xero access token expired — reconnect required (auto-refresh TODO)';
+    await sql`
+      UPDATE integration_connection
+         SET sync_state = 'failed',
+             last_error = ${msg}
+       WHERE id = ${connectionId}
+    `;
+    return {
+      tenant_id: conn.tenant_id,
+      provider: 'xero_payroll',
+      employees: { upserted: 0, deactivated: 0 },
+      timesheets: { inserted: 0, updated: 0, skipped_unmatched: 0 },
+      error: msg,
+    };
+  }
+
+  await sql`
+    UPDATE integration_connection
+       SET sync_state = 'syncing'
+     WHERE id = ${connectionId}
+  `;
+
+  try {
+    const accessToken = decrypt(conn.access_token_encrypted, getKey());
+
+    const subjRows = (await sql`
+      SELECT id FROM subject_tenant
+       WHERE tenant_id = ${conn.tenant_id}
+         AND kind = 'claimant'
+         AND deleted_at IS NULL
+       ORDER BY created_at
+       LIMIT 1
+    `) as SubjectTenantRow[];
+    const subj = subjRows[0];
+    if (!subj) {
+      throw new Error('no subject_tenant for this connection');
+    }
+
+    const adminRows = (await sql`
+      SELECT user_id FROM tenant_user
+       WHERE tenant_id = ${conn.tenant_id}
+         AND role = 'admin'
+         AND deleted_at IS NULL
+       ORDER BY created_at
+       LIMIT 1
+    `) as AdminUserRow[];
+    const admin = adminRows[0];
+    if (!admin) {
+      throw new Error('no admin user for this connection');
+    }
+
+    const sharedOpts = {
+      access_token: accessToken,
+      xero_tenant_id: conn.external_account_id,
+      tenant_id: conn.tenant_id,
+      subject_tenant_id: subj.id,
+      ...(conn.last_synced_at ? { changed_since: conn.last_synced_at } : {}),
+      sql_client: sql,
+    };
+
+    const employees = await syncEmployees({
+      ...sharedOpts,
+      invited_by_user_id: admin.user_id,
+    });
+    const timesheets = await pullTimesheets(sharedOpts);
+
+    await sql`
+      UPDATE integration_connection
+         SET sync_state = 'idle',
+             last_synced_at = NOW(),
+             last_error = NULL
+       WHERE id = ${connectionId}
+    `;
+
+    return {
+      tenant_id: conn.tenant_id,
+      provider: 'xero_payroll',
+      employees,
+      timesheets: {
+        inserted: timesheets.inserted,
+        updated: timesheets.updated,
+        skipped_unmatched: timesheets.skipped_unmatched,
+        skipped_rejected: timesheets.skipped_rejected,
+      },
+    };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    await sql`
+      UPDATE integration_connection
+         SET sync_state = 'failed',
+             last_error = ${msg}
+       WHERE id = ${connectionId}
+    `;
+    return {
+      tenant_id: conn.tenant_id,
+      provider: 'xero_payroll',
       employees: { upserted: 0, deactivated: 0 },
       timesheets: { inserted: 0, updated: 0, skipped_unmatched: 0 },
       error: msg,

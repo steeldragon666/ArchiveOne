@@ -4,9 +4,11 @@ import {
   syncEmploymentHero,
   syncKeypay,
   syncDeputy,
+  syncXeroPayroll,
   type PayrollSyncDeps,
   type KeypaySyncDeps,
   type DeputySyncDeps,
+  type XeroPayrollSyncDeps,
 } from './payroll-sync.js';
 
 const CONNECTION_ID = '00000000-0000-4000-8000-000000000bb1';
@@ -779,6 +781,263 @@ test('syncDeputy: missing connection row → throws', async () => {
   const { deps } = baseDeputyDeps({ integration_connection: [] });
   await assert.rejects(
     syncDeputy(DEPUTY_CONNECTION_ID, deps),
+    /integration_connection not found or failed/,
+  );
+});
+
+// =====================================================================
+// syncXeroPayroll (T-B20) — mirrors syncDeputy (Xero uses OAuth 2.0)
+// with three adaptations:
+//   - external_account_id holds the Xero tenant_id (a GUID) discovered
+//     via `GET /connections` after OAuth; passed through as
+//     xero_tenant_id (which the client maps to the `Xero-tenant-id`
+//     header on every API call).
+//   - For v1 we surface a clear error if the access token has expired
+//     (auto-refresh deferred — Xero's ~30-min token lifetime makes
+//     this a higher-priority follow-up than Deputy's).
+//   - Timesheet result includes the Xero-specific skipped_rejected
+//     counter for consultant-rejected timesheets.
+// =====================================================================
+
+const XERO_CONNECTION_ID = '00000000-0000-4000-8000-000000000ee1';
+const XERO_TENANT_GUID = '11111111-2222-3333-4444-555555555555';
+const XERO_FUTURE_EXPIRES_AT = new Date(Date.now() + 30 * 60 * 1000); // +30m
+const XERO_PAST_EXPIRES_AT = new Date(Date.now() - 60 * 1000); // -1m
+
+type XeroStubRows = {
+  integration_connection?: Array<{
+    tenant_id: string;
+    access_token_encrypted: string;
+    external_account_id: string | null;
+    last_synced_at: Date | null;
+    expires_at?: Date | null;
+  }>;
+  subject_tenant?: Array<{ id: string }>;
+  tenant_user?: Array<{ user_id: string }>;
+};
+
+function makeXeroSqlStub(rows: XeroStubRows): {
+  sql: XeroPayrollSyncDeps['sql_client'];
+  update_calls: Array<{ sql: string; params: unknown[] }>;
+} {
+  const update_calls: Array<{ sql: string; params: unknown[] }> = [];
+  const fn = ((strings: TemplateStringsArray, ...values: unknown[]): Promise<unknown[]> => {
+    const rendered = strings.join('?');
+    if (rendered.includes('UPDATE integration_connection')) {
+      update_calls.push({ sql: rendered, params: values });
+      return Promise.resolve([]);
+    }
+    if (rendered.includes('FROM integration_connection')) {
+      return Promise.resolve(rows.integration_connection ?? []);
+    }
+    if (rendered.includes('FROM subject_tenant')) {
+      return Promise.resolve(rows.subject_tenant ?? []);
+    }
+    if (rendered.includes('FROM tenant_user')) {
+      return Promise.resolve(rows.tenant_user ?? []);
+    }
+    return Promise.resolve([]);
+  }) as unknown as XeroPayrollSyncDeps['sql_client'];
+  return { sql: fn, update_calls };
+}
+
+const baseXeroDeps = (
+  rows: XeroStubRows,
+  overrides: Partial<XeroPayrollSyncDeps> = {},
+): { deps: XeroPayrollSyncDeps; update_calls: Array<{ sql: string; params: unknown[] }> } => {
+  const { sql, update_calls } = makeXeroSqlStub(rows);
+  const deps: XeroPayrollSyncDeps = {
+    sql_client: sql,
+    decrypt: () => 'decrypted-access-token',
+    get_encryption_key: () => 'fake-key',
+    sync_employees: () => Promise.resolve({ upserted: 0, deactivated: 0 }),
+    pull_timesheets: () =>
+      Promise.resolve({ inserted: 0, updated: 0, skipped_unmatched: 0, skipped_rejected: 0 }),
+    ...overrides,
+  };
+  return { deps, update_calls };
+};
+
+test('syncXeroPayroll: success path → idle + xero_tenant_id forwarded + counts surfaced', async () => {
+  let observedSyncOpts:
+    | Parameters<NonNullable<XeroPayrollSyncDeps['sync_employees']>>[0]
+    | null = null;
+  let observedPullOpts:
+    | Parameters<NonNullable<XeroPayrollSyncDeps['pull_timesheets']>>[0]
+    | null = null;
+  const { deps, update_calls } = baseXeroDeps(
+    {
+      integration_connection: [
+        {
+          tenant_id: TENANT_ID,
+          access_token_encrypted: 'enc.blob',
+          external_account_id: XERO_TENANT_GUID,
+          last_synced_at: null,
+          expires_at: XERO_FUTURE_EXPIRES_AT,
+        },
+      ],
+      subject_tenant: [{ id: SUBJECT_ID }],
+      tenant_user: [{ user_id: ADMIN_USER_ID }],
+    },
+    {
+      sync_employees: (opts) => {
+        observedSyncOpts = opts;
+        return Promise.resolve({ upserted: 4, deactivated: 1 });
+      },
+      pull_timesheets: (opts) => {
+        observedPullOpts = opts;
+        return Promise.resolve({
+          inserted: 14,
+          updated: 2,
+          skipped_unmatched: 0,
+          skipped_rejected: 1,
+        });
+      },
+    },
+  );
+
+  const result = await syncXeroPayroll(XERO_CONNECTION_ID, deps);
+
+  assert.equal(result.tenant_id, TENANT_ID);
+  assert.equal(result.provider, 'xero_payroll');
+  assert.equal(result.employees.upserted, 4);
+  assert.equal(result.employees.deactivated, 1);
+  assert.equal(result.timesheets.inserted, 14);
+  assert.equal(result.timesheets.updated, 2);
+  assert.equal(result.timesheets.skipped_unmatched, 0);
+  assert.equal(result.timesheets.skipped_rejected, 1);
+  assert.equal(result.error, undefined);
+
+  // Verify the Xero client receives xero_tenant_id (not install_url /
+  // organisation_id / business_id).
+  assert.ok(observedSyncOpts);
+  assert.ok(observedPullOpts);
+  assert.equal(observedSyncOpts.access_token, 'decrypted-access-token');
+  assert.equal(observedSyncOpts.xero_tenant_id, XERO_TENANT_GUID);
+  assert.equal(observedSyncOpts.tenant_id, TENANT_ID);
+  assert.equal(observedSyncOpts.subject_tenant_id, SUBJECT_ID);
+  assert.equal(observedSyncOpts.invited_by_user_id, ADMIN_USER_ID);
+  assert.equal(observedPullOpts.xero_tenant_id, XERO_TENANT_GUID);
+
+  // 2 UPDATEs: 'syncing' followed by 'idle' (with last_synced_at).
+  assert.equal(update_calls.length, 2);
+  assert.ok(update_calls[0]?.sql.includes("sync_state = 'syncing'"));
+  assert.ok(update_calls[1]?.sql.includes("sync_state = 'idle'"));
+  assert.ok(update_calls[1]?.sql.includes('last_synced_at = NOW()'));
+});
+
+test('syncXeroPayroll: decrypt failure → sync_state=failed + last_error set', async () => {
+  const { deps, update_calls } = baseXeroDeps(
+    {
+      integration_connection: [
+        {
+          tenant_id: TENANT_ID,
+          access_token_encrypted: 'enc.blob',
+          external_account_id: XERO_TENANT_GUID,
+          last_synced_at: null,
+          expires_at: XERO_FUTURE_EXPIRES_AT,
+        },
+      ],
+      subject_tenant: [{ id: SUBJECT_ID }],
+      tenant_user: [{ user_id: ADMIN_USER_ID }],
+    },
+    {
+      decrypt: () => {
+        throw new Error('malformed encrypted access token');
+      },
+    },
+  );
+
+  const result = await syncXeroPayroll(XERO_CONNECTION_ID, deps);
+
+  assert.equal(result.error, 'malformed encrypted access token');
+  assert.equal(result.provider, 'xero_payroll');
+  assert.equal(result.employees.upserted, 0);
+  assert.equal(result.timesheets.inserted, 0);
+
+  // 'syncing' then 'failed'.
+  assert.equal(update_calls.length, 2);
+  assert.ok(update_calls[0]?.sql.includes("sync_state = 'syncing'"));
+  assert.ok(update_calls[1]?.sql.includes("sync_state = 'failed'"));
+  assert.equal(update_calls[1]?.params[0], 'malformed encrypted access token');
+});
+
+test('syncXeroPayroll: missing external_account_id (xero_tenant_id) → fails fast without calling sub-functions', async () => {
+  let employeesCalled = false;
+  let timesheetsCalled = false;
+  const { deps, update_calls } = baseXeroDeps(
+    {
+      integration_connection: [
+        {
+          tenant_id: TENANT_ID,
+          access_token_encrypted: 'enc.blob',
+          external_account_id: null,
+          last_synced_at: null,
+          expires_at: XERO_FUTURE_EXPIRES_AT,
+        },
+      ],
+    },
+    {
+      sync_employees: () => {
+        employeesCalled = true;
+        return Promise.resolve({ upserted: 0, deactivated: 0 });
+      },
+      pull_timesheets: () => {
+        timesheetsCalled = true;
+        return Promise.resolve({
+          inserted: 0,
+          updated: 0,
+          skipped_unmatched: 0,
+          skipped_rejected: 0,
+        });
+      },
+    },
+  );
+
+  const result = await syncXeroPayroll(XERO_CONNECTION_ID, deps);
+  assert.match(result.error ?? '', /xero_tenant_id/);
+  assert.equal(employeesCalled, false);
+  assert.equal(timesheetsCalled, false);
+  // Single UPDATE — straight to 'failed' (no 'syncing' step).
+  assert.equal(update_calls.length, 1);
+  assert.ok(update_calls[0]?.sql.includes("sync_state = 'failed'"));
+});
+
+test('syncXeroPayroll: expired access token → sync_state=failed with reconnect message, no client calls', async () => {
+  let employeesCalled = false;
+  const { deps, update_calls } = baseXeroDeps(
+    {
+      integration_connection: [
+        {
+          tenant_id: TENANT_ID,
+          access_token_encrypted: 'enc.blob',
+          external_account_id: XERO_TENANT_GUID,
+          last_synced_at: null,
+          expires_at: XERO_PAST_EXPIRES_AT,
+        },
+      ],
+    },
+    {
+      sync_employees: () => {
+        employeesCalled = true;
+        return Promise.resolve({ upserted: 0, deactivated: 0 });
+      },
+    },
+  );
+
+  const result = await syncXeroPayroll(XERO_CONNECTION_ID, deps);
+  assert.match(result.error ?? '', /access token expired/);
+  assert.match(result.error ?? '', /reconnect required/);
+  assert.equal(employeesCalled, false);
+  // Single UPDATE — straight to 'failed' (no 'syncing' step).
+  assert.equal(update_calls.length, 1);
+  assert.ok(update_calls[0]?.sql.includes("sync_state = 'failed'"));
+});
+
+test('syncXeroPayroll: missing connection row → throws', async () => {
+  const { deps } = baseXeroDeps({ integration_connection: [] });
+  await assert.rejects(
+    syncXeroPayroll(XERO_CONNECTION_ID, deps),
     /integration_connection not found or failed/,
   );
 });
