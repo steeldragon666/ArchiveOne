@@ -1,8 +1,11 @@
 import type { FastifyInstance } from 'fastify';
+import { requireSession } from '@cpa/auth';
 import { sql, privilegedSql } from '@cpa/db/client';
 import {
   finalizeMediaBody,
+  listMediaQuery,
   presignedUploadBody,
+  Uuid,
   type MediaArtefact,
 } from '@cpa/schemas';
 import { requireMobileSession } from '../middleware/mobile-jwt-verifier.js';
@@ -284,6 +287,140 @@ export function registerMedia(app: FastifyInstance): void {
         }
         throw err;
       }
+    },
+  );
+
+  // ---------------- Consultant CRUD (T-A8) ----------------
+
+  /**
+   * GET /v1/media?subject_tenant_id=… — consultant session.
+   *
+   * Lists media artefacts for the given claimant, RLS-scoped to the
+   * caller's active firm. Cross-firm subjects come back as 0 rows
+   * (RLS filters silently — no leakage of claimant existence).
+   *
+   * Returns rows ordered by upload time desc (newest first) so the
+   * consultant UI's default "recent uploads" view is one query.
+   * Pagination is deferred — the v1 vault stays small enough that
+   * a single page is fine. Add cursor pagination once a claimant
+   * regularly hits 100+ artefacts.
+   */
+  app.get('/v1/media', { preHandler: requireSession }, async (req, reply) => {
+    const parsed = listMediaQuery.safeParse(req.query);
+    if (!parsed.success) {
+      return reply.status(400).send(
+        errEnvelope(
+          'INVALID_QUERY',
+          'Query must be { subject_tenant_id: uuid }',
+          req.id,
+        ),
+      );
+    }
+    const { subject_tenant_id } = parsed.data;
+    const tenantId = req.user!.tenantId!;
+
+    const rows = await sql.begin(async (tx) => {
+      await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+      return await tx<RawMediaRow[]>`
+        SELECT
+          id, tenant_id, subject_tenant_id, event_id, uploaded_by_employee_id,
+          s3_key, content_hash, mime_type, size_bytes, exif,
+          ocr_text, ocr_status, virus_scan_status, uploaded_at
+          FROM media_artefact
+         WHERE subject_tenant_id = ${subject_tenant_id}
+         ORDER BY uploaded_at DESC
+      `;
+    });
+
+    return reply.status(200).send({ media: rows.map(rowToArtefact) });
+  });
+
+  /**
+   * GET /v1/media/:id — consultant session.
+   *
+   * Returns the row + a stub download URL. The download URL is
+   * conventional `https://placeholder.s3.amazonaws.com/<s3_key>` —
+   * once the real S3 client lands, this becomes a 5-minute
+   * pre-signed GET. The contract shape stays the same.
+   *
+   * 404 covers both "doesn't exist" and "exists in another firm";
+   * RLS filters silently and we don't distinguish (no claimant-
+   * existence leak).
+   */
+  app.get<{ Params: { id: string } }>(
+    '/v1/media/:id',
+    { preHandler: requireSession },
+    async (req, reply) => {
+      const idParsed = Uuid.safeParse(req.params.id);
+      if (!idParsed.success) {
+        return reply
+          .status(400)
+          .send(errEnvelope('INVALID_PARAM', 'id must be a UUID v4', req.id));
+      }
+      const tenantId = req.user!.tenantId!;
+      const rows = await sql.begin(async (tx) => {
+        await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+        return await tx<RawMediaRow[]>`
+          SELECT
+            id, tenant_id, subject_tenant_id, event_id, uploaded_by_employee_id,
+            s3_key, content_hash, mime_type, size_bytes, exif,
+            ocr_text, ocr_status, virus_scan_status, uploaded_at
+            FROM media_artefact
+           WHERE id = ${idParsed.data}
+        `;
+      });
+      const row = rows[0];
+      if (!row) {
+        return reply
+          .status(404)
+          .send(errEnvelope('NOT_FOUND', 'No media with that id in this firm', req.id));
+      }
+      return reply.status(200).send({
+        media: rowToArtefact(row),
+        download_url: stubPresignedUrl(row.s3_key),
+      });
+    },
+  );
+
+  /**
+   * DELETE /v1/media/:id — consultant session.
+   *
+   * Hard delete. The schema has no `deleted_at` column on
+   * media_artefact (per design doc — vault deletes are rare and
+   * audit-logged at the chain level via a separate event), so we
+   * issue an actual DELETE.
+   *
+   * RLS scopes the delete to the caller's tenant; cross-firm
+   * deletes return 404 (the row count comes back 0). Idempotent: a
+   * second delete of the same id also returns 404.
+   *
+   * The S3 object isn't cleaned up — that's a follow-up sweeper
+   * job. Orphan keys are cheap; orphan rows would be a problem.
+   */
+  app.delete<{ Params: { id: string } }>(
+    '/v1/media/:id',
+    { preHandler: requireSession },
+    async (req, reply) => {
+      const idParsed = Uuid.safeParse(req.params.id);
+      if (!idParsed.success) {
+        return reply
+          .status(400)
+          .send(errEnvelope('INVALID_PARAM', 'id must be a UUID v4', req.id));
+      }
+      const tenantId = req.user!.tenantId!;
+      const deleted = await sql.begin(async (tx) => {
+        await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+        const rows = await tx<{ id: string }[]>`
+          DELETE FROM media_artefact WHERE id = ${idParsed.data} RETURNING id
+        `;
+        return rows[0] ?? null;
+      });
+      if (!deleted) {
+        return reply
+          .status(404)
+          .send(errEnvelope('NOT_FOUND', 'No media with that id in this firm', req.id));
+      }
+      return reply.status(200).send({ deleted: true });
     },
   );
 }

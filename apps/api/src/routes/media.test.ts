@@ -1,6 +1,7 @@
 import { test, after, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { SignJWT } from 'jose';
+import { signSession } from '@cpa/auth';
 import { sql, privilegedSql } from '@cpa/db/client';
 import { buildApp } from '../app.js';
 import { MOBILE_AUDIENCE } from '../middleware/mobile-jwt-verifier.js';
@@ -321,5 +322,191 @@ test('POST /v1/media/finalize: idempotent on (tenant, subject, hash)', async () 
   assert.equal(j.media.id, firstId);
   assert.equal(j.duplicate, true);
 
+  await app.close();
+});
+
+// ---------------- Consultant CRUD (T-A8) ----------------
+
+const adminJwt = (): Promise<string> =>
+  signSession(
+    {
+      sub: ADMIN_USER,
+      email: 'a6-admin@example.com',
+      primaryIdp: 'microsoft',
+      activeTenantId: TENANT_A,
+      activeRole: 'admin',
+      availableTenants: [],
+    },
+    SESSION_SECRET,
+    { ttlSeconds: 3600 },
+  );
+
+/**
+ * Helper: directly insert a media_artefact row via privilegedSql so
+ * the CRUD tests have something to read without re-running the
+ * mobile presign + finalize ceremony.
+ */
+async function seedMedia(args: {
+  tenantId: string;
+  subjectTenantId: string;
+  contentHash: string;
+}): Promise<string> {
+  // We seed with EMPLOYEE_A regardless of tenant — the FK only
+  // requires the row exists, and we delete all media_artefact rows
+  // in cleanup so leakage isn't an issue. The cross-firm test seed
+  // still has correct (tenant, subject) for RLS coverage.
+  const rows = await privilegedSql<{ id: string }[]>`
+    INSERT INTO media_artefact (
+      tenant_id, subject_tenant_id, uploaded_by_employee_id,
+      s3_key, content_hash, mime_type, size_bytes
+    ) VALUES (
+      ${args.tenantId},
+      ${args.subjectTenantId},
+      ${EMPLOYEE_A},
+      ${`tenants/${args.tenantId}/subjects/${args.subjectTenantId}/${args.contentHash}`},
+      ${args.contentHash},
+      'image/jpeg',
+      ${1024}
+    )
+    RETURNING id
+  `;
+  return rows[0]!.id;
+}
+
+test('GET /v1/media: 401 without session', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'GET',
+    url: `/v1/media?subject_tenant_id=${SUBJECT_A1}`,
+  });
+  assert.equal(res.statusCode, 401);
+  await app.close();
+});
+
+test('GET /v1/media: 200 RLS-scoped list', async () => {
+  // Seed two rows under TENANT_A and one under TENANT_B; the
+  // admin's RLS scope (TENANT_A) should see only the first two.
+  const sha1 = '33' + FAKE_SHA.slice(2);
+  const sha2 = '44' + FAKE_SHA.slice(2);
+  const sha3 = '55' + FAKE_SHA.slice(2);
+  await seedMedia({ tenantId: TENANT_A, subjectTenantId: SUBJECT_A1, contentHash: sha1 });
+  await seedMedia({ tenantId: TENANT_A, subjectTenantId: SUBJECT_A1, contentHash: sha2 });
+  await seedMedia({ tenantId: TENANT_B, subjectTenantId: SUBJECT_B1, contentHash: sha3 });
+
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'GET',
+    url: `/v1/media?subject_tenant_id=${SUBJECT_A1}`,
+    cookies: { cpa_session: await adminJwt() },
+  });
+  assert.equal(res.statusCode, 200);
+  const j = res.json<{ media: { id: string; content_hash: string }[] }>();
+  // We may have leftover rows from earlier finalize tests under
+  // SUBJECT_A1 — assert at least the two we seeded are visible and
+  // none from TENANT_B leak.
+  const hashes = j.media.map((m) => m.content_hash);
+  assert.ok(hashes.includes(sha1));
+  assert.ok(hashes.includes(sha2));
+  assert.ok(!hashes.includes(sha3));
+  await app.close();
+});
+
+test('GET /v1/media/:id: 200 with row + stub download URL', async () => {
+  const sha = '66' + FAKE_SHA.slice(2);
+  const id = await seedMedia({
+    tenantId: TENANT_A,
+    subjectTenantId: SUBJECT_A1,
+    contentHash: sha,
+  });
+
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'GET',
+    url: `/v1/media/${id}`,
+    cookies: { cpa_session: await adminJwt() },
+  });
+  assert.equal(res.statusCode, 200);
+  const j = res.json<{
+    media: { id: string; content_hash: string };
+    download_url: string;
+  }>();
+  assert.equal(j.media.id, id);
+  assert.equal(j.media.content_hash, sha);
+  assert.match(j.download_url, /^https:\/\/placeholder\.s3\.amazonaws\.com\//);
+  await app.close();
+});
+
+test('GET /v1/media/:id: 404 cross-firm', async () => {
+  const sha = '77' + FAKE_SHA.slice(2);
+  const id = await seedMedia({
+    tenantId: TENANT_B,
+    subjectTenantId: SUBJECT_B1,
+    contentHash: sha,
+  });
+  // ADMIN_USER is bound to TENANT_A; reading a TENANT_B row → 404.
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'GET',
+    url: `/v1/media/${id}`,
+    cookies: { cpa_session: await adminJwt() },
+  });
+  assert.equal(res.statusCode, 404);
+  await app.close();
+});
+
+test('GET /v1/media/:id: 400 non-uuid', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'GET',
+    url: `/v1/media/not-a-uuid`,
+    cookies: { cpa_session: await adminJwt() },
+  });
+  assert.equal(res.statusCode, 400);
+  await app.close();
+});
+
+test('DELETE /v1/media/:id: 200 removes row', async () => {
+  const sha = '88' + FAKE_SHA.slice(2);
+  const id = await seedMedia({
+    tenantId: TENANT_A,
+    subjectTenantId: SUBJECT_A1,
+    contentHash: sha,
+  });
+
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'DELETE',
+    url: `/v1/media/${id}`,
+    cookies: { cpa_session: await adminJwt() },
+  });
+  assert.equal(res.statusCode, 200);
+
+  const rows = await privilegedSql<{ id: string }[]>`
+    SELECT id FROM media_artefact WHERE id = ${id}
+  `;
+  assert.equal(rows.length, 0);
+  await app.close();
+});
+
+test('DELETE /v1/media/:id: 404 cross-firm', async () => {
+  const sha = '99' + FAKE_SHA.slice(2);
+  const id = await seedMedia({
+    tenantId: TENANT_B,
+    subjectTenantId: SUBJECT_B1,
+    contentHash: sha,
+  });
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'DELETE',
+    url: `/v1/media/${id}`,
+    cookies: { cpa_session: await adminJwt() },
+  });
+  assert.equal(res.statusCode, 404);
+
+  // Row should still exist in TENANT_B.
+  const rows = await privilegedSql<{ id: string }[]>`
+    SELECT id FROM media_artefact WHERE id = ${id}
+  `;
+  assert.equal(rows.length, 1);
   await app.close();
 });
