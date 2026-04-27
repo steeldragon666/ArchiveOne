@@ -1,9 +1,5 @@
 import { withRetry } from '../../runtime/retry.js';
-import {
-  EH_API_BASE,
-  type EmploymentHeroEmployee,
-  type EmploymentHeroTimesheet,
-} from './types.js';
+import { EH_API_BASE, type EmploymentHeroEmployee, type EmploymentHeroTimesheet } from './types.js';
 
 /**
  * Employment Hero API client (T-B8).

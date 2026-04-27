@@ -73,8 +73,7 @@ export function RecentEventsFeed({ events }: Props) {
   if (events.length === 0) {
     return (
       <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500">
-        No evidence captured yet. Your team can start capturing on the
-        mobile app at any time.
+        No evidence captured yet. Your team can start capturing on the mobile app at any time.
       </div>
     );
   }
@@ -99,9 +98,7 @@ export function RecentEventsFeed({ events }: Props) {
               {ev.snippet || <em className="text-slate-400">no preview</em>}
             </p>
           </div>
-          <span className="shrink-0 text-xs text-slate-500">
-            {relativeTime(ev.captured_at)}
-          </span>
+          <span className="shrink-0 text-xs text-slate-500">{relativeTime(ev.captured_at)}</span>
         </li>
       ))}
     </ul>

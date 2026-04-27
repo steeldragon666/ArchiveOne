@@ -11,11 +11,7 @@ test('first acquire seeds bucket at full capacity', () => {
   for (let i = 0; i < 5; i++) {
     assert.equal(tryAcquire('tenant1:provider', opts), true, `acquire #${i + 1}`);
   }
-  assert.equal(
-    tryAcquire('tenant1:provider', opts),
-    false,
-    'sixth acquire fails — bucket empty',
-  );
+  assert.equal(tryAcquire('tenant1:provider', opts), false, 'sixth acquire fails — bucket empty');
 });
 
 test('different keys have independent buckets', () => {

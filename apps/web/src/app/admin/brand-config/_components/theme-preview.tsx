@@ -9,13 +9,7 @@
  * colors are 6-digit hex strings already validated by the parent's
  * react-hook-form resolver; we don't re-validate here.
  */
-export function ThemePreview({
-  primary,
-  accent,
-}: {
-  primary: string;
-  accent: string;
-}) {
+export function ThemePreview({ primary, accent }: { primary: string; accent: string }) {
   return (
     <div className="rounded-md border overflow-hidden">
       <div
@@ -26,8 +20,7 @@ export function ThemePreview({
       </div>
       <div className="bg-white px-4 py-4 space-y-2">
         <p className="text-sm">
-          Read more about our <span style={{ color: accent }}>R&amp;D Tax Incentive</span>{' '}
-          process.
+          Read more about our <span style={{ color: accent }}>R&amp;D Tax Incentive</span> process.
         </p>
         <button
           type="button"

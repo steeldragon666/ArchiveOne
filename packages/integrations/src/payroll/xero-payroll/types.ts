@@ -109,8 +109,7 @@ export type XeroPayrollAuthConfig = {
  * lives on the identity host (`login.xero.com` / `identity.xero.com`),
  * while the API root is `api.xero.com`.
  */
-export const XERO_OAUTH_AUTHORIZE_URL =
-  'https://login.xero.com/identity/connect/authorize';
+export const XERO_OAUTH_AUTHORIZE_URL = 'https://login.xero.com/identity/connect/authorize';
 export const XERO_OAUTH_TOKEN_URL = 'https://identity.xero.com/connect/token';
 export const XERO_API_BASE = 'https://api.xero.com/payroll.xro/1.0';
 export const XERO_CONNECTIONS_URL = 'https://api.xero.com/connections';

@@ -36,10 +36,7 @@ export function SubjectTenantList() {
   return (
     <ul className="space-y-2">
       {data.map((st) => (
-        <li
-          key={st.id}
-          className="border rounded-md p-4 hover:bg-muted transition-colors"
-        >
+        <li key={st.id} className="border rounded-md p-4 hover:bg-muted transition-colors">
           <Link href={`/subject-tenants/${st.id}`} className="font-medium">
             {st.name}
           </Link>

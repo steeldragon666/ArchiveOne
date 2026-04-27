@@ -80,7 +80,10 @@ export type BrandConfig = z.infer<typeof brandConfig>;
 const CUSTOM_SUBDOMAIN = /^[a-z0-9](?:[a-z0-9-]{0,28}[a-z0-9])?$/;
 export const customSubdomain = z
   .string()
-  .regex(CUSTOM_SUBDOMAIN, 'must be 3-30 chars, lowercase alphanumeric + dashes (no leading/trailing dash)');
+  .regex(
+    CUSTOM_SUBDOMAIN,
+    'must be 3-30 chars, lowercase alphanumeric + dashes (no leading/trailing dash)',
+  );
 
 /**
  * PATCH body (T-F9 / T-C5).

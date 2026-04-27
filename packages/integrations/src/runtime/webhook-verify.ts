@@ -13,10 +13,7 @@ export function verifyHmacSha256(opts: {
   signature_header: string;
   secret: string;
 }): boolean {
-  const expected = crypto
-    .createHmac('sha256', opts.secret)
-    .update(opts.payload)
-    .digest('hex');
+  const expected = crypto.createHmac('sha256', opts.secret).update(opts.payload).digest('hex');
   try {
     const expectedBuf = Buffer.from(expected, 'hex');
     const actualBuf = Buffer.from(opts.signature_header.toLowerCase(), 'hex');
@@ -41,10 +38,7 @@ export function verifyDocuSignSignature(opts: {
   signature_header: string;
   secret: string;
 }): boolean {
-  const expected = crypto
-    .createHmac('sha256', opts.secret)
-    .update(opts.payload)
-    .digest('base64');
+  const expected = crypto.createHmac('sha256', opts.secret).update(opts.payload).digest('base64');
   try {
     const expectedBuf = Buffer.from(expected);
     const actualBuf = Buffer.from(opts.signature_header);

@@ -61,11 +61,7 @@ export default async function ClaimantScorePage({ params }: Props) {
       >
         <div className="mx-auto flex max-w-4xl items-center gap-3">
           {logoUrl ? (
-            <img
-              src={logoUrl}
-              alt={`${status.brand.display_name} logo`}
-              className="h-10 w-auto"
-            />
+            <img src={logoUrl} alt={`${status.brand.display_name} logo`} className="h-10 w-auto" />
           ) : (
             <div
               className="flex h-10 w-10 items-center justify-center rounded font-bold text-white"
@@ -75,9 +71,7 @@ export default async function ClaimantScorePage({ params }: Props) {
             </div>
           )}
           <div>
-            <h1 className="text-lg font-semibold text-slate-900">
-              {status.brand.display_name}
-            </h1>
+            <h1 className="text-lg font-semibold text-slate-900">{status.brand.display_name}</h1>
             <p className="text-xs text-slate-500">{status.subject_tenant.name}</p>
           </div>
         </div>
@@ -103,8 +97,7 @@ export default async function ClaimantScorePage({ params }: Props) {
                 primaryColor={status.brand.primary_color}
               />
               <p className="mt-3 text-center text-xs text-slate-500">
-                Placeholder data — real scoring lands with the audit
-                engine
+                Placeholder data — real scoring lands with the audit engine
               </p>
             </CardContent>
           </Card>
@@ -129,9 +122,7 @@ export default async function ClaimantScorePage({ params }: Props) {
                 </span>
                 <span className="text-sm text-slate-500">pts</span>
               </div>
-              <p className="mt-1 text-xs text-slate-500">
-                Compared to last week
-              </p>
+              <p className="mt-1 text-xs text-slate-500">Compared to last week</p>
               <p className="mt-3 text-xs text-slate-400">
                 Computed{' '}
                 {new Date(score.computed_at).toLocaleString(undefined, {

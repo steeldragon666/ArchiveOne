@@ -44,9 +44,7 @@ export async function listEmployees(
   opts: KeypayClientOptions,
   filters?: { changed_since?: Date; cursor?: Cursor },
 ): Promise<{ employees: KeypayEmployee[]; next_cursor: Cursor | null }> {
-  const url = new URL(
-    `${opts.base_url ?? KEYPAY_API_BASE}/business/${opts.business_id}/employee`,
-  );
+  const url = new URL(`${opts.base_url ?? KEYPAY_API_BASE}/business/${opts.business_id}/employee`);
   if (filters?.changed_since) {
     url.searchParams.set('updatedAfter', filters.changed_since.toISOString());
   }
@@ -79,9 +77,7 @@ export async function listTimesheets(
     cursor?: Cursor;
   },
 ): Promise<{ timesheets: KeypayTimesheet[]; next_cursor: Cursor | null }> {
-  const url = new URL(
-    `${opts.base_url ?? KEYPAY_API_BASE}/business/${opts.business_id}/timesheet`,
-  );
+  const url = new URL(`${opts.base_url ?? KEYPAY_API_BASE}/business/${opts.business_id}/timesheet`);
   if (filters?.from_date) {
     url.searchParams.set('fromDate', isoDate(filters.from_date));
   }

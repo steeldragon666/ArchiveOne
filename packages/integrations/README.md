@@ -56,17 +56,17 @@ provider" UI). Most consumers should reach for the narrower subpath.
 
 ## Environment variables
 
-| Variable | Required | Notes |
-|---|---|---|
-| `TOKEN_ENCRYPTION_KEY` | yes (production) | 32-byte hex (64 chars). AES-256-GCM key for `encryptToken`/`decryptToken`. Rotation strategy is a P9 task — current scheme requires a migration to re-encrypt old rows under a new key. |
-| `DEEPGRAM_API_KEY` | when calling Deepgram | Workspace-scoped. AU region inferred from the URL the client posts to. |
-| `DOCUSIGN_INTEGRATION_KEY` | when calling DocuSign | Per integration_connection row at runtime; this env var is only the dev-mode default. |
-| `DOCUSIGN_WEBHOOK_SECRET` | when receiving DocuSign webhooks | The shared HMAC secret configured in DocuSign Connect. |
-| `EMPLOYMENT_HERO_CLIENT_ID` / `_SECRET` | when calling Employment Hero | OAuth 2.0 client credentials. |
-| `KEYPAY_API_KEY` | when calling KeyPay | API-key auth (no OAuth). |
-| `DEPUTY_CLIENT_ID` / `_SECRET` | when calling Deputy | OAuth 2.0 with per-tenant install URL. |
-| `XERO_CLIENT_ID` / `_SECRET` | when calling Xero Payroll | OAuth 2.0 PKCE; tenant-id header per call. |
-| `PLATFORM_CNAME_TARGET` | no | Used by the custom-domain state machine (defaults to `platform-cnames.platform.com.au`). Same value as `apps/api/src/routes/brand-config.ts` consumes. |
+| Variable                                | Required                         | Notes                                                                                                                                                                                   |
+| --------------------------------------- | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TOKEN_ENCRYPTION_KEY`                  | yes (production)                 | 32-byte hex (64 chars). AES-256-GCM key for `encryptToken`/`decryptToken`. Rotation strategy is a P9 task — current scheme requires a migration to re-encrypt old rows under a new key. |
+| `DEEPGRAM_API_KEY`                      | when calling Deepgram            | Workspace-scoped. AU region inferred from the URL the client posts to.                                                                                                                  |
+| `DOCUSIGN_INTEGRATION_KEY`              | when calling DocuSign            | Per integration_connection row at runtime; this env var is only the dev-mode default.                                                                                                   |
+| `DOCUSIGN_WEBHOOK_SECRET`               | when receiving DocuSign webhooks | The shared HMAC secret configured in DocuSign Connect.                                                                                                                                  |
+| `EMPLOYMENT_HERO_CLIENT_ID` / `_SECRET` | when calling Employment Hero     | OAuth 2.0 client credentials.                                                                                                                                                           |
+| `KEYPAY_API_KEY`                        | when calling KeyPay              | API-key auth (no OAuth).                                                                                                                                                                |
+| `DEPUTY_CLIENT_ID` / `_SECRET`          | when calling Deputy              | OAuth 2.0 with per-tenant install URL.                                                                                                                                                  |
+| `XERO_CLIENT_ID` / `_SECRET`            | when calling Xero Payroll        | OAuth 2.0 PKCE; tenant-id header per call.                                                                                                                                              |
+| `PLATFORM_CNAME_TARGET`                 | no                               | Used by the custom-domain state machine (defaults to `platform-cnames.platform.com.au`). Same value as `apps/api/src/routes/brand-config.ts` consumes.                                  |
 
 ## Adding a new integration (recipe)
 
@@ -170,7 +170,7 @@ decryption throws**, never returns garbage plaintext.
 ```ts
 import { encryptToken, decryptToken, getTokenEncryptionKey } from '@cpa/integrations/runtime';
 
-const key = getTokenEncryptionKey();    // reads + validates TOKEN_ENCRYPTION_KEY env
+const key = getTokenEncryptionKey(); // reads + validates TOKEN_ENCRYPTION_KEY env
 const ciphertext = encryptToken('access-token-from-provider', key);
 // store ciphertext as TEXT column
 
@@ -246,8 +246,8 @@ bucket is empty.
 import { tryAcquire } from '@cpa/integrations/runtime';
 
 const ok = tryAcquire(`${tenantId}:deepgram`, {
-  capacity: 60,             // max tokens in the bucket
-  refill_per_second: 1,     // 60-per-minute steady state
+  capacity: 60, // max tokens in the bucket
+  refill_per_second: 1, // 60-per-minute steady state
 });
 if (!ok) {
   // Surface a 429 to the caller, or queue for later.
@@ -290,8 +290,10 @@ beforeEach(() => {
 
 test('listEmployees retries on 503', async () => {
   nock('https://api.employmenthero.com')
-    .get('/v1/employees').reply(503, 'service unavailable')
-    .get('/v1/employees').reply(200, { employees: [{ id: 'e1', email: 'a@b' }] });
+    .get('/v1/employees')
+    .reply(503, 'service unavailable')
+    .get('/v1/employees')
+    .reply(200, { employees: [{ id: 'e1', email: 'a@b' }] });
 
   const result = await listEmployees({ token: 't' });
   // First call 503ed; withRetry caught the throw + retried; second call returned 200.

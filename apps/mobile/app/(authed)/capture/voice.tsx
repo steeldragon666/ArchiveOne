@@ -43,11 +43,7 @@ export default function VoiceCaptureScreen() {
     if (state.kind !== 'recording') return undefined;
     const startedAt = state.startedAt;
     const interval = setInterval(() => {
-      setState((s) =>
-        s.kind === 'recording'
-          ? { ...s, elapsedMs: Date.now() - startedAt }
-          : s,
-      );
+      setState((s) => (s.kind === 'recording' ? { ...s, elapsedMs: Date.now() - startedAt } : s));
     }, 100);
     return () => clearInterval(interval);
   }, [state.kind, state.kind === 'recording' ? state.startedAt : null]);
@@ -82,9 +78,7 @@ export default function VoiceCaptureScreen() {
       }, MAX_DURATION_MS);
     } catch (e) {
       setError(
-        e instanceof Error
-          ? `${e.message} — check microphone permission`
-          : 'mic permission denied',
+        e instanceof Error ? `${e.message} — check microphone permission` : 'mic permission denied',
       );
     }
   }
@@ -115,11 +109,19 @@ export default function VoiceCaptureScreen() {
   // a primary-colour "record" depending on state. The expandable
   // active-recording variant shows the elapsed counter inside the
   // circle; pre/post recording it shows static labels.
+  // Wrap the async handlers in void-returning thunks so the JSX onPress
+  // attribute (which expects `() => void`) doesn't trip
+  // @typescript-eslint/no-misused-promises. The promise is intentionally
+  // floated — the recorder's start/stop methods drive their own state.
   const tapping =
     state.kind === 'idle'
-      ? handleStart
+      ? (): void => {
+          void handleStart();
+        }
       : state.kind === 'recording'
-        ? handleStop
+        ? (): void => {
+            void handleStop();
+          }
         : undefined;
 
   return (
@@ -153,7 +155,12 @@ export default function VoiceCaptureScreen() {
           <Pressable onPress={handleDiscard} style={[styles.action, styles.discard]}>
             <Text style={styles.actionLabel}>Discard</Text>
           </Pressable>
-          <Pressable onPress={handleSubmit} style={[styles.action, styles.submit]}>
+          <Pressable
+            onPress={() => {
+              void handleSubmit();
+            }}
+            style={[styles.action, styles.submit]}
+          >
             <Text style={styles.actionLabel}>Submit</Text>
           </Pressable>
         </View>

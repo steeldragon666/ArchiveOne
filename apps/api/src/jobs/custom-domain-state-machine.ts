@@ -92,9 +92,7 @@ export async function advanceCustomDomainState(
       // propagated yet. Stay in cname_pending; the caller will retry.
       return { status: 'cname_pending', transitioned: false };
     }
-    const matches = cnames.some(
-      (c) => c === expected || c === `${expected}.`,
-    );
+    const matches = cnames.some((c) => c === expected || c === `${expected}.`);
     if (!matches) {
       return { status: 'cname_pending', transitioned: false };
     }

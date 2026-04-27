@@ -49,14 +49,7 @@ export function AuditScoreGauge({ totalPts, maxPts, primaryColor }: Props) {
         aria-label={`Audit-readiness score ${totalPts} out of ${maxPts}`}
       >
         {/* Background ring */}
-        <circle
-          cx="100"
-          cy="100"
-          r={RADIUS}
-          fill="none"
-          stroke="#e2e8f0"
-          strokeWidth="14"
-        />
+        <circle cx="100" cy="100" r={RADIUS} fill="none" stroke="#e2e8f0" strokeWidth="14" />
         {/* Foreground arc — rotated -90° so 0% sits at the top.
             stroke-linecap=round gives the cap a friendly finish at
             partial fills. */}

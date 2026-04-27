@@ -5,8 +5,7 @@ import { sql, privilegedSql } from '@cpa/db/client';
 import { buildApp } from '../app.js';
 import { MOBILE_AUDIENCE } from '../middleware/mobile-jwt-verifier.js';
 
-const SESSION_SECRET =
-  process.env['SESSION_JWT_SECRET'] ?? 'dev-only-32-bytes-of-entropy-pad!';
+const SESSION_SECRET = process.env['SESSION_JWT_SECRET'] ?? 'dev-only-32-bytes-of-entropy-pad!';
 process.env['SESSION_JWT_SECRET'] = SESSION_SECRET;
 // Deepgram key is read by the transcribe job's best-effort enqueue.
 // The S3 stub throws first so Deepgram never actually fires, but the
@@ -93,9 +92,7 @@ const validBody = (overrides: Record<string, unknown> = {}): Record<string, unkn
   ...overrides,
 });
 
-const validHypothesisBody = (
-  overrides: Record<string, unknown> = {},
-): Record<string, unknown> => ({
+const validHypothesisBody = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
   captured_at_local: Date.now(),
   payload: {
     source: 'hypothesis_prompt',

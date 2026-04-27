@@ -35,9 +35,7 @@ export function ScoreRuleBreakdown({ rules, primaryColor }: Props) {
           <li key={rule.id} className="flex items-center gap-4 py-3">
             <div className="flex-1 min-w-0">
               <div className="flex items-baseline justify-between gap-2">
-                <span className="truncate text-sm font-medium text-slate-900">
-                  {rule.label}
-                </span>
+                <span className="truncate text-sm font-medium text-slate-900">{rule.label}</span>
                 <span className="shrink-0 text-xs text-slate-500">
                   {rule.earned} / {rule.max} pts
                 </span>

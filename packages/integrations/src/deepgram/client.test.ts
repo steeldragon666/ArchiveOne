@@ -74,10 +74,7 @@ test('transcribe: respects model + language overrides', async () => {
 });
 
 test('transcribe: 401 unauthorized throws with status + body', async () => {
-  nock(DEEPGRAM_HOST)
-    .post(LISTEN_PATH)
-    .query(true)
-    .reply(401, 'invalid_credentials');
+  nock(DEEPGRAM_HOST).post(LISTEN_PATH).query(true).reply(401, 'invalid_credentials');
 
   await assert.rejects(
     transcribe({ api_key: 'bad' }, Buffer.from([0x01]), 'audio/m4a'),
@@ -86,10 +83,7 @@ test('transcribe: 401 unauthorized throws with status + body', async () => {
 });
 
 test('transcribe: 429 rate-limited throws (caller wraps in withRetry)', async () => {
-  nock(DEEPGRAM_HOST)
-    .post(LISTEN_PATH)
-    .query(true)
-    .reply(429, 'rate_limited');
+  nock(DEEPGRAM_HOST).post(LISTEN_PATH).query(true).reply(429, 'rate_limited');
 
   await assert.rejects(
     transcribe({ api_key: 'k' }, Buffer.from([0x01]), 'audio/m4a'),
@@ -98,10 +92,7 @@ test('transcribe: 429 rate-limited throws (caller wraps in withRetry)', async ()
 });
 
 test('transcribe: 500 server error throws (retryable upstream)', async () => {
-  nock(DEEPGRAM_HOST)
-    .post(LISTEN_PATH)
-    .query(true)
-    .reply(500, 'internal_error');
+  nock(DEEPGRAM_HOST).post(LISTEN_PATH).query(true).reply(500, 'internal_error');
 
   await assert.rejects(
     transcribe({ api_key: 'k' }, Buffer.from([0x01]), 'audio/m4a'),

@@ -169,9 +169,7 @@ export interface SetEmailSenderResponse {
   instructions: string;
 }
 
-export async function setEmailSender(
-  email_sender_domain: string,
-): Promise<SetEmailSenderResponse> {
+export async function setEmailSender(email_sender_domain: string): Promise<SetEmailSenderResponse> {
   return apiFetch<SetEmailSenderResponse>('/v1/brand-config/email-sender', {
     method: 'POST',
     body: JSON.stringify({ email_sender_domain }),

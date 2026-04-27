@@ -95,7 +95,11 @@ export const finalizeMediaBody = z.object({
   s3_key: z.string().min(1).max(1024),
   content_hash: Sha256Hash,
   mime_type: z.string().min(1).max(128),
-  size_bytes: z.number().int().positive().max(50 * 1024 * 1024),
+  size_bytes: z
+    .number()
+    .int()
+    .positive()
+    .max(50 * 1024 * 1024),
   exif: z.record(z.unknown()).optional(),
   event_id: Uuid.optional(),
 });

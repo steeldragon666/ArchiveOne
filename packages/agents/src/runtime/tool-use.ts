@@ -46,9 +46,7 @@ function zodToJsonSchema(schema: z.ZodTypeAny): Record<string, unknown> {
       return { type: 'string', enum: (def as unknown as { values: string[] }).values };
     }
     case 'ZodNullable': {
-      const inner = zodToJsonSchema(
-        (def as unknown as { innerType: z.ZodTypeAny }).innerType,
-      );
+      const inner = zodToJsonSchema((def as unknown as { innerType: z.ZodTypeAny }).innerType);
       return { ...inner, nullable: true };
     }
     case 'ZodOptional': {

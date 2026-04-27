@@ -111,20 +111,21 @@ test('listEmployees: changed_since adds updatedAfter query param', async () => {
   assert.equal(employees.length, 0);
 });
 
-test('listEmployees: 401 invalid API key throws after retry exhaustion', { timeout: 60_000 }, async () => {
-  // withRetry retries on any throw; we throw on !res.ok — so 401 burns
-  // the full retry budget (default 5) before surfacing as a thrown error.
-  nock('https://api.yourpayroll.com.au')
-    .get(`/api/v2/business/${BUSINESS_ID}/employee`)
-    .times(5)
-    .query(true)
-    .reply(401, 'invalid api key');
+test(
+  'listEmployees: 401 invalid API key throws after retry exhaustion',
+  { timeout: 60_000 },
+  async () => {
+    // withRetry retries on any throw; we throw on !res.ok — so 401 burns
+    // the full retry budget (default 5) before surfacing as a thrown error.
+    nock('https://api.yourpayroll.com.au')
+      .get(`/api/v2/business/${BUSINESS_ID}/employee`)
+      .times(5)
+      .query(true)
+      .reply(401, 'invalid api key');
 
-  await assert.rejects(
-    listEmployees(opts()),
-    /keypay list employees: 401/,
-  );
-});
+    await assert.rejects(listEmployees(opts()), /keypay list employees: 401/);
+  },
+);
 
 test('listEmployees: persistent 5xx → throws after retry budget', { timeout: 60_000 }, async () => {
   nock('https://api.yourpayroll.com.au')
@@ -133,10 +134,7 @@ test('listEmployees: persistent 5xx → throws after retry budget', { timeout: 6
     .query(true)
     .reply(503, 'unavailable');
 
-  await assert.rejects(
-    listEmployees(opts()),
-    /keypay list employees: 503/,
-  );
+  await assert.rejects(listEmployees(opts()), /keypay list employees: 503/);
 });
 
 // -- listTimesheets ----------------------------------------------------

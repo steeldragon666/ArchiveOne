@@ -34,9 +34,7 @@ export interface AdvanceEmailSenderResult {
  *      partial = stay in pending; explicit "no records" after a long
  *      retry budget = transition to failed.
  */
-export async function advanceEmailSenderState(
-  tenantId: string,
-): Promise<AdvanceEmailSenderResult> {
+export async function advanceEmailSenderState(tenantId: string): Promise<AdvanceEmailSenderResult> {
   const rows = await privilegedSql<BrandRow[]>`
     SELECT email_sender_domain, email_sender_dkim_status
       FROM brand_config

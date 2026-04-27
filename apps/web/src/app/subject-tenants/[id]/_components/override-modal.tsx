@@ -94,12 +94,7 @@ export interface OverrideModalProps {
   onOpenChange: (open: boolean) => void;
 }
 
-export function OverrideModal({
-  subjectTenantId,
-  event,
-  open,
-  onOpenChange,
-}: OverrideModalProps) {
+export function OverrideModal({ subjectTenantId, event, open, onOpenChange }: OverrideModalProps) {
   const qc = useQueryClient();
   const { toast } = useToast();
 
@@ -156,9 +151,8 @@ export function OverrideModal({
               <>
                 Reclassifying event{' '}
                 <span className="font-mono text-xs">{event.id.slice(0, 8)}</span>. Currently
-                classified as{' '}
-                <span className="font-medium">{event.effective_kind}</span>. The original
-                event is preserved; this appends an OVERRIDE entry to the chain.
+                classified as <span className="font-medium">{event.effective_kind}</span>. The
+                original event is preserved; this appends an OVERRIDE entry to the chain.
               </>
             ) : (
               'No event selected.'
@@ -166,10 +160,7 @@ export function OverrideModal({
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
-          <form
-            onSubmit={(e) => void form.handleSubmit(onSubmit)(e)}
-            className="space-y-4"
-          >
+          <form onSubmit={(e) => void form.handleSubmit(onSubmit)(e)} className="space-y-4">
             <FormField
               control={form.control}
               name="new_kind"

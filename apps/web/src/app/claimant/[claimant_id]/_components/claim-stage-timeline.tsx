@@ -44,10 +44,7 @@ export function ClaimStageTimeline({ currentStage }: Props) {
         const reached = idx <= currentIndex;
         const isCurrent = idx === currentIndex;
         return (
-          <li
-            key={stage.id}
-            className="flex items-center gap-3 md:flex-1 md:flex-col md:gap-2"
-          >
+          <li key={stage.id} className="flex items-center gap-3 md:flex-1 md:flex-col md:gap-2">
             <div
               className={cn(
                 'flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 text-xs font-semibold',

@@ -15,12 +15,7 @@ import { useSessionStore } from '../auth/session-store.js';
  * source enum mirrors the payroll integrations the consultant portal
  * supports (Employment Hero, KeyPay, Deputy, Xero Payroll).
  */
-export type TimeEntrySource =
-  | 'manual'
-  | 'employment_hero'
-  | 'keypay'
-  | 'deputy'
-  | 'xero_payroll';
+export type TimeEntrySource = 'manual' | 'employment_hero' | 'keypay' | 'deputy' | 'xero_payroll';
 
 export type TimeEntry = {
   id: string;
@@ -105,9 +100,7 @@ export type CreateTimeEntryInput = {
   notes?: string;
 };
 
-export async function createManualTimeEntry(
-  input: CreateTimeEntryInput,
-): Promise<TimeEntry> {
+export async function createManualTimeEntry(input: CreateTimeEntryInput): Promise<TimeEntry> {
   const r = await timeFetch<{ time_entry: TimeEntry }>('/v1/time-entries', {
     method: 'POST',
     body: JSON.stringify({

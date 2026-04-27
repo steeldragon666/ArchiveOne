@@ -6,8 +6,7 @@ import { sql, privilegedSql } from '@cpa/db/client';
 import { buildApp } from '../app.js';
 import { MOBILE_AUDIENCE } from '../middleware/mobile-jwt-verifier.js';
 
-const SESSION_SECRET =
-  process.env['SESSION_JWT_SECRET'] ?? 'dev-only-32-bytes-of-entropy-pad!';
+const SESSION_SECRET = process.env['SESSION_JWT_SECRET'] ?? 'dev-only-32-bytes-of-entropy-pad!';
 
 const TENANT_A = '00000000-0000-4000-8000-0000000b2201';
 const TENANT_B = '00000000-0000-4000-8000-0000000b2202';

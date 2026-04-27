@@ -37,9 +37,7 @@ export type RecomputeJobResult = {
  * row. Returns the new snapshot id + total for the caller to surface in
  * logs / OTel attributes.
  */
-export async function runRecomputeJob(
-  input: RecomputeJobInput,
-): Promise<RecomputeJobResult> {
+export async function runRecomputeJob(input: RecomputeJobInput): Promise<RecomputeJobResult> {
   const result = await computeScore({
     tenant_id: input.tenant_id,
     subject_tenant_id: input.subject_tenant_id,

@@ -110,12 +110,14 @@ export function registerSigning(app: FastifyInstance): void {
     // route already gate-checked tenantId comes from the session JWT.
     // The integration_connection row carries the encrypted access token
     // we need to call DocuSign on the firm's behalf.
-    const connRows = await privilegedSql<{
-      access_token_encrypted: string;
-      external_account_id: string | null;
-      sync_state: string;
-      last_error: string | null;
-    }[]>`
+    const connRows = await privilegedSql<
+      {
+        access_token_encrypted: string;
+        external_account_id: string | null;
+        sync_state: string;
+        last_error: string | null;
+      }[]
+    >`
       SELECT access_token_encrypted, external_account_id, sync_state, last_error
         FROM integration_connection
        WHERE tenant_id = ${tenantId} AND provider = 'docusign'
@@ -124,7 +126,8 @@ export function registerSigning(app: FastifyInstance): void {
     if (!conn || conn.sync_state === 'failed' || conn.last_error === 'revoked') {
       return reply.status(412).send({
         error: 'docusign_not_connected',
-        message: 'No active DocuSign integration for this firm — connect via /v1/integrations/docusign/connect',
+        message:
+          'No active DocuSign integration for this firm — connect via /v1/integrations/docusign/connect',
         requestId: req.id,
       });
     }
@@ -145,8 +148,7 @@ export function registerSigning(app: FastifyInstance): void {
     // captured at OAuth time (B3 will populate this from /oauth/userinfo
     // once that lands); fall back to a platform default env var so dev
     // + initial demos have a sensible value before per-firm wiring.
-    const accountId =
-      conn.external_account_id ?? process.env['DOCUSIGN_ACCOUNT_ID'] ?? '';
+    const accountId = conn.external_account_id ?? process.env['DOCUSIGN_ACCOUNT_ID'] ?? '';
     if (!accountId) {
       return reply.status(412).send({
         error: 'docusign_account_id_missing',

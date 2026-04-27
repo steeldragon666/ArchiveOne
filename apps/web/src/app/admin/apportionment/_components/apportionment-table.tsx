@@ -22,11 +22,7 @@ import {
 } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
 import { apiFetch } from '@/lib/api';
-import {
-  clearFlag,
-  listTimeEntries,
-  setApportionment,
-} from '../_lib/api';
+import { clearFlag, listTimeEntries, setApportionment } from '../_lib/api';
 import { BulkApportionmentDialog } from './bulk-apportionment-dialog';
 
 /**
@@ -93,9 +89,7 @@ export function ApportionmentTable() {
   const claimants = useQuery<SubjectTenant[]>({
     queryKey: ['subject-tenants'],
     queryFn: async () => {
-      const body = await apiFetch<{ subject_tenants: SubjectTenant[] }>(
-        '/v1/subject-tenants',
-      );
+      const body = await apiFetch<{ subject_tenants: SubjectTenant[] }>('/v1/subject-tenants');
       return body.subject_tenants;
     },
   });
@@ -129,8 +123,7 @@ export function ApportionmentTable() {
   }, [entries.data, filters.show_flagged_only]);
 
   const setPctMutation = useMutation({
-    mutationFn: ({ id, pct }: { id: string; pct: number }) =>
-      setApportionment(id, pct),
+    mutationFn: ({ id, pct }: { id: string; pct: number }) => setApportionment(id, pct),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: entriesKey });
       toast({ title: 'Apportionment saved' });
@@ -200,9 +193,7 @@ export function ApportionmentTable() {
 
   const toggleSelectAll = (): void => {
     setSelected((prev) =>
-      prev.size === visibleEntries.length
-        ? new Set()
-        : new Set(visibleEntries.map((e) => e.id)),
+      prev.size === visibleEntries.length ? new Set() : new Set(visibleEntries.map((e) => e.id)),
     );
   };
 
@@ -215,9 +206,7 @@ export function ApportionmentTable() {
           <Label htmlFor="claimant">Claimant</Label>
           <Select
             value={filters.subject_tenant_id}
-            onValueChange={(v) =>
-              setFilters((prev) => ({ ...prev, subject_tenant_id: v }))
-            }
+            onValueChange={(v) => setFilters((prev) => ({ ...prev, subject_tenant_id: v }))}
           >
             <SelectTrigger id="claimant">
               <SelectValue placeholder="Select a claimant" />
@@ -237,9 +226,7 @@ export function ApportionmentTable() {
             id="from"
             type="date"
             value={filters.from}
-            onChange={(e) =>
-              setFilters((prev) => ({ ...prev, from: e.target.value }))
-            }
+            onChange={(e) => setFilters((prev) => ({ ...prev, from: e.target.value }))}
           />
         </div>
         <div>
@@ -248,9 +235,7 @@ export function ApportionmentTable() {
             id="to"
             type="date"
             value={filters.to}
-            onChange={(e) =>
-              setFilters((prev) => ({ ...prev, to: e.target.value }))
-            }
+            onChange={(e) => setFilters((prev) => ({ ...prev, to: e.target.value }))}
           />
         </div>
         <div>
@@ -259,9 +244,7 @@ export function ApportionmentTable() {
             id="employee"
             placeholder="(optional UUID)"
             value={filters.employee_id}
-            onChange={(e) =>
-              setFilters((prev) => ({ ...prev, employee_id: e.target.value }))
-            }
+            onChange={(e) => setFilters((prev) => ({ ...prev, employee_id: e.target.value }))}
           />
         </div>
         <div className="md:col-span-5">
@@ -287,10 +270,7 @@ export function ApportionmentTable() {
             ? 'Loading…'
             : `${visibleEntries.length} entries shown · ${flaggedCount} flagged · ${selected.size} selected`}
         </div>
-        <Button
-          onClick={() => setBulkOpen(true)}
-          disabled={visibleEntries.length === 0}
-        >
+        <Button onClick={() => setBulkOpen(true)} disabled={visibleEntries.length === 0}>
           Bulk apply R&amp;D %
         </Button>
       </div>
@@ -315,10 +295,7 @@ export function ApportionmentTable() {
               <TableHead className="w-8">
                 <input
                   type="checkbox"
-                  checked={
-                    visibleEntries.length > 0 &&
-                    selected.size === visibleEntries.length
-                  }
+                  checked={visibleEntries.length > 0 && selected.size === visibleEntries.length}
                   onChange={toggleSelectAll}
                 />
               </TableHead>
@@ -336,8 +313,8 @@ export function ApportionmentTable() {
                 editing !== undefined
                   ? editing
                   : e.apportionment_pct === null
-                  ? ''
-                  : String(e.apportionment_pct);
+                    ? ''
+                    : String(e.apportionment_pct);
               return (
                 <TableRow key={e.id}>
                   <TableCell>

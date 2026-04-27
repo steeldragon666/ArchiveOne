@@ -92,9 +92,7 @@ export function EventCard({ event, onOverride }: EventCardProps) {
       ) : null}
 
       {event.classification?.rationale ? (
-        <p className="text-xs italic text-muted-foreground">
-          {event.classification.rationale}
-        </p>
+        <p className="text-xs italic text-muted-foreground">{event.classification.rationale}</p>
       ) : null}
 
       {showOverrideButton ? (

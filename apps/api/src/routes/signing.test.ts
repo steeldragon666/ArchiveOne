@@ -147,7 +147,9 @@ test('POST /v1/signing/requests: 201 + DB row inserted on success', async () => 
     },
   });
   assert.equal(res.statusCode, 201);
-  const body = res.json<{ signing_request: { id: string; docusign_envelope_id: string; status: string } }>();
+  const body = res.json<{
+    signing_request: { id: string; docusign_envelope_id: string; status: string };
+  }>();
   assert.equal(body.signing_request.docusign_envelope_id, 'env-from-docusign');
   assert.equal(body.signing_request.status, 'sent');
 

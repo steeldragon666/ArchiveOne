@@ -39,13 +39,7 @@ const Schema = z.object({
 });
 type FormValues = z.infer<typeof Schema>;
 
-export function ThemePicker({
-  primary,
-  accent,
-}: {
-  primary: string;
-  accent: string;
-}) {
+export function ThemePicker({ primary, accent }: { primary: string; accent: string }) {
   const qc = useQueryClient();
   const { toast } = useToast();
 

@@ -15,9 +15,7 @@ export function getAnthropicClient(): Anthropic {
   if (client) return client;
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
-    throw new Error(
-      'ANTHROPIC_API_KEY required (or set CLASSIFIER_IMPL=stub for stub-only mode)',
-    );
+    throw new Error('ANTHROPIC_API_KEY required (or set CLASSIFIER_IMPL=stub for stub-only mode)');
   }
   client = new Anthropic({ apiKey, maxRetries: 3, timeout: 30_000 });
   return client;

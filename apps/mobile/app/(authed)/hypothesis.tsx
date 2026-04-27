@@ -1,12 +1,5 @@
 import { useState } from 'react';
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { enqueueHypothesisEvent } from '../../src/api-client/hypothesis.js';
 
@@ -69,8 +62,8 @@ export default function HypothesisScreen() {
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>Pre-experiment hypothesis</Text>
       <Text style={styles.helpHeader}>
-        Capture this BEFORE starting work — pre-dating the hypothesis is
-        what makes the activity systematic-experimental under §355-25(1)(a).
+        Capture this BEFORE starting work — pre-dating the hypothesis is what makes the activity
+        systematic-experimental under §355-25(1)(a).
       </Text>
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -117,14 +110,9 @@ export default function HypothesisScreen() {
       <Pressable
         onPress={() => void handleSubmit()}
         disabled={!canSubmit}
-        style={[
-          styles.submit,
-          canSubmit ? styles.submitEnabled : styles.submitDisabled,
-        ]}
+        style={[styles.submit, canSubmit ? styles.submitEnabled : styles.submitDisabled]}
       >
-        <Text style={styles.submitLabel}>
-          {submitting ? 'Saving…' : 'Save hypothesis'}
-        </Text>
+        <Text style={styles.submitLabel}>{submitting ? 'Saving…' : 'Save hypothesis'}</Text>
       </Pressable>
     </ScrollView>
   );

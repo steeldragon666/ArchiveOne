@@ -74,25 +74,29 @@ export function registerRefreshRoute(app: FastifyInstance): void {
   app.post('/v1/auth/refresh', async (req, reply) => {
     const parsed = refreshTokenBody.safeParse(req.body);
     if (!parsed.success) {
-      return reply.status(400).send(
-        errEnvelope(
-          'INVALID_BODY',
-          'Body must be { refresh_token, device_fingerprint, push_token? }',
-          req.id,
-        ),
-      );
+      return reply
+        .status(400)
+        .send(
+          errEnvelope(
+            'INVALID_BODY',
+            'Body must be { refresh_token, device_fingerprint, push_token? }',
+            req.id,
+          ),
+        );
     }
     const { refresh_token, device_fingerprint, push_token } = parsed.data;
     const refreshHash = crypto.createHash('sha256').update(refresh_token).digest('hex');
 
     // Step 1: lookup the session by hash.
-    const sessions = await privilegedSql<{
-      id: string;
-      employee_id: string;
-      device_fingerprint: string;
-      expires_at: Date;
-      revoked_at: Date | null;
-    }[]>`
+    const sessions = await privilegedSql<
+      {
+        id: string;
+        employee_id: string;
+        device_fingerprint: string;
+        expires_at: Date;
+        revoked_at: Date | null;
+      }[]
+    >`
       SELECT id, employee_id, device_fingerprint, expires_at, revoked_at
         FROM mobile_session
        WHERE refresh_token_hash = ${refreshHash}
@@ -104,15 +108,11 @@ export function registerRefreshRoute(app: FastifyInstance): void {
         .send(errEnvelope('UNAUTHENTICATED', 'invalid refresh token', req.id));
     }
     if (session.revoked_at !== null) {
-      return reply
-        .status(401)
-        .send(errEnvelope('UNAUTHENTICATED', 'session revoked', req.id));
+      return reply.status(401).send(errEnvelope('UNAUTHENTICATED', 'session revoked', req.id));
     }
     const now = Date.now();
     if (new Date(session.expires_at).getTime() <= now) {
-      return reply
-        .status(401)
-        .send(errEnvelope('UNAUTHENTICATED', 'session expired', req.id));
+      return reply.status(401).send(errEnvelope('UNAUTHENTICATED', 'session expired', req.id));
     }
 
     // Step 2: device fingerprint must match the value stored at redeem-time.
@@ -149,19 +149,19 @@ export function registerRefreshRoute(app: FastifyInstance): void {
     if (!updated[0]) {
       // Lost a race with a concurrent refresh / revoke. Treat as 401
       // so the client re-bootstraps via magic link.
-      return reply
-        .status(401)
-        .send(errEnvelope('UNAUTHENTICATED', 'session revoked', req.id));
+      return reply.status(401).send(errEnvelope('UNAUTHENTICATED', 'session revoked', req.id));
     }
 
     // Step 4: load the employee context for the access token. The
     // employee row has the tenant_id + subject_tenant_id we need to
     // mint a same-shape token to F7.
-    const empRows = await privilegedSql<{
-      tenant_id: string;
-      subject_tenant_id: string;
-      deactivated_at: Date | null;
-    }[]>`
+    const empRows = await privilegedSql<
+      {
+        tenant_id: string;
+        subject_tenant_id: string;
+        deactivated_at: Date | null;
+      }[]
+    >`
       SELECT tenant_id, subject_tenant_id, deactivated_at
         FROM subject_tenant_employee
        WHERE id = ${session.employee_id}
@@ -173,9 +173,7 @@ export function registerRefreshRoute(app: FastifyInstance): void {
       await privilegedSql`
         UPDATE mobile_session SET revoked_at = NOW() WHERE id = ${session.id}
       `;
-      return reply
-        .status(401)
-        .send(errEnvelope('UNAUTHENTICATED', 'employee not active', req.id));
+      return reply.status(401).send(errEnvelope('UNAUTHENTICATED', 'employee not active', req.id));
     }
 
     // Step 5: bump the employee's last_seen_at — this IS active use.

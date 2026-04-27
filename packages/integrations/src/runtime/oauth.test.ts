@@ -110,9 +110,7 @@ test('exchangeCodeForTokens omits client_secret when not provided (PKCE-only)', 
 });
 
 test('exchangeCodeForTokens throws on non-2xx', async () => {
-  nock('https://idp.example.com')
-    .post('/oauth/token')
-    .reply(400, 'invalid_grant');
+  nock('https://idp.example.com').post('/oauth/token').reply(400, 'invalid_grant');
 
   await assert.rejects(
     exchangeCodeForTokens({

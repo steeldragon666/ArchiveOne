@@ -80,10 +80,7 @@ const apiBaseUrl = (): string => {
  * the data is freshness-sensitive (recent events, score changes); we
  * don't want Next's fetch cache to memoise.
  */
-async function claimantFetch<T>(
-  path: string,
-  cookieValue: string,
-): Promise<T> {
+async function claimantFetch<T>(path: string, cookieValue: string): Promise<T> {
   const res = await fetch(`${apiBaseUrl()}${path}`, {
     method: 'GET',
     headers: {
@@ -112,18 +109,9 @@ export async function getClaimantStatus(
   claimantId: string,
   cookieValue: string,
 ): Promise<ClaimantStatus> {
-  return claimantFetch<ClaimantStatus>(
-    `/v1/claimant-status/${claimantId}`,
-    cookieValue,
-  );
+  return claimantFetch<ClaimantStatus>(`/v1/claimant-status/${claimantId}`, cookieValue);
 }
 
-export async function getAuditScore(
-  claimantId: string,
-  cookieValue: string,
-): Promise<AuditScore> {
-  return claimantFetch<AuditScore>(
-    `/v1/audit-score/${claimantId}`,
-    cookieValue,
-  );
+export async function getAuditScore(claimantId: string, cookieValue: string): Promise<AuditScore> {
+  return claimantFetch<AuditScore>(`/v1/audit-score/${claimantId}`, cookieValue);
 }

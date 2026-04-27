@@ -47,9 +47,9 @@ employees (`subject_tenant_employee`).
 Claimant employees live in a new table, not in the existing `user` table.
 
 - **`subject_tenant_employee`** carries `(id, subject_tenant_id, tenant_id,
-  email, name, job_title, payroll_external_id?, payroll_provider?,
-  invited_at, invited_by_user_id, first_seen_at?, last_seen_at?,
-  deactivated_at?)`.
+email, name, job_title, payroll_external_id?, payroll_provider?,
+invited_at, invited_by_user_id, first_seen_at?, last_seen_at?,
+deactivated_at?)`.
 - `tenant_id` is **denormalised** alongside `subject_tenant_id` for
   index-friendly RLS — the same defense-in-depth pattern P2's `event` table
   uses (ADR-0003 Q6). The RLS policy is a single column lookup
@@ -69,7 +69,7 @@ Claimant employees authenticate via a single-use, time-bounded **magic-link
 token** delivered to their email. No password. No IdP federation in P3.
 
 - **`magic_link_token`** carries `(id, employee_id, token_hash, expires_at,
-  consumed_at?, created_at)`. The raw 256-bit token is sent ONCE in the
+consumed_at?, created_at)`. The raw 256-bit token is sent ONCE in the
   invite email; only its hex SHA-256 hash is stored.
 - **15-minute expiry**. Single-use. `consumed_at` flips on first successful
   redeem; subsequent attempts fail.
@@ -93,8 +93,8 @@ Mobile auth is a two-token model: short-lived access token + long-lived
 device-bound refresh token.
 
 - **`mobile_session`** carries `(id, employee_id, device_fingerprint,
-  refresh_token_hash, expires_at, last_refreshed_at, revoked_at?,
-  created_at, push_token?)`.
+refresh_token_hash, expires_at, last_refreshed_at, revoked_at?,
+created_at, push_token?)`.
 - **90-day sliding window** on the refresh token. Each successful refresh
   rotates the token (issues a new one, supersedes the old hash) and bumps
   `expires_at` 90 days from now and `last_refreshed_at` to now.
@@ -111,7 +111,7 @@ device-bound refresh token.
   the legitimate user with a leaked old token.
 - **Revocation centralised on the consultant portal**. A consultant can
   revoke any employee's session (`UPDATE mobile_session SET revoked_at =
-  NOW()`) from the admin UI. The next access-token verify for that
+NOW()`) from the admin UI. The next access-token verify for that
   employee's session fails the `revoked_at IS NULL` check and they are
   forced to re-redeem.
 - **Not directly RLS-scoped**. Sessions are always accessed via
@@ -130,11 +130,11 @@ The same `SESSION_JWT_SECRET` (HS256) signs all three session shapes, but
 the JWT `aud` claim partitions them so a token from one surface cannot be
 replayed at another:
 
-| Surface | Audience | Carrier | Lifetime |
-|---|---|---|---|
-| Consultant portal (web) | `cpa-api` | httpOnly cookie | per ADR-0002 session |
-| Claimant PWA (`/claimant/...`) | `pwa-claimant` | httpOnly cookie | 90 days |
-| Mobile native app | `mobile` | `Authorization: Bearer …` | 1h access + 90d refresh |
+| Surface                        | Audience       | Carrier                   | Lifetime                |
+| ------------------------------ | -------------- | ------------------------- | ----------------------- |
+| Consultant portal (web)        | `cpa-api`      | httpOnly cookie           | per ADR-0002 session    |
+| Claimant PWA (`/claimant/...`) | `pwa-claimant` | httpOnly cookie           | 90 days                 |
+| Mobile native app              | `mobile`       | `Authorization: Bearer …` | 1h access + 90d refresh |
 
 API middleware verifies audience on every request:
 

@@ -3,10 +3,7 @@ import assert from 'node:assert/strict';
 import Fastify from 'fastify';
 import type { FastifyInstance } from 'fastify';
 import { sql, privilegedSql } from '@cpa/db/client';
-import {
-  registerHostnameTenantResolver,
-  type ResolvedBrand,
-} from './hostname-tenant-resolver.js';
+import { registerHostnameTenantResolver, type ResolvedBrand } from './hostname-tenant-resolver.js';
 
 const TENANT_A = '00000000-0000-4000-8000-0000000f4001';
 const TENANT_B = '00000000-0000-4000-8000-0000000f4002';

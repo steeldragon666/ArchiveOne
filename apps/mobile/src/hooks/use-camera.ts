@@ -1,5 +1,10 @@
 import { useRef } from 'react';
-import { CameraView, type CameraCapturedPicture } from 'expo-camera';
+// `CameraView` is referenced exclusively as a TS generic (useRef<CameraView>,
+// React.RefObject<CameraView | null>) — never as a value/JSX in this file —
+// so both imports are type-only. The screen that mounts <CameraView>
+// (apps/mobile/app/(authed)/capture/photo.tsx) imports it separately as a
+// value.
+import type { CameraView, CameraCapturedPicture } from 'expo-camera';
 
 /**
  * Photo capture returned from the camera hook.

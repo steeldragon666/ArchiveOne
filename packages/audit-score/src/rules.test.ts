@@ -82,11 +82,7 @@ test('hypothesis_per_core: 0 → 0 pts, 1 → 5, 3 → 15, 5 → 15 (capped)', a
       subject_tenant_id: SUBJECT,
       sql_client: mockSql({ n }),
     });
-    assert.equal(
-      result.earned,
-      expected,
-      `n=${n}: expected ${expected}, got ${result.earned}`,
-    );
+    assert.equal(result.earned, expected, `n=${n}: expected ${expected}, got ${result.earned}`);
   }
 });
 
@@ -275,11 +271,7 @@ test('evidence_kinds_diverse: 0 → 0; 2 → 2 pts; 4+ → 5 pts (capped)', asyn
       subject_tenant_id: SUBJECT,
       sql_client: mockSql({ n }),
     });
-    assert.equal(
-      result.earned,
-      expected,
-      `n=${n}: expected ${expected}, got ${result.earned}`,
-    );
+    assert.equal(result.earned, expected, `n=${n}: expected ${expected}, got ${result.earned}`);
   }
 });
 
@@ -293,10 +285,7 @@ test('rules: empty result-set defends every rule (no [0]?.x crash)', async () =>
       subject_tenant_id: SUBJECT,
       sql_client: emptyMockSql(),
     });
-    assert.ok(
-      typeof result.earned === 'number',
-      `${rule.id}: earned must be a number`,
-    );
+    assert.ok(typeof result.earned === 'number', `${rule.id}: earned must be a number`);
     assert.ok(result.earned >= 0, `${rule.id}: earned must be ≥ 0`);
     assert.ok(
       result.earned <= rule.max_pts,

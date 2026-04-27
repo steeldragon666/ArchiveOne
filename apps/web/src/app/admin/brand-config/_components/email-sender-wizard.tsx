@@ -5,11 +5,7 @@ import type { DkimStatusValue } from '@cpa/schemas';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
-import {
-  checkEmailSender,
-  setEmailSender,
-  type SetEmailSenderResponse,
-} from '../_lib/api';
+import { checkEmailSender, setEmailSender, type SetEmailSenderResponse } from '../_lib/api';
 
 /**
  * Email sender / DKIM wizard (T-C8).
@@ -173,8 +169,7 @@ function SenderInput({
       />
       {domainInput !== '' && !inputValid && (
         <p className="text-sm text-red-600" aria-live="polite">
-          <span aria-hidden="true">✗</span> Must be a lowercase FQDN like
-          mail.acme.com.au
+          <span aria-hidden="true">✗</span> Must be a lowercase FQDN like mail.acme.com.au
         </p>
       )}
       <Button type="button" onClick={onSave} disabled={!inputValid || isPending}>

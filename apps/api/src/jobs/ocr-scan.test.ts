@@ -108,9 +108,7 @@ test('runOcrScanJob: PDF → ocr_status=complete + ocr_text populated', async ()
   assert.equal(result.ocr_status, 'complete');
   assert.ok(result.ocr_text !== null);
 
-  const rows = await privilegedSql<
-    { ocr_status: string; ocr_text: string | null }[]
-  >`
+  const rows = await privilegedSql<{ ocr_status: string; ocr_text: string | null }[]>`
     SELECT ocr_status, ocr_text FROM media_artefact WHERE id = ${ART_PDF}
   `;
   assert.equal(rows[0]?.ocr_status, 'complete');
@@ -146,9 +144,7 @@ test('runOcrScanJob: already-processed row → no-op (ocr_text + ocr_status pres
   const result = await runOcrScanJob({ media_artefact_id: ART_ALREADY_DONE });
   assert.equal(result.ocr_status, 'noop');
 
-  const rows = await privilegedSql<
-    { ocr_status: string; ocr_text: string | null }[]
-  >`
+  const rows = await privilegedSql<{ ocr_status: string; ocr_text: string | null }[]>`
     SELECT ocr_status, ocr_text FROM media_artefact WHERE id = ${ART_ALREADY_DONE}
   `;
   assert.equal(rows[0]?.ocr_status, 'complete');

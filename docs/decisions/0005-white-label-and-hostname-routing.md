@@ -27,10 +27,11 @@ locks the scope at Q7d=C, the most ambitious of the three options:
 Claimant employees follow magic-link emails sent from a DKIM-verified
 per-firm sender domain, click into a PWA at the firm's white-labelled
 hostname, and land in screens themed by that firm's `brand_config` palette
-+ logo. The mobile app fetches the same `brand_config` at session
-bootstrap and applies it in-app. The product brief insists this end-to-end
-white-label has to work without engineering involvement on each new firm
-— a self-serve wizard, not a ticket queue.
+
+- logo. The mobile app fetches the same `brand_config` at session
+  bootstrap and applies it in-app. The product brief insists this end-to-end
+  white-label has to work without engineering involvement on each new firm
+  — a self-serve wizard, not a ticket queue.
 
 This ADR captures the routing + cert-lifecycle decisions that propagate
 into Fastify (`apps/api`), Next.js (`apps/web`), and the pg-boss job layer
@@ -53,7 +54,7 @@ theme themselves without a second lookup.
   3. Otherwise (full custom domain):
      `SELECT … FROM brand_config WHERE custom_domain = $host`.
   4. On match: attach `req.resolvedBrand = { tenant_id, display_name,
-     primary_color, accent_color, logo_s3_key }`.
+primary_color, accent_color, logo_s3_key }`.
   5. On miss: leave `resolvedBrand` undefined; downstream handlers decide
      how to render (typically: 404 "unknown brand" for branded routes,
      fall through to platform default for the bare `platform.com.au`).
@@ -100,7 +101,7 @@ failed (terminal at any step)
 ```
 
 - **State column** — `brand_config.custom_domain_status text NOT NULL
-  DEFAULT 'unconfigured'`, CHECK-constrained to the five-state enum.
+DEFAULT 'unconfigured'`, CHECK-constrained to the five-state enum.
 - **Driver** — `apps/api/src/jobs/custom-domain-state-machine.ts`
   (`advanceCustomDomainState(tenantId, deps?)`). Idempotent — calling
   twice on the same row is safe; the second call sees the already-advanced
@@ -165,8 +166,8 @@ expected target. The stub is purely on the AWS-write side. This means:
   up, the state advances to `active`, the admin UI shows green check.
 - The **handover to real wiring is mechanical** — replace the stub branch
   with `acm.requestCertificate(...)` + `cloudfront.updateDistribution(...)`
-  + `ses.verifyDomainDkim(...)`. The state machine shape, the DB columns,
-  the admin UI, and the test scaffold all stay the same.
+  - `ses.verifyDomainDkim(...)`. The state machine shape, the DB columns,
+    the admin UI, and the test scaffold all stay the same.
 
 Real wiring lands in **P9** as part of the production deployment phase. The
 ADR documents this explicitly so future contributors don't accidentally

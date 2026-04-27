@@ -49,10 +49,7 @@ export const MOBILE_AUDIENCE = 'mobile';
  *   - tenant_id: consultant firm id (for RLS GUC)
  *   - subject_tenant_id: claimant id (for scope)
  */
-export async function verifyMobileJwt(
-  token: string,
-  secret: Uint8Array,
-): Promise<MobilePrincipal> {
+export async function verifyMobileJwt(token: string, secret: Uint8Array): Promise<MobilePrincipal> {
   const { payload } = await jwtVerify(token, secret, { audience: MOBILE_AUDIENCE });
   if (typeof payload.sub !== 'string' || payload.sub.length === 0) {
     throw new Error('mobile JWT missing sub');

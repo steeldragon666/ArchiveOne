@@ -76,8 +76,7 @@ const baseDeps = (
     decrypt: () => 'decrypted-access-token',
     get_encryption_key: () => 'fake-key',
     sync_employees: () => Promise.resolve({ upserted: 0, deactivated: 0 }),
-    pull_timesheets: () =>
-      Promise.resolve({ inserted: 0, updated: 0, skipped_unmatched: 0 }),
+    pull_timesheets: () => Promise.resolve({ inserted: 0, updated: 0, skipped_unmatched: 0 }),
     ...overrides,
   };
   return { deps, update_calls };
@@ -99,8 +98,7 @@ test('syncEmploymentHero: success path → idle + last_synced_at + counts surfac
     },
     {
       sync_employees: () => Promise.resolve({ upserted: 5, deactivated: 1 }),
-      pull_timesheets: () =>
-        Promise.resolve({ inserted: 12, updated: 3, skipped_unmatched: 2 }),
+      pull_timesheets: () => Promise.resolve({ inserted: 12, updated: 3, skipped_unmatched: 2 }),
     },
   );
 
@@ -271,7 +269,8 @@ test('syncEmploymentHero: missing external_account_id → fails fast without cal
 
 test('syncEmploymentHero: pulls call sub-functions with correct shared opts', async () => {
   let observedSyncOpts: Parameters<NonNullable<PayrollSyncDeps['sync_employees']>>[0] | null = null;
-  let observedPullOpts: Parameters<NonNullable<PayrollSyncDeps['pull_timesheets']>>[0] | null = null;
+  let observedPullOpts: Parameters<NonNullable<PayrollSyncDeps['pull_timesheets']>>[0] | null =
+    null;
   const { deps } = baseDeps(
     {
       integration_connection: [
@@ -364,17 +363,14 @@ const baseKeypayDeps = (
     decrypt: () => 'decrypted-api-key',
     get_encryption_key: () => 'fake-key',
     sync_employees: () => Promise.resolve({ upserted: 0, deactivated: 0 }),
-    pull_timesheets: () =>
-      Promise.resolve({ inserted: 0, updated: 0, skipped_unmatched: 0 }),
+    pull_timesheets: () => Promise.resolve({ inserted: 0, updated: 0, skipped_unmatched: 0 }),
     ...overrides,
   };
   return { deps, update_calls };
 };
 
 test('syncKeypay: success path → idle + business_id parsed to number + counts surfaced', async () => {
-  let observedSyncOpts:
-    | Parameters<NonNullable<KeypaySyncDeps['sync_employees']>>[0]
-    | null = null;
+  let observedSyncOpts: Parameters<NonNullable<KeypaySyncDeps['sync_employees']>>[0] | null = null;
   const { deps, update_calls } = baseKeypayDeps(
     {
       integration_connection: [
@@ -393,8 +389,7 @@ test('syncKeypay: success path → idle + business_id parsed to number + counts 
         observedSyncOpts = opts;
         return Promise.resolve({ upserted: 7, deactivated: 1 });
       },
-      pull_timesheets: () =>
-        Promise.resolve({ inserted: 15, updated: 4, skipped_unmatched: 1 }),
+      pull_timesheets: () => Promise.resolve({ inserted: 15, updated: 4, skipped_unmatched: 1 }),
     },
   );
 
@@ -603,12 +598,8 @@ const baseDeputyDeps = (
 };
 
 test('syncDeputy: success path → idle + install_url forwarded + counts surfaced', async () => {
-  let observedSyncOpts:
-    | Parameters<NonNullable<DeputySyncDeps['sync_employees']>>[0]
-    | null = null;
-  let observedPullOpts:
-    | Parameters<NonNullable<DeputySyncDeps['pull_timesheets']>>[0]
-    | null = null;
+  let observedSyncOpts: Parameters<NonNullable<DeputySyncDeps['sync_employees']>>[0] | null = null;
+  let observedPullOpts: Parameters<NonNullable<DeputySyncDeps['pull_timesheets']>>[0] | null = null;
   const { deps, update_calls } = baseDeputyDeps(
     {
       integration_connection: [
@@ -859,12 +850,10 @@ const baseXeroDeps = (
 };
 
 test('syncXeroPayroll: success path → idle + xero_tenant_id forwarded + counts surfaced', async () => {
-  let observedSyncOpts:
-    | Parameters<NonNullable<XeroPayrollSyncDeps['sync_employees']>>[0]
-    | null = null;
-  let observedPullOpts:
-    | Parameters<NonNullable<XeroPayrollSyncDeps['pull_timesheets']>>[0]
-    | null = null;
+  let observedSyncOpts: Parameters<NonNullable<XeroPayrollSyncDeps['sync_employees']>>[0] | null =
+    null;
+  let observedPullOpts: Parameters<NonNullable<XeroPayrollSyncDeps['pull_timesheets']>>[0] | null =
+    null;
   const { deps, update_calls } = baseXeroDeps(
     {
       integration_connection: [

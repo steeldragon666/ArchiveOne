@@ -85,17 +85,11 @@ test('computeScore: real rules sum to TOTAL_MAX_PTS (100)', () => {
 });
 
 test('computeScore: computed_at is fresh (within last second)', async () => {
-  await withStubbedRules(
-    [{ id: 'x', max_pts: 5, result: { earned: 0 } }],
-    async () => {
-      const before = Date.now();
-      const result = await computeScore(baseInput);
-      const after = Date.now();
-      const t = result.computed_at.getTime();
-      assert.ok(
-        t >= before - 1 && t <= after + 1,
-        `computed_at ${t} not in [${before}, ${after}]`,
-      );
-    },
-  );
+  await withStubbedRules([{ id: 'x', max_pts: 5, result: { earned: 0 } }], async () => {
+    const before = Date.now();
+    const result = await computeScore(baseInput);
+    const after = Date.now();
+    const t = result.computed_at.getTime();
+    assert.ok(t >= before - 1 && t <= after + 1, `computed_at ${t} not in [${before}, ${after}]`);
+  });
 });

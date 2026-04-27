@@ -32,7 +32,9 @@ export function useIsOnline(pollMs = 5000): boolean {
         if (!cancelled) setOnline(false);
       }
       if (!cancelled) {
-        timer = setTimeout(check, pollMs);
+        timer = setTimeout(() => {
+          void check();
+        }, pollMs);
       }
     }
 

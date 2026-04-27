@@ -6,8 +6,7 @@ import { sql, privilegedSql } from '@cpa/db/client';
 import { buildApp } from '../app.js';
 import { MOBILE_AUDIENCE } from '../middleware/mobile-jwt-verifier.js';
 
-const SESSION_SECRET =
-  process.env['SESSION_JWT_SECRET'] ?? 'dev-only-32-bytes-of-entropy-pad!';
+const SESSION_SECRET = process.env['SESSION_JWT_SECRET'] ?? 'dev-only-32-bytes-of-entropy-pad!';
 process.env['SESSION_JWT_SECRET'] = SESSION_SECRET;
 
 const TENANT_A = '00000000-0000-4000-8000-0000000f8001';
@@ -80,9 +79,11 @@ const seedSession = async (opts: {
       ${opts.deviceFingerprint ?? DEVICE_FP},
       ${refreshHash},
       ${opts.expiresAt.toISOString()}::timestamptz,
-      ${opts.revokedAt === undefined || opts.revokedAt === null
-        ? null
-        : opts.revokedAt.toISOString()}::timestamptz
+      ${
+        opts.revokedAt === undefined || opts.revokedAt === null
+          ? null
+          : opts.revokedAt.toISOString()
+      }::timestamptz
     )
   `;
   return { sessionId: id, rawRefresh, refreshHash };
@@ -108,20 +109,16 @@ test('POST /v1/auth/refresh: 200 + new tokens + session row updated', async () =
   assert.notEqual(body.refresh_token, seeded.rawRefresh, 'refresh should rotate');
 
   // Access token verifies under aud='mobile' with the right claims.
-  const { payload } = await jwtVerify(
-    body.access_token,
-    new TextEncoder().encode(SESSION_SECRET),
-    { audience: MOBILE_AUDIENCE },
-  );
+  const { payload } = await jwtVerify(body.access_token, new TextEncoder().encode(SESSION_SECRET), {
+    audience: MOBILE_AUDIENCE,
+  });
   assert.equal(payload.sub, EMPLOYEE);
   assert.equal(payload['tenant_id'], TENANT_A);
   assert.equal(payload['subject_tenant_id'], SUBJECT_A1);
 
   // Mobile_session row was updated: new hash + extended expiry.
   const newHash = crypto.createHash('sha256').update(body.refresh_token).digest('hex');
-  const sessionRows = await privilegedSql<
-    { refresh_token_hash: string; expires_at: Date }[]
-  >`
+  const sessionRows = await privilegedSql<{ refresh_token_hash: string; expires_at: Date }[]>`
     SELECT refresh_token_hash, expires_at FROM mobile_session WHERE id = ${seeded.sessionId}
   `;
   assert.equal(sessionRows[0]?.refresh_token_hash, newHash);

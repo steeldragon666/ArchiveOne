@@ -55,8 +55,7 @@ interface RawTimeEntryRow {
 }
 
 const isoOf = (v: Date | string): string => (typeof v === 'string' ? v : v.toISOString());
-const isoOrNull = (v: Date | string | null): string | null =>
-  v === null ? null : isoOf(v);
+const isoOrNull = (v: Date | string | null): string | null => (v === null ? null : isoOf(v));
 
 const toApi = (r: RawTimeEntryRow): TimeEntry => ({
   id: r.id,
@@ -71,8 +70,7 @@ const toApi = (r: RawTimeEntryRow): TimeEntry => ({
   is_rd: r.is_rd,
   // Postgres NUMERIC comes back as a string from postgres-js; coerce
   // to number for the API contract. Null stays null.
-  apportionment_pct:
-    r.apportionment_pct === null ? null : Number(r.apportionment_pct),
+  apportionment_pct: r.apportionment_pct === null ? null : Number(r.apportionment_pct),
   apportioned_by_user_id: r.apportioned_by_user_id,
   apportioned_at: isoOrNull(r.apportioned_at),
   notes: r.notes,
@@ -122,10 +120,7 @@ const errEnvelope = (
  * the response state after, since `requireMobileSession` writes a 401
  * envelope itself.
  */
-async function requireConsultantOrMobile(
-  req: FastifyRequest,
-  reply: FastifyReply,
-): Promise<void> {
+async function requireConsultantOrMobile(req: FastifyRequest, reply: FastifyReply): Promise<void> {
   if (req.user) {
     if (req.user.tenantId === null) {
       await reply
@@ -164,75 +159,71 @@ function getPrincipal(req: FastifyRequest): Principal | null {
 
 export function registerTimeEntries(app: FastifyInstance): void {
   // GET /v1/time-entries — list, consultant session OR mobile JWT.
-  app.get(
-    '/v1/time-entries',
-    { preHandler: requireConsultantOrMobile },
-    async (req, reply) => {
-      const principal = getPrincipal(req);
-      if (!principal) {
-        // Should never reach here — preHandler already replied — but
-        // belt-and-braces: don't double-reply.
-        if (!reply.sent) {
-          return reply
-            .status(401)
-            .send(errEnvelope('unauthenticated', 'No session', req.id));
-        }
-        return;
+  app.get('/v1/time-entries', { preHandler: requireConsultantOrMobile }, async (req, reply) => {
+    const principal = getPrincipal(req);
+    if (!principal) {
+      // Should never reach here — preHandler already replied — but
+      // belt-and-braces: don't double-reply.
+      if (!reply.sent) {
+        return reply.status(401).send(errEnvelope('unauthenticated', 'No session', req.id));
       }
-      const parsed = listTimeEntriesQuery.safeParse(req.query);
-      if (!parsed.success) {
-        return reply.status(400).send(
+      return;
+    }
+    const parsed = listTimeEntriesQuery.safeParse(req.query);
+    if (!parsed.success) {
+      return reply
+        .status(400)
+        .send(
           errEnvelope(
             'invalid_query',
             'Query must include subject_tenant_id; from/to are YYYY-MM-DD',
             req.id,
           ),
         );
+    }
+    const q = parsed.data;
+
+    // Mobile principals are forced to their own claimant + employee.
+    if (principal.kind === 'mobile') {
+      if (q.subject_tenant_id !== principal.subjectTenantId) {
+        return reply
+          .status(403)
+          .send(
+            errEnvelope(
+              'forbidden',
+              'Mobile sessions are restricted to their own claimant',
+              req.id,
+            ),
+          );
       }
-      const q = parsed.data;
-
-      // Mobile principals are forced to their own claimant + employee.
-      if (principal.kind === 'mobile') {
-        if (q.subject_tenant_id !== principal.subjectTenantId) {
-          return reply
-            .status(403)
-            .send(
-              errEnvelope(
-                'forbidden',
-                'Mobile sessions are restricted to their own claimant',
-                req.id,
-              ),
-            );
-        }
-        if (q.employee_id && q.employee_id !== principal.employeeId) {
-          return reply
-            .status(403)
-            .send(
-              errEnvelope(
-                'forbidden',
-                'Mobile sessions are restricted to their own employee_id',
-                req.id,
-              ),
-            );
-        }
+      if (q.employee_id && q.employee_id !== principal.employeeId) {
+        return reply
+          .status(403)
+          .send(
+            errEnvelope(
+              'forbidden',
+              'Mobile sessions are restricted to their own employee_id',
+              req.id,
+            ),
+          );
       }
+    }
 
-      // Compose the WHERE clauses from optional filters. Build by
-      // dispatching on the combination of present filters — simpler
-      // than dynamic SQL for v1 and explicit at the tagged-template
-      // boundary.
-      const tenantId = principal.tenantId;
-      const empFilter =
-        principal.kind === 'mobile' ? principal.employeeId : q.employee_id ?? null;
-      const fromTs = q.from ? `${q.from}T00:00:00Z` : null;
-      // 'to' is inclusive at the day boundary. Use < (next-day-00:00)
-      // semantics by adding a day; but for v1 we just take 23:59:59Z
-      // of the supplied day to keep the boundary obvious in SQL.
-      const toTs = q.to ? `${q.to}T23:59:59Z` : null;
+    // Compose the WHERE clauses from optional filters. Build by
+    // dispatching on the combination of present filters — simpler
+    // than dynamic SQL for v1 and explicit at the tagged-template
+    // boundary.
+    const tenantId = principal.tenantId;
+    const empFilter = principal.kind === 'mobile' ? principal.employeeId : (q.employee_id ?? null);
+    const fromTs = q.from ? `${q.from}T00:00:00Z` : null;
+    // 'to' is inclusive at the day boundary. Use < (next-day-00:00)
+    // semantics by adding a day; but for v1 we just take 23:59:59Z
+    // of the supplied day to keep the boundary obvious in SQL.
+    const toTs = q.to ? `${q.to}T23:59:59Z` : null;
 
-      const rows = await sql.begin(async (tx) => {
-        await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
-        const r = await tx<RawTimeEntryRow[]>`
+    const rows = await sql.begin(async (tx) => {
+      await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+      const r = await tx<RawTimeEntryRow[]>`
           SELECT id, tenant_id, subject_tenant_id, employee_id, source, external_id,
                  started_at, ended_at, duration_minutes, is_rd, apportionment_pct,
                  apportioned_by_user_id, apportioned_at, notes, flagged_at, created_at
@@ -244,74 +235,66 @@ export function registerTimeEntries(app: FastifyInstance): void {
              AND (${q.include_flagged} = true OR flagged_at IS NULL)
            ORDER BY started_at DESC
         `;
-        return r;
-      });
+      return r;
+    });
 
-      return { time_entries: rows.map(toApi) };
-    },
-  );
+    return { time_entries: rows.map(toApi) };
+  });
 
   // POST /v1/time-entries — manual create (mobile only).
-  app.post(
-    '/v1/time-entries',
-    { preHandler: requireMobileSession },
-    async (req, reply) => {
-      const principal = req.mobileUser;
-      if (!principal) {
-        // requireMobileSession already replied; defensive guard.
-        if (!reply.sent) {
-          return reply
-            .status(401)
-            .send(errEnvelope('unauthenticated', 'No mobile session', req.id));
-        }
-        return;
+  app.post('/v1/time-entries', { preHandler: requireMobileSession }, async (req, reply) => {
+    const principal = req.mobileUser;
+    if (!principal) {
+      // requireMobileSession already replied; defensive guard.
+      if (!reply.sent) {
+        return reply.status(401).send(errEnvelope('unauthenticated', 'No mobile session', req.id));
       }
+      return;
+    }
 
-      const parsed = createManualTimeEntryBody.safeParse(req.body);
-      if (!parsed.success) {
-        return reply.status(400).send(
+    const parsed = createManualTimeEntryBody.safeParse(req.body);
+    if (!parsed.success) {
+      return reply
+        .status(400)
+        .send(
           errEnvelope(
             'invalid_body',
             'Body must be { started_at, ended_at, is_rd?, notes? } with ended_at > started_at',
             req.id,
           ),
         );
-      }
-      const { started_at, ended_at, is_rd, notes } = parsed.data;
+    }
+    const { started_at, ended_at, is_rd, notes } = parsed.data;
 
-      // Confirm the mobile principal's employee row is still active.
-      // mobile-session refresh already does this, but we re-check to
-      // avoid letting a stale-cached token write rows for a since-
-      // deactivated employee.
-      const empRows = await privilegedSql<{ id: string; deactivated_at: Date | null }[]>`
+    // Confirm the mobile principal's employee row is still active.
+    // mobile-session refresh already does this, but we re-check to
+    // avoid letting a stale-cached token write rows for a since-
+    // deactivated employee.
+    const empRows = await privilegedSql<{ id: string; deactivated_at: Date | null }[]>`
         SELECT id, deactivated_at FROM subject_tenant_employee
          WHERE id = ${principal.employeeId}
            AND tenant_id = ${principal.tenantId}
            AND subject_tenant_id = ${principal.subjectTenantId}
       `;
-      const emp = empRows[0];
-      if (!emp || emp.deactivated_at !== null) {
-        return reply
-          .status(401)
-          .send(errEnvelope('unauthenticated', 'employee not active', req.id));
-      }
+    const emp = empRows[0];
+    if (!emp || emp.deactivated_at !== null) {
+      return reply.status(401).send(errEnvelope('unauthenticated', 'employee not active', req.id));
+    }
 
-      // Compute duration_minutes server-side. Round to nearest minute
-      // — sub-minute precision isn't useful for R&D apportionment.
-      const durationMs = new Date(ended_at).getTime() - new Date(started_at).getTime();
-      const duration_minutes = Math.round(durationMs / 60_000);
-      if (duration_minutes <= 0) {
-        return reply.status(400).send(
-          errEnvelope(
-            'invalid_body',
-            'Duration must be positive (ended_at > started_at)',
-            req.id,
-          ),
+    // Compute duration_minutes server-side. Round to nearest minute
+    // — sub-minute precision isn't useful for R&D apportionment.
+    const durationMs = new Date(ended_at).getTime() - new Date(started_at).getTime();
+    const duration_minutes = Math.round(durationMs / 60_000);
+    if (duration_minutes <= 0) {
+      return reply
+        .status(400)
+        .send(
+          errEnvelope('invalid_body', 'Duration must be positive (ended_at > started_at)', req.id),
         );
-      }
+    }
 
-      const id = crypto.randomUUID();
-      const inserted = await privilegedSql<RawTimeEntryRow[]>`
+    const id = crypto.randomUUID();
+    const inserted = await privilegedSql<RawTimeEntryRow[]>`
         INSERT INTO time_entry (
           id, tenant_id, subject_tenant_id, employee_id,
           source, external_id,
@@ -330,13 +313,12 @@ export function registerTimeEntries(app: FastifyInstance): void {
                   apportionment_pct, apportioned_by_user_id, apportioned_at,
                   notes, flagged_at, created_at
       `;
-      const row = inserted[0];
-      if (!row) {
-        throw new Error('POST /v1/time-entries: INSERT returned no row');
-      }
-      return reply.status(201).send({ time_entry: toApi(row) });
-    },
-  );
+    const row = inserted[0];
+    if (!row) {
+      throw new Error('POST /v1/time-entries: INSERT returned no row');
+    }
+    return reply.status(201).send({ time_entry: toApi(row) });
+  });
 
   // PATCH /v1/time-entries/:id/apportionment — consultant sets R&D %.
   app.patch<{ Params: { id: string } }>(
@@ -347,13 +329,7 @@ export function registerTimeEntries(app: FastifyInstance): void {
       if (role !== 'admin' && role !== 'consultant') {
         return reply
           .status(403)
-          .send(
-            errEnvelope(
-              'forbidden',
-              'Admin or consultant role required',
-              req.id,
-            ),
-          );
+          .send(errEnvelope('forbidden', 'Admin or consultant role required', req.id));
       }
       const { id } = req.params;
       const parsed = apportionmentBody.safeParse(req.body);
@@ -361,11 +337,7 @@ export function registerTimeEntries(app: FastifyInstance): void {
         return reply
           .status(400)
           .send(
-            errEnvelope(
-              'invalid_body',
-              'Body must be { apportionment_pct: number 0-100 }',
-              req.id,
-            ),
+            errEnvelope('invalid_body', 'Body must be { apportionment_pct: number 0-100 }', req.id),
           );
       }
       const { apportionment_pct } = parsed.data;
@@ -385,11 +357,7 @@ export function registerTimeEntries(app: FastifyInstance): void {
         return reply
           .status(404)
           .send(
-            errEnvelope(
-              'time_entry_not_found',
-              'No time_entry with that id in this firm',
-              req.id,
-            ),
+            errEnvelope('time_entry_not_found', 'No time_entry with that id in this firm', req.id),
           );
       }
 
@@ -411,13 +379,7 @@ export function registerTimeEntries(app: FastifyInstance): void {
         // than 500.
         return reply
           .status(404)
-          .send(
-            errEnvelope(
-              'time_entry_not_found',
-              'time_entry vanished mid-request',
-              req.id,
-            ),
-          );
+          .send(errEnvelope('time_entry_not_found', 'time_entry vanished mid-request', req.id));
       }
       return { time_entry: toApi(row) };
     },
@@ -432,13 +394,7 @@ export function registerTimeEntries(app: FastifyInstance): void {
       if (role !== 'admin' && role !== 'consultant') {
         return reply
           .status(403)
-          .send(
-            errEnvelope(
-              'forbidden',
-              'Admin or consultant role required',
-              req.id,
-            ),
-          );
+          .send(errEnvelope('forbidden', 'Admin or consultant role required', req.id));
       }
       const { id } = req.params;
       const tenantId = req.user!.tenantId!;
@@ -455,11 +411,7 @@ export function registerTimeEntries(app: FastifyInstance): void {
         return reply
           .status(404)
           .send(
-            errEnvelope(
-              'time_entry_not_found',
-              'No time_entry with that id in this firm',
-              req.id,
-            ),
+            errEnvelope('time_entry_not_found', 'No time_entry with that id in this firm', req.id),
           );
       }
 
@@ -476,16 +428,9 @@ export function registerTimeEntries(app: FastifyInstance): void {
       if (!row) {
         return reply
           .status(404)
-          .send(
-            errEnvelope(
-              'time_entry_not_found',
-              'time_entry vanished mid-request',
-              req.id,
-            ),
-          );
+          .send(errEnvelope('time_entry_not_found', 'time_entry vanished mid-request', req.id));
       }
       return { time_entry: toApi(row) };
     },
   );
 }
-

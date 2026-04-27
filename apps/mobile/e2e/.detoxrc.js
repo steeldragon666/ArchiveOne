@@ -12,12 +12,11 @@
  * pushing.
  */
 module.exports = {
-  testRunner: { args: { '$0': 'jest', config: 'e2e/jest.config.js' } },
+  testRunner: { args: { $0: 'jest', config: 'e2e/jest.config.js' } },
   apps: {
     'ios.sim.debug': {
       type: 'ios.app',
-      binaryPath:
-        'ios/build/Build/Products/Debug-iphonesimulator/CpaScribe.app',
+      binaryPath: 'ios/build/Build/Products/Debug-iphonesimulator/CpaScribe.app',
       build:
         'xcodebuild -workspace ios/CpaScribe.xcworkspace -scheme CpaScribe -configuration Debug -sdk iphonesimulator -derivedDataPath ios/build',
     },

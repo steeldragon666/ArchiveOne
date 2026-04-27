@@ -56,7 +56,8 @@ const RESERVED_SUBDOMAINS: ReadonlySet<string> = new Set([
  * reads the same env var, so dev environments where the target differs
  * stay consistent end-to-end.
  */
-const PLATFORM_CNAME_TARGET = process.env['PLATFORM_CNAME_TARGET'] ?? 'platform-cnames.platform.com.au';
+const PLATFORM_CNAME_TARGET =
+  process.env['PLATFORM_CNAME_TARGET'] ?? 'platform-cnames.platform.com.au';
 
 interface BrandRow {
   tenant_id: string;
@@ -88,12 +89,8 @@ const toApi = (r: BrandRow): BrandConfig => ({
   // PATCH responses (admin-only) and the wizard's GET path, omitted from
   // the public by-tenant lookup so mobile clients can't probe lifecycle
   // state.
-  ...(r.custom_domain_status !== undefined
-    ? { custom_domain_status: r.custom_domain_status }
-    : {}),
-  ...(r.email_sender_domain !== undefined
-    ? { email_sender_domain: r.email_sender_domain }
-    : {}),
+  ...(r.custom_domain_status !== undefined ? { custom_domain_status: r.custom_domain_status } : {}),
+  ...(r.email_sender_domain !== undefined ? { email_sender_domain: r.email_sender_domain } : {}),
   ...(r.email_sender_dkim_status !== undefined
     ? { email_sender_dkim_status: r.email_sender_dkim_status }
     : {}),
@@ -117,30 +114,27 @@ const toApi = (r: BrandRow): BrandConfig => ({
  *     UPDATE statement only touches whitelisted columns).
  */
 export function registerBrandConfig(app: FastifyInstance): void {
-  app.get<{ Params: { id: string } }>(
-    '/v1/brand-config/by-tenant/:id',
-    async (req, reply) => {
-      const { id } = req.params;
-      // privilegedSql: this is unauthed, no GUC. The fields we return
-      // are public-by-design — same rationale as F4's resolver.
-      const rows = await privilegedSql<BrandRow[]>`
+  app.get<{ Params: { id: string } }>('/v1/brand-config/by-tenant/:id', async (req, reply) => {
+    const { id } = req.params;
+    // privilegedSql: this is unauthed, no GUC. The fields we return
+    // are public-by-design — same rationale as F4's resolver.
+    const rows = await privilegedSql<BrandRow[]>`
         SELECT tenant_id, display_name, primary_color, accent_color,
                logo_s3_key, support_email, terms_of_service_url,
                custom_subdomain, custom_domain, landing_page_config
           FROM brand_config
          WHERE tenant_id = ${id}
       `;
-      const row = rows[0];
-      if (!row) {
-        return reply.status(404).send({
-          error: 'brand_config_not_found',
-          message: 'No brand_config for that tenant',
-          requestId: req.id,
-        });
-      }
-      return { brand_config: toApi(row) };
-    },
-  );
+    const row = rows[0];
+    if (!row) {
+      return reply.status(404).send({
+        error: 'brand_config_not_found',
+        message: 'No brand_config for that tenant',
+        requestId: req.id,
+      });
+    }
+    return { brand_config: toApi(row) };
+  });
 
   app.patch('/v1/brand-config', { preHandler: requireSession }, async (req, reply) => {
     if (req.user!.role !== 'admin') {
@@ -391,44 +385,41 @@ export function registerBrandConfig(app: FastifyInstance): void {
    * `cname_pending`); switching domains resets ACM ARN to NULL because
    * the old cert is no longer valid.
    */
-  app.post(
-    '/v1/brand-config/custom-domain',
-    { preHandler: requireSession },
-    async (req, reply) => {
-      if (req.user!.role !== 'admin') {
-        return reply.status(403).send({
-          error: 'forbidden',
-          message: 'Admin role required',
-          requestId: req.id,
-        });
-      }
-      const parsed = setCustomDomainBody.safeParse(req.body);
-      if (!parsed.success) {
-        return reply.status(400).send({
-          error: 'invalid_body',
-          message: 'Body must be { custom_domain: <lowercase FQDN, 4-253 chars> }',
-          requestId: req.id,
-        });
-      }
-      const { custom_domain } = parsed.data;
-      const tenantId = req.user!.tenantId!;
+  app.post('/v1/brand-config/custom-domain', { preHandler: requireSession }, async (req, reply) => {
+    if (req.user!.role !== 'admin') {
+      return reply.status(403).send({
+        error: 'forbidden',
+        message: 'Admin role required',
+        requestId: req.id,
+      });
+    }
+    const parsed = setCustomDomainBody.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.status(400).send({
+        error: 'invalid_body',
+        message: 'Body must be { custom_domain: <lowercase FQDN, 4-253 chars> }',
+        requestId: req.id,
+      });
+    }
+    const { custom_domain } = parsed.data;
+    const tenantId = req.user!.tenantId!;
 
-      // Uniqueness across firms — same shape as the subdomain check.
-      // The DB has a UNIQUE constraint too, so we'd 500 on a duplicate
-      // INSERT; surfacing 409 here is the friendlier path.
-      const existing = await privilegedSql<{ tenant_id: string }[]>`
+    // Uniqueness across firms — same shape as the subdomain check.
+    // The DB has a UNIQUE constraint too, so we'd 500 on a duplicate
+    // INSERT; surfacing 409 here is the friendlier path.
+    const existing = await privilegedSql<{ tenant_id: string }[]>`
         SELECT tenant_id FROM brand_config WHERE custom_domain = ${custom_domain}
       `;
-      const conflict = existing[0];
-      if (conflict && conflict.tenant_id !== tenantId) {
-        return reply.status(409).send({
-          error: 'domain_taken',
-          message: 'That domain is already registered to another firm',
-          requestId: req.id,
-        });
-      }
+    const conflict = existing[0];
+    if (conflict && conflict.tenant_id !== tenantId) {
+      return reply.status(409).send({
+        error: 'domain_taken',
+        message: 'That domain is already registered to another firm',
+        requestId: req.id,
+      });
+    }
 
-      await privilegedSql`
+    await privilegedSql`
         UPDATE brand_config
            SET custom_domain = ${custom_domain},
                custom_domain_status = 'cname_pending',
@@ -437,26 +428,25 @@ export function registerBrandConfig(app: FastifyInstance): void {
          WHERE tenant_id = ${tenantId}
       `;
 
-      return {
-        status: 'cname_pending',
-        cname_record: {
-          name: custom_domain,
-          type: 'CNAME',
-          value: PLATFORM_CNAME_TARGET,
-        },
-        instructions: [
-          `Create a CNAME record at your DNS provider:`,
-          `  Name:  ${custom_domain}`,
-          `  Type:  CNAME`,
-          `  Value: ${PLATFORM_CNAME_TARGET}`,
-          ``,
-          `DNS changes can take up to 24 hours to propagate. Once we detect`,
-          `the record we'll automatically issue an SSL certificate and bring`,
-          `your domain online.`,
-        ].join('\n'),
-      };
-    },
-  );
+    return {
+      status: 'cname_pending',
+      cname_record: {
+        name: custom_domain,
+        type: 'CNAME',
+        value: PLATFORM_CNAME_TARGET,
+      },
+      instructions: [
+        `Create a CNAME record at your DNS provider:`,
+        `  Name:  ${custom_domain}`,
+        `  Type:  CNAME`,
+        `  Value: ${PLATFORM_CNAME_TARGET}`,
+        ``,
+        `DNS changes can take up to 24 hours to propagate. Once we detect`,
+        `the record we'll automatically issue an SSL certificate and bring`,
+        `your domain online.`,
+      ].join('\n'),
+    };
+  });
 
   /**
    * DELETE /v1/brand-config/custom-domain  (admin-only)
@@ -536,30 +526,26 @@ export function registerBrandConfig(app: FastifyInstance): void {
    * pasting them into DNS. (Real impl will add a `dkim_tokens jsonb`
    * column or store on SES's side and re-fetch.)
    */
-  app.post(
-    '/v1/brand-config/email-sender',
-    { preHandler: requireSession },
-    async (req, reply) => {
-      if (req.user!.role !== 'admin') {
-        return reply.status(403).send({
-          error: 'forbidden',
-          message: 'Admin role required',
-          requestId: req.id,
-        });
-      }
-      const parsed = setEmailSenderBody.safeParse(req.body);
-      if (!parsed.success) {
-        return reply.status(400).send({
-          error: 'invalid_body',
-          message:
-            'Body must be { email_sender_domain: <lowercase FQDN, 4-253 chars> }',
-          requestId: req.id,
-        });
-      }
-      const { email_sender_domain } = parsed.data;
-      const tenantId = req.user!.tenantId!;
+  app.post('/v1/brand-config/email-sender', { preHandler: requireSession }, async (req, reply) => {
+    if (req.user!.role !== 'admin') {
+      return reply.status(403).send({
+        error: 'forbidden',
+        message: 'Admin role required',
+        requestId: req.id,
+      });
+    }
+    const parsed = setEmailSenderBody.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.status(400).send({
+        error: 'invalid_body',
+        message: 'Body must be { email_sender_domain: <lowercase FQDN, 4-253 chars> }',
+        requestId: req.id,
+      });
+    }
+    const { email_sender_domain } = parsed.data;
+    const tenantId = req.user!.tenantId!;
 
-      await privilegedSql`
+    await privilegedSql`
         UPDATE brand_config
            SET email_sender_domain = ${email_sender_domain},
                email_sender_dkim_status = 'pending',
@@ -567,31 +553,30 @@ export function registerBrandConfig(app: FastifyInstance): void {
          WHERE tenant_id = ${tenantId}
       `;
 
-      const tokens = [
-        crypto.randomBytes(24).toString('base64url'),
-        crypto.randomBytes(24).toString('base64url'),
-        crypto.randomBytes(24).toString('base64url'),
-      ];
-      const dkim_records = tokens.map((tok, i) => ({
-        name: `selector${i + 1}._domainkey.${email_sender_domain}`,
-        type: 'TXT',
-        // SES emits records like `v=DKIM1; k=rsa; p=<base64-public-key>`.
-        // The shape matches so the user can paste it directly when real
-        // DKIM lands and rotate without changing their DNS layout.
-        value: `v=DKIM1; k=rsa; p=${tok}`,
-      }));
+    const tokens = [
+      crypto.randomBytes(24).toString('base64url'),
+      crypto.randomBytes(24).toString('base64url'),
+      crypto.randomBytes(24).toString('base64url'),
+    ];
+    const dkim_records = tokens.map((tok, i) => ({
+      name: `selector${i + 1}._domainkey.${email_sender_domain}`,
+      type: 'TXT',
+      // SES emits records like `v=DKIM1; k=rsa; p=<base64-public-key>`.
+      // The shape matches so the user can paste it directly when real
+      // DKIM lands and rotate without changing their DNS layout.
+      value: `v=DKIM1; k=rsa; p=${tok}`,
+    }));
 
-      return {
-        status: 'pending',
-        dkim_records,
-        instructions: [
-          `Create 3 TXT records at your DNS provider — one for each selector below.`,
-          `Once published, click "Verify DNS" to check propagation. DNS changes`,
-          `can take up to 24 hours.`,
-        ].join('\n'),
-      };
-    },
-  );
+    return {
+      status: 'pending',
+      dkim_records,
+      instructions: [
+        `Create 3 TXT records at your DNS provider — one for each selector below.`,
+        `Once published, click "Verify DNS" to check propagation. DNS changes`,
+        `can take up to 24 hours.`,
+      ].join('\n'),
+    };
+  });
 
   /**
    * POST /v1/brand-config/email-sender/check  (admin-only)

@@ -108,7 +108,17 @@ test('runTranscribeJob: patches event payload with deepgram transcript', async (
   });
 
   // Verify the payload was patched in place.
-  const rows = await privilegedSql<{ payload: { source: string; raw_text: string; transcript_confidence: number; transcript_duration_seconds: number; _v: number } }[]>`
+  const rows = await privilegedSql<
+    {
+      payload: {
+        source: string;
+        raw_text: string;
+        transcript_confidence: number;
+        transcript_duration_seconds: number;
+        _v: number;
+      };
+    }[]
+  >`
     SELECT payload FROM event WHERE id = ${event.id}
   `;
   assert.equal(rows[0]?.payload.source, 'voice');
@@ -146,10 +156,7 @@ test('runTranscribeJob: surfaces deepgram errors verbatim', async () => {
   const stub = mock.method(transcribeMod, 'getMediaBytes', () =>
     Promise.resolve(Buffer.from([0x00])),
   );
-  nock('https://api.deepgram.com')
-    .post('/v1/listen')
-    .query(true)
-    .reply(401, 'unauthorized');
+  nock('https://api.deepgram.com').post('/v1/listen').query(true).reply(401, 'unauthorized');
 
   await assert.rejects(
     runTranscribeJob({

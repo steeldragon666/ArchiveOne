@@ -53,8 +53,8 @@ export default function PhotoCaptureScreen() {
       <View style={styles.container}>
         <Text style={styles.title}>Camera permission needed</Text>
         <Text style={styles.help}>
-          Photos are stored as evidence in your firm's vault. We never
-          access the camera without your tap.
+          Photos are stored as evidence in your firm's vault. We never access the camera without
+          your tap.
         </Text>
         <Pressable
           onPress={() => {
@@ -114,16 +114,17 @@ export default function PhotoCaptureScreen() {
       <View style={styles.container}>
         <Text style={styles.title}>Preview</Text>
         {error ? <Text style={styles.error}>{error}</Text> : null}
-        <Image
-          source={{ uri: state.photo.uri }}
-          style={styles.previewImage}
-          resizeMode="contain"
-        />
+        <Image source={{ uri: state.photo.uri }} style={styles.previewImage} resizeMode="contain" />
         <View style={styles.actions}>
           <Pressable onPress={handleDiscard} style={[styles.action, styles.discard]}>
             <Text style={styles.actionLabel}>Discard</Text>
           </Pressable>
-          <Pressable onPress={handleSubmit} style={[styles.action, styles.submit]}>
+          <Pressable
+            onPress={() => {
+              void handleSubmit();
+            }}
+            style={[styles.action, styles.submit]}
+          >
             <Text style={styles.actionLabel}>Submit</Text>
           </Pressable>
         </View>
@@ -149,11 +150,10 @@ export default function PhotoCaptureScreen() {
       ) : null}
       <View style={styles.shutterContainer}>
         <Pressable
-          onPress={handleShutter}
-          style={({ pressed }) => [
-            styles.shutterButton,
-            pressed && styles.shutterButtonPressed,
-          ]}
+          onPress={() => {
+            void handleShutter();
+          }}
+          style={({ pressed }) => [styles.shutterButton, pressed && styles.shutterButtonPressed]}
         />
       </View>
     </View>

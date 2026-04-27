@@ -6,8 +6,7 @@ import { sql, privilegedSql } from '@cpa/db/client';
 import { buildApp } from '../app.js';
 import { MOBILE_AUDIENCE } from '../middleware/mobile-jwt-verifier.js';
 
-const SESSION_SECRET =
-  process.env['SESSION_JWT_SECRET'] ?? 'dev-only-32-bytes-of-entropy-pad!';
+const SESSION_SECRET = process.env['SESSION_JWT_SECRET'] ?? 'dev-only-32-bytes-of-entropy-pad!';
 process.env['SESSION_JWT_SECRET'] = SESSION_SECRET;
 
 const TENANT_A = '00000000-0000-4000-8000-0000000a6001';
@@ -64,11 +63,13 @@ after(async () => {
 
 const ACCESS_TOKEN_TTL_SECONDS = 60 * 60;
 
-const mobileToken = async (args: {
-  employeeId?: string;
-  tenantId?: string;
-  subjectTenantId?: string;
-} = {}): Promise<string> => {
+const mobileToken = async (
+  args: {
+    employeeId?: string;
+    tenantId?: string;
+    subjectTenantId?: string;
+  } = {},
+): Promise<string> => {
   const now = Math.floor(Date.now() / 1000);
   const key = new TextEncoder().encode(SESSION_SECRET);
   return await new SignJWT({
@@ -111,10 +112,7 @@ test('POST /v1/media/presigned-upload: 200 returns stub URL + canonical s3_key',
     content_hash_required: string;
   }>();
   assert.match(j.upload_url, /^https:\/\/placeholder\.s3\.amazonaws\.com\//);
-  assert.equal(
-    j.s3_key,
-    `tenants/${TENANT_A}/subjects/${SUBJECT_A1}/${FAKE_SHA}`,
-  );
+  assert.equal(j.s3_key, `tenants/${TENANT_A}/subjects/${SUBJECT_A1}/${FAKE_SHA}`);
   assert.equal(j.content_hash_required, FAKE_SHA);
   await app.close();
 });

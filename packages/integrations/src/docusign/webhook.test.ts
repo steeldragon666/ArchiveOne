@@ -62,7 +62,9 @@ test('verifyAndParse: valid signature + valid JSON returns parsed event', () => 
 });
 
 test('verifyAndParse: invalid signature returns null', () => {
-  const body = Buffer.from('{"envelopeId":"x","status":"sent","statusChangedDateTime":"2026-04-27T14:00:00Z"}');
+  const body = Buffer.from(
+    '{"envelopeId":"x","status":"sent","statusChangedDateTime":"2026-04-27T14:00:00Z"}',
+  );
   const wrongSig = crypto.createHmac('sha256', 'different-key').update(body).digest('base64');
   const parsed = verifyAndParse(body, wrongSig, SECRET);
   assert.equal(parsed, null);
@@ -76,9 +78,13 @@ test('verifyAndParse: valid signature + malformed JSON returns null', () => {
 });
 
 test('verifyAndParse: tampered body fails signature check', () => {
-  const original = Buffer.from('{"envelopeId":"x","status":"sent","statusChangedDateTime":"2026-04-27T14:00:00Z"}');
+  const original = Buffer.from(
+    '{"envelopeId":"x","status":"sent","statusChangedDateTime":"2026-04-27T14:00:00Z"}',
+  );
   const sig = sign(original);
-  const tampered = Buffer.from('{"envelopeId":"y","status":"sent","statusChangedDateTime":"2026-04-27T14:00:00Z"}');
+  const tampered = Buffer.from(
+    '{"envelopeId":"y","status":"sent","statusChangedDateTime":"2026-04-27T14:00:00Z"}',
+  );
   const parsed = verifyAndParse(tampered, sig, SECRET);
   assert.equal(parsed, null);
 });

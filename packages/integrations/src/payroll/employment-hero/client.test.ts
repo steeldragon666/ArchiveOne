@@ -2,11 +2,7 @@ import { test, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import nock from 'nock';
 import { buildAuthUrl, exchangeCode, refreshAccessToken } from './oauth.js';
-import {
-  listEmployees,
-  listTimesheets,
-  type EmploymentHeroClientOptions,
-} from './client.js';
+import { listEmployees, listTimesheets, type EmploymentHeroClientOptions } from './client.js';
 import { EH_API_BASE, EH_OAUTH_AUTHORIZE_URL, EH_SCOPES } from './types.js';
 
 const ORG_ID = 'org-eh-001';
@@ -84,9 +80,7 @@ test('exchangeCode: happy path returns OAuthTokens with computed expires_at', as
 });
 
 test('exchangeCode: 400 throws with descriptive message', async () => {
-  nock('https://oauth.employmenthero.com')
-    .post('/oauth2/token')
-    .reply(400, 'invalid_grant');
+  nock('https://oauth.employmenthero.com').post('/oauth2/token').reply(400, 'invalid_grant');
 
   await assert.rejects(
     exchangeCode({
@@ -284,33 +278,23 @@ test(
       .times(5)
       .reply(401, 'unauthorized');
 
-    await assert.rejects(
-      listEmployees(opts()),
-      /employment_hero list employees: 401/,
-    );
+    await assert.rejects(listEmployees(opts()), /employment_hero list employees: 401/);
   },
 );
 
-test(
-  'listEmployees: persistent 5xx throws after retry budget',
-  { timeout: 60_000 },
-  async () => {
-    // withRetry retries on thrown exceptions from the wrapped function. fetch
-    // only rejects on network errors, not status codes — the !res.ok throw
-    // happens AFTER withRetry resolves. So even a single 503 surfaces as a
-    // thrown error here, but we use times(5) to mirror the docusign pattern
-    // and document the retry budget.
-    nock('https://api.employmenthero.com')
-      .get(`/api/v1/organisations/${ORG_ID}/employees`)
-      .times(5)
-      .reply(503, 'unavailable');
+test('listEmployees: persistent 5xx throws after retry budget', { timeout: 60_000 }, async () => {
+  // withRetry retries on thrown exceptions from the wrapped function. fetch
+  // only rejects on network errors, not status codes — the !res.ok throw
+  // happens AFTER withRetry resolves. So even a single 503 surfaces as a
+  // thrown error here, but we use times(5) to mirror the docusign pattern
+  // and document the retry budget.
+  nock('https://api.employmenthero.com')
+    .get(`/api/v1/organisations/${ORG_ID}/employees`)
+    .times(5)
+    .reply(503, 'unavailable');
 
-    await assert.rejects(
-      listEmployees(opts()),
-      /employment_hero list employees: 503/,
-    );
-  },
-);
+  await assert.rejects(listEmployees(opts()), /employment_hero list employees: 503/);
+});
 
 test('client: respects custom base_url override', async () => {
   nock('https://eh-staging.example')

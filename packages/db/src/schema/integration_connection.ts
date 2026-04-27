@@ -52,9 +52,7 @@ export const integrationConnection = pgTable(
     scopes: text('scopes').array(),
     externalAccountId: text('external_account_id'),
     lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }),
-    syncState: text('sync_state', { enum: INTEGRATION_SYNC_STATES })
-      .notNull()
-      .default('idle'),
+    syncState: text('sync_state', { enum: INTEGRATION_SYNC_STATES }).notNull().default('idle'),
     lastError: text('last_error'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true })

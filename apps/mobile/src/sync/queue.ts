@@ -136,7 +136,9 @@ export function useQueueDepth(pollMs = 2000): number {
         // pre-migration boot or transient handle issue — keep last value
       }
       if (!cancelled) {
-        timer = setTimeout(tick, pollMs);
+        timer = setTimeout(() => {
+          void tick();
+        }, pollMs);
       }
     }
 

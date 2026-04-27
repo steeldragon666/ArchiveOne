@@ -68,9 +68,7 @@ export function LogoUpload({ currentLogo }: { currentLogo: string | null }) {
       <Button onClick={() => file && upload.mutate(file)} disabled={!file || upload.isPending}>
         {upload.isPending ? 'Uploading…' : 'Upload Logo'}
       </Button>
-      {currentLogo && (
-        <p className="text-xs text-muted-foreground">Current: {currentLogo}</p>
-      )}
+      {currentLogo && <p className="text-xs text-muted-foreground">Current: {currentLogo}</p>}
     </div>
   );
 }

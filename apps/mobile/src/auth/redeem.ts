@@ -2,10 +2,7 @@ import Constants from 'expo-constants';
 import * as Application from 'expo-application';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
-import type {
-  MagicLinkRedeemBody,
-  MagicLinkRedeemResponse,
-} from '../api-client/types.js';
+import type { MagicLinkRedeemBody, MagicLinkRedeemResponse } from '../api-client/types.js';
 
 /**
  * Resolve the API base URL.
@@ -18,7 +15,10 @@ import type {
 export function getApiBaseUrl(): string {
   const fromEnv = process.env.EXPO_PUBLIC_API_URL;
   if (fromEnv && fromEnv.length > 0) return fromEnv;
-  const fromExtra = Constants.expoConfig?.extra?.apiUrl;
+  // `Constants.expoConfig?.extra` is typed `Record<string, any>` by
+  // expo-constants, so the property access leaks `any` into our scope.
+  // Annotate as `unknown` and let the typeof-string guard narrow it.
+  const fromExtra: unknown = Constants.expoConfig?.extra?.apiUrl;
   if (typeof fromExtra === 'string' && fromExtra.length > 0) return fromExtra;
   return 'https://platform.com.au';
 }
@@ -73,8 +73,7 @@ export async function getExpoPushTokenSafe(): Promise<string | null> {
 
     const settings = await Notifications.getPermissionsAsync();
     let granted =
-      settings.granted ||
-      settings.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL;
+      settings.granted || settings.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL;
     if (!granted) {
       const requested = await Notifications.requestPermissionsAsync();
       granted =

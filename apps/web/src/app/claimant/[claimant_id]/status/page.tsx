@@ -65,11 +65,7 @@ export default async function ClaimantStatusPage({ params }: Props) {
       >
         <div className="mx-auto flex max-w-4xl items-center gap-3">
           {logoUrl ? (
-            <img
-              src={logoUrl}
-              alt={`${data.brand.display_name} logo`}
-              className="h-10 w-auto"
-            />
+            <img src={logoUrl} alt={`${data.brand.display_name} logo`} className="h-10 w-auto" />
           ) : (
             <div
               className="flex h-10 w-10 items-center justify-center rounded font-bold text-white"
@@ -79,9 +75,7 @@ export default async function ClaimantStatusPage({ params }: Props) {
             </div>
           )}
           <div>
-            <h1 className="text-lg font-semibold text-slate-900">
-              {data.brand.display_name}
-            </h1>
+            <h1 className="text-lg font-semibold text-slate-900">{data.brand.display_name}</h1>
             <p className="text-xs text-slate-500">{data.subject_tenant.name}</p>
           </div>
         </div>
@@ -108,8 +102,7 @@ export default async function ClaimantStatusPage({ params }: Props) {
                 <span className="text-sm text-slate-500">/ 100</span>
               </div>
               <p className="mt-1 text-xs text-slate-500">
-                Placeholder score — full breakdown coming with the
-                scoring engine
+                Placeholder score — full breakdown coming with the scoring engine
               </p>
               <Link
                 href={`/claimant/${claimant_id}/score`}
@@ -127,8 +120,8 @@ export default async function ClaimantStatusPage({ params }: Props) {
             <CardContent>
               {data.pending_rfis.length === 0 ? (
                 <p className="text-sm text-slate-500">
-                  No requests from your consultant right now. You&apos;ll see
-                  any document or evidence asks here.
+                  No requests from your consultant right now. You&apos;ll see any document or
+                  evidence asks here.
                 </p>
               ) : (
                 <ul className="space-y-2 text-sm">

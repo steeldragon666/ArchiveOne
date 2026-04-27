@@ -24,11 +24,7 @@ function canonicalJsonStringify(value: unknown): string {
   const obj = value as Record<string, unknown>;
   const keys = Object.keys(obj).sort();
   return (
-    '{' +
-    keys
-      .map((k) => JSON.stringify(k) + ':' + canonicalJsonStringify(obj[k]))
-      .join(',') +
-    '}'
+    '{' + keys.map((k) => JSON.stringify(k) + ':' + canonicalJsonStringify(obj[k])).join(',') + '}'
   );
 }
 

@@ -111,10 +111,7 @@ export function CreateClaimantButton() {
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
-          <form
-            onSubmit={(e) => void form.handleSubmit(onSubmit)(e)}
-            className="space-y-4"
-          >
+          <form onSubmit={(e) => void form.handleSubmit(onSubmit)(e)} className="space-y-4">
             <FormField
               control={form.control}
               name="name"

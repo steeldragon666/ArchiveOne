@@ -19,11 +19,7 @@ import { PasteForm } from './_components/paste-form';
  * users/[userId]/page.tsx): `'use client'` + React.use(params) so the
  * AuthGuard wraps cleanly without needing server-side cookie reads.
  */
-export default function SubjectTenantDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default function SubjectTenantDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   return (
     <AuthGuard>

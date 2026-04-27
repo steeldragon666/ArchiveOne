@@ -3,10 +3,7 @@ import { test, after, before, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { sql, privilegedSql } from '@cpa/db/client';
 import { insertEventWithChain } from '@cpa/db';
-import {
-  runDailyCapturePushJob,
-  selectEligibleRecipients,
-} from './daily-capture-push.js';
+import { runDailyCapturePushJob, selectEligibleRecipients } from './daily-capture-push.js';
 
 // Pinned UUIDs — the 0a12 segment groups all A12 fixtures.
 const TENANT = '00000000-0000-4000-8000-0000000a1201';
@@ -214,7 +211,12 @@ test('selectEligibleRecipients: excludes employee who has captured today', async
     tenant_id: TENANT,
     subject_tenant_id: SUBJECT,
     kind: 'SUPPORTING',
-    payload: { _v: 1, source: 'voice_pending', audio_s3_key: 's3://bucket/test', captured_at_local: Date.now() },
+    payload: {
+      _v: 1,
+      source: 'voice_pending',
+      audio_s3_key: 's3://bucket/test',
+      captured_at_local: Date.now(),
+    },
     classification: null,
     captured_at: new Date(),
     captured_by_user_id: EMP_CAPTURED_TODAY,

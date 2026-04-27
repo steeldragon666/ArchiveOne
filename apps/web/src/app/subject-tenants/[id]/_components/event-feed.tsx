@@ -20,15 +20,10 @@ export interface EventFeedProps {
   limit?: number;
 }
 
-export function EventFeed({
-  subjectTenantId,
-  filter = 'all',
-  limit = 50,
-}: EventFeedProps) {
+export function EventFeed({ subjectTenantId, filter = 'all', limit = 50 }: EventFeedProps) {
   const { data, isPending, error } = useQuery({
     queryKey: ['events', subjectTenantId, filter, limit],
-    queryFn: () =>
-      listEvents({ subject_tenant_id: subjectTenantId, filter, limit }),
+    queryFn: () => listEvents({ subject_tenant_id: subjectTenantId, filter, limit }),
   });
 
   // The override modal is shared across all cards in the feed — only
@@ -57,11 +52,7 @@ export function EventFeed({
     <>
       <div className="space-y-3">
         {data.events.map((event) => (
-          <EventCard
-            key={event.id}
-            event={event}
-            onOverride={setOverrideTarget}
-          />
+          <EventCard key={event.id} event={event} onOverride={setOverrideTarget} />
         ))}
       </div>
       <OverrideModal

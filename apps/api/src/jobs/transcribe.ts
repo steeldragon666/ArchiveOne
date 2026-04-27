@@ -30,9 +30,7 @@ export type TranscribeJobInput = {
  */
 export function getMediaBytes(_s3Key: string): Promise<Buffer> {
   return Promise.reject(
-    new Error(
-      'getMediaBytes: S3 fetch not implemented — wire S3 client in a follow-up task',
-    ),
+    new Error('getMediaBytes: S3 fetch not implemented — wire S3 client in a follow-up task'),
   );
 }
 

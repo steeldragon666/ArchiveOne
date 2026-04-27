@@ -213,14 +213,12 @@ test('GET /v1/integrations/:provider/callback: 400 on missing state cookie', asy
 
 test('GET /v1/integrations/:provider/callback: success → encrypts tokens, upserts row, 302', async () => {
   // Mock DocuSign's token endpoint.
-  nock('https://account-d.docusign.com')
-    .post('/oauth/token')
-    .reply(200, {
-      access_token: 'fake-access-token-12345',
-      refresh_token: 'fake-refresh-token-67890',
-      expires_in: 3600,
-      scope: 'signature impersonation',
-    });
+  nock('https://account-d.docusign.com').post('/oauth/token').reply(200, {
+    access_token: 'fake-access-token-12345',
+    refresh_token: 'fake-refresh-token-67890',
+    expires_in: 3600,
+    scope: 'signature impersonation',
+  });
 
   const stash = JSON.stringify({ state: 'real-state', verifier: 'pkce-verifier' });
   const app = buildApp();
@@ -236,10 +234,12 @@ test('GET /v1/integrations/:provider/callback: success → encrypts tokens, upse
   assert.match(res.headers['location'] as string, /docusign/);
 
   // The integration_connection row should exist with encrypted tokens.
-  const rows = await privilegedSql<{
-    access_token_encrypted: string;
-    refresh_token_encrypted: string | null;
-  }[]>`
+  const rows = await privilegedSql<
+    {
+      access_token_encrypted: string;
+      refresh_token_encrypted: string | null;
+    }[]
+  >`
     SELECT access_token_encrypted, refresh_token_encrypted
       FROM integration_connection
      WHERE tenant_id = ${TENANT_A} AND provider = 'docusign'
@@ -278,11 +278,13 @@ test('DELETE /v1/integrations/:provider: archives the row', async () => {
     });
     assert.equal(res.statusCode, 204);
 
-    const rows = await privilegedSql<{
-      access_token_encrypted: string;
-      sync_state: string;
-      last_error: string | null;
-    }[]>`
+    const rows = await privilegedSql<
+      {
+        access_token_encrypted: string;
+        sync_state: string;
+        last_error: string | null;
+      }[]
+    >`
       SELECT access_token_encrypted, sync_state, last_error
         FROM integration_connection
        WHERE tenant_id = ${TENANT_A} AND provider = 'docusign'

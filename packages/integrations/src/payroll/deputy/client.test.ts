@@ -143,9 +143,7 @@ test('refreshAccessToken: happy path returns new tokens', async () => {
 });
 
 test('refreshAccessToken: 401 throws', async () => {
-  nock('https://once.deputy.com')
-    .post('/oauth/access_token')
-    .reply(401, 'invalid refresh token');
+  nock('https://once.deputy.com').post('/oauth/access_token').reply(401, 'invalid refresh token');
 
   await assert.rejects(
     refreshAccessToken({
@@ -217,9 +215,7 @@ test('listEmployees: full page (500 results) → next_cursor=500', async () => {
     EmployeeStartDate: '2024-01-01',
     Active: 1,
   }));
-  nock(INSTALL_URL)
-    .post('/api/v1/resource/Employee/QUERY')
-    .reply(200, data);
+  nock(INSTALL_URL).post('/api/v1/resource/Employee/QUERY').reply(200, data);
 
   const { employees, next_cursor } = await listEmployees(opts());
   assert.equal(employees.length, 500);
@@ -274,19 +270,13 @@ test('listEmployees: changed_since adds Modified search predicate (unix seconds)
 });
 
 test('listEmployees: 401 throws after retry exhaustion', { timeout: 60_000 }, async () => {
-  nock(INSTALL_URL)
-    .post('/api/v1/resource/Employee/QUERY')
-    .times(5)
-    .reply(401, 'unauthorized');
+  nock(INSTALL_URL).post('/api/v1/resource/Employee/QUERY').times(5).reply(401, 'unauthorized');
 
   await assert.rejects(listEmployees(opts()), /deputy list employees: 401/);
 });
 
 test('listEmployees: persistent 5xx throws after retry budget', { timeout: 60_000 }, async () => {
-  nock(INSTALL_URL)
-    .post('/api/v1/resource/Employee/QUERY')
-    .times(5)
-    .reply(503, 'unavailable');
+  nock(INSTALL_URL).post('/api/v1/resource/Employee/QUERY').times(5).reply(503, 'unavailable');
 
   await assert.rejects(listEmployees(opts()), /deputy list employees: 503/);
 });

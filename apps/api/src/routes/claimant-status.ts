@@ -84,9 +84,7 @@ export async function requireClaimantSession(
 ): Promise<ClaimantSessionPrincipal | null> {
   const cookieValue = req.cookies[CLAIMANT_SESSION_COOKIE];
   if (typeof cookieValue !== 'string' || cookieValue.length === 0) {
-    await reply
-      .status(401)
-      .send(errEnvelope('UNAUTHENTICATED', 'No claimant session', req.id));
+    await reply.status(401).send(errEnvelope('UNAUTHENTICATED', 'No claimant session', req.id));
     return null;
   }
   try {
@@ -149,21 +147,21 @@ export function registerClaimantStatus(app: FastifyInstance): void {
       // employees only see their own claimant. The JWT's
       // subject_tenant_id is the one we trust.
       if (principal.subjectTenantId !== claimant_id) {
-        return reply
-          .status(404)
-          .send(errEnvelope('NOT_FOUND', 'Claimant not found', req.id));
+        return reply.status(404).send(errEnvelope('NOT_FOUND', 'Claimant not found', req.id));
       }
 
       // Step 1: load the subject_tenant + the firm's brand row in one
       // round-trip. Both tables live under the same tenant_id; we filter
       // explicitly here since RLS requires a session GUC the PWA cookie
       // doesn't set on the connection.
-      const subjectRows = await privilegedSql<{
-        id: string;
-        name: string;
-        kind: 'claimant' | 'financier';
-        deleted_at: Date | null;
-      }[]>`
+      const subjectRows = await privilegedSql<
+        {
+          id: string;
+          name: string;
+          kind: 'claimant' | 'financier';
+          deleted_at: Date | null;
+        }[]
+      >`
         SELECT id, name, kind, deleted_at
           FROM subject_tenant
          WHERE id = ${claimant_id}
@@ -171,17 +169,17 @@ export function registerClaimantStatus(app: FastifyInstance): void {
       `;
       const subject = subjectRows[0];
       if (!subject || subject.deleted_at !== null) {
-        return reply
-          .status(404)
-          .send(errEnvelope('NOT_FOUND', 'Claimant not found', req.id));
+        return reply.status(404).send(errEnvelope('NOT_FOUND', 'Claimant not found', req.id));
       }
 
-      const brandRows = await privilegedSql<{
-        display_name: string;
-        primary_color: string;
-        accent_color: string;
-        logo_s3_key: string | null;
-      }[]>`
+      const brandRows = await privilegedSql<
+        {
+          display_name: string;
+          primary_color: string;
+          accent_color: string;
+          logo_s3_key: string | null;
+        }[]
+      >`
         SELECT display_name, primary_color, accent_color, logo_s3_key
           FROM brand_config
          WHERE tenant_id = ${principal.tenantId}
@@ -199,12 +197,14 @@ export function registerClaimantStatus(app: FastifyInstance): void {
       // tenant-denormalised (event.tenant_id = principal.tenantId), so
       // a defensive AND on tenant_id catches any cross-firm slip even
       // before RLS would apply.
-      const events = await sql<{
-        id: string;
-        kind: string;
-        payload: unknown;
-        captured_at: Date | string;
-      }[]>`
+      const events = await sql<
+        {
+          id: string;
+          kind: string;
+          payload: unknown;
+          captured_at: Date | string;
+        }[]
+      >`
         SELECT id, kind, payload, captured_at
           FROM event
          WHERE subject_tenant_id = ${claimant_id}
@@ -223,9 +223,7 @@ export function registerClaimantStatus(app: FastifyInstance): void {
           id: e.id,
           kind: e.kind,
           captured_at:
-            typeof e.captured_at === 'string'
-              ? e.captured_at
-              : e.captured_at.toISOString(),
+            typeof e.captured_at === 'string' ? e.captured_at : e.captured_at.toISOString(),
           snippet: eventSnippet(e.kind, e.payload),
         })),
         // Placeholder; the pending_rfi table arrives with the

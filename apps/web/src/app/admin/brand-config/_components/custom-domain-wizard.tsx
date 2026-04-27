@@ -153,10 +153,7 @@ export function CustomDomainWizard({
   }
 
   // cname_pending / cert_pending — show instructions if we have them.
-  if (
-    (currentStatus === 'cname_pending' || currentStatus === 'cert_pending') &&
-    currentDomain
-  ) {
+  if ((currentStatus === 'cname_pending' || currentStatus === 'cert_pending') && currentDomain) {
     return (
       <div className="space-y-3">
         <p className="text-sm text-amber-700">
@@ -166,9 +163,8 @@ export function CustomDomainWizard({
         {recentCname && <CnameInstructions data={recentCname} />}
         {!recentCname && (
           <p className="text-xs text-muted-foreground">
-            Once your DNS provider publishes the CNAME, we&apos;ll detect it automatically and
-            issue a certificate (typically within 24 hours). Use{' '}
-            <strong>Refresh</strong> to check status.
+            Once your DNS provider publishes the CNAME, we&apos;ll detect it automatically and issue
+            a certificate (typically within 24 hours). Use <strong>Refresh</strong> to check status.
           </p>
         )}
         <div className="flex gap-2">
@@ -208,8 +204,7 @@ export function CustomDomainWizard({
       />
       {domainInput !== '' && !inputValid && (
         <p className="text-sm text-red-600" aria-live="polite">
-          <span aria-hidden="true">✗</span> Must be a lowercase FQDN like
-          platform.acme.com.au
+          <span aria-hidden="true">✗</span> Must be a lowercase FQDN like platform.acme.com.au
         </p>
       )}
       <Button
@@ -236,9 +231,7 @@ function CnameInstructions({ data }: { data: SetCustomDomainResponse }) {
         <dt className="font-medium">Value</dt>
         <dd>{data.cname_record.value}</dd>
       </dl>
-      <p className="text-xs text-muted-foreground whitespace-pre-line">
-        {data.instructions}
-      </p>
+      <p className="text-xs text-muted-foreground whitespace-pre-line">{data.instructions}</p>
     </div>
   );
 }

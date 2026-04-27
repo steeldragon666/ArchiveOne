@@ -460,10 +460,12 @@ test('POST /v1/brand-config/email-sender: 200 sets pending + returns 3 DKIM reco
   assert.match(body.dkim_records[0]?.value ?? '', /^v=DKIM1; k=rsa; p=/);
 
   // Verify persistence.
-  const rows = await privilegedSql<{
-    email_sender_domain: string | null;
-    email_sender_dkim_status: string;
-  }[]>`
+  const rows = await privilegedSql<
+    {
+      email_sender_domain: string | null;
+      email_sender_dkim_status: string;
+    }[]
+  >`
     SELECT email_sender_domain, email_sender_dkim_status
       FROM brand_config WHERE tenant_id = ${TENANT_A}
   `;
@@ -549,7 +551,9 @@ test('DELETE /v1/brand-config/custom-domain: 200 resets to unconfigured (T-C6)',
   assert.equal(res.statusCode, 200);
   assert.equal(res.json<{ status: string }>().status, 'unconfigured');
 
-  const rows = await privilegedSql<{ custom_domain: string | null; custom_domain_status: string }[]>`
+  const rows = await privilegedSql<
+    { custom_domain: string | null; custom_domain_status: string }[]
+  >`
     SELECT custom_domain, custom_domain_status FROM brand_config WHERE tenant_id = ${TENANT_A}
   `;
   assert.equal(rows[0]?.custom_domain, null);

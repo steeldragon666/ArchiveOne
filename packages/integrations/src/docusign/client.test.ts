@@ -141,28 +141,24 @@ test(
   },
 );
 
-test(
-  'createEnvelope: 5xx triggers retry and ultimately throws',
-  { timeout: 60_000 },
-  async () => {
-    // 5 sequential 500s — exhausts the default retry budget and surfaces
-    // as a thrown error to the caller.
-    nock('https://demo.docusign.net')
-      .post(`/restapi/v2.1/accounts/${ACCOUNT_ID}/envelopes`)
-      .times(5)
-      .reply(500, 'internal');
+test('createEnvelope: 5xx triggers retry and ultimately throws', { timeout: 60_000 }, async () => {
+  // 5 sequential 500s — exhausts the default retry budget and surfaces
+  // as a thrown error to the caller.
+  nock('https://demo.docusign.net')
+    .post(`/restapi/v2.1/accounts/${ACCOUNT_ID}/envelopes`)
+    .times(5)
+    .reply(500, 'internal');
 
-    await assert.rejects(
-      createEnvelope(opts(), {
-        template_id: 'tpl',
-        recipient_email: 'r@example.com',
-        recipient_name: 'R Person',
-        subject: 'x',
-      }),
-      /docusign create envelope: 500/,
-    );
-  },
-);
+  await assert.rejects(
+    createEnvelope(opts(), {
+      template_id: 'tpl',
+      recipient_email: 'r@example.com',
+      recipient_name: 'R Person',
+      subject: 'x',
+    }),
+    /docusign create envelope: 500/,
+  );
+});
 
 test('getSignedDocument: returns Buffer with the PDF bytes', async () => {
   const fakePdf = Buffer.from('%PDF-1.4 fake pdf bytes');
@@ -181,8 +177,5 @@ test('getSignedDocument: throws on non-2xx', async () => {
     .get(`/restapi/v2.1/accounts/${ACCOUNT_ID}/envelopes/env-missing/documents/combined`)
     .reply(404, 'not found');
 
-  await assert.rejects(
-    getSignedDocument(opts(), 'env-missing'),
-    /docusign get document: 404/,
-  );
+  await assert.rejects(getSignedDocument(opts(), 'env-missing'), /docusign get document: 404/);
 });

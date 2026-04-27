@@ -89,9 +89,7 @@ export function BulkApportionmentDialog(props: BulkApportionmentDialogProps) {
       return;
     }
     setSubmitting(true);
-    const results = await Promise.allSettled(
-      ids.map((id) => setApportionment(id, pct)),
-    );
+    const results = await Promise.allSettled(ids.map((id) => setApportionment(id, pct)));
     setSubmitting(false);
     const fulfilled = results.filter((r) => r.status === 'fulfilled').length;
     const rejected = results.length - fulfilled;
@@ -146,15 +144,11 @@ export function BulkApportionmentDialog(props: BulkApportionmentDialogProps) {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="selected">
-                  Selected ({props.selectedIds.length})
-                </SelectItem>
+                <SelectItem value="selected">Selected ({props.selectedIds.length})</SelectItem>
                 <SelectItem value="current_view">
                   Current view ({props.currentViewIds.length})
                 </SelectItem>
-                <SelectItem value="all">
-                  All entries in result ({props.allIds.length})
-                </SelectItem>
+                <SelectItem value="all">All entries in result ({props.allIds.length})</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -171,11 +165,7 @@ export function BulkApportionmentDialog(props: BulkApportionmentDialogProps) {
           >
             Cancel
           </Button>
-          <Button
-            type="button"
-            onClick={() => void handleSubmit()}
-            disabled={submitting}
-          >
+          <Button type="button" onClick={() => void handleSubmit()} disabled={submitting}>
             {submitting ? 'Applying…' : 'Apply'}
           </Button>
         </DialogFooter>

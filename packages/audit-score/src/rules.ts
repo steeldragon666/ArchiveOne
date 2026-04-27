@@ -174,7 +174,8 @@ export const SCORING_RULES: ScoreRule[] = [
       const activePayroll = row?.active_payroll ?? 0;
       const recentEntries = row?.recent_entries ?? 0;
       if (activePayroll > 0) return { earned: 10, details: `payroll integration active` };
-      if (recentEntries > 0) return { earned: 5, details: `${recentEntries} manual entries last 7d` };
+      if (recentEntries > 0)
+        return { earned: 5, details: `${recentEntries} manual entries last 7d` };
       return { earned: 0, details: 'no time tracking' };
     },
   },

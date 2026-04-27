@@ -157,10 +157,7 @@ function AddManualEntryModal(props: {
     },
   });
 
-  const canSubmit =
-    startedAt.trim().length > 0 &&
-    endedAt.trim().length > 0 &&
-    !mutation.isPending;
+  const canSubmit = startedAt.trim().length > 0 && endedAt.trim().length > 0 && !mutation.isPending;
 
   function handleSubmit(): void {
     if (!canSubmit) return;
@@ -173,11 +170,7 @@ function AddManualEntryModal(props: {
   }
 
   return (
-    <Modal
-      visible={props.visible}
-      animationType="slide"
-      onRequestClose={props.onDismiss}
-    >
+    <Modal visible={props.visible} animationType="slide" onRequestClose={props.onDismiss}>
       <View style={styles.modalContainer}>
         <Text style={styles.modalTitle}>Add manual entry</Text>
         {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -224,10 +217,7 @@ function AddManualEntryModal(props: {
         </View>
 
         <View style={styles.modalActions}>
-          <Pressable
-            onPress={props.onDismiss}
-            style={[styles.modalButton, styles.cancelButton]}
-          >
+          <Pressable onPress={props.onDismiss} style={[styles.modalButton, styles.cancelButton]}>
             <Text style={styles.modalButtonLabel}>Cancel</Text>
           </Pressable>
           <Pressable
@@ -238,9 +228,7 @@ function AddManualEntryModal(props: {
               { backgroundColor: canSubmit ? theme.primary_color : '#cbd5e1' },
             ]}
           >
-            <Text style={styles.modalButtonLabel}>
-              {mutation.isPending ? 'Saving…' : 'Save'}
-            </Text>
+            <Text style={styles.modalButtonLabel}>{mutation.isPending ? 'Saving…' : 'Save'}</Text>
           </Pressable>
         </View>
       </View>

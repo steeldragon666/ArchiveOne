@@ -5,8 +5,7 @@ import { jwtVerify } from 'jose';
 import { sql, privilegedSql } from '@cpa/db/client';
 import { buildApp } from '../app.js';
 
-const SESSION_SECRET =
-  process.env['SESSION_JWT_SECRET'] ?? 'dev-only-32-bytes-of-entropy-pad!';
+const SESSION_SECRET = process.env['SESSION_JWT_SECRET'] ?? 'dev-only-32-bytes-of-entropy-pad!';
 process.env['SESSION_JWT_SECRET'] = SESSION_SECRET;
 
 const TENANT_A = '00000000-0000-4000-8000-00000000c1101';
@@ -125,11 +124,9 @@ test('POST /v1/claimant-auth/redeem: 200 + Set-Cookie (httpOnly, SameSite=Lax)',
   assert.match(setCookie.attrs, /Max-Age=7776000/);
 
   // Verify the JWT verifies under the PWA-claimant audience.
-  const { payload } = await jwtVerify(
-    setCookie.jwt,
-    new TextEncoder().encode(SESSION_SECRET),
-    { audience: 'pwa-claimant' },
-  );
+  const { payload } = await jwtVerify(setCookie.jwt, new TextEncoder().encode(SESSION_SECRET), {
+    audience: 'pwa-claimant',
+  });
   assert.equal(payload.sub, EMPLOYEE_VALID);
   assert.equal(payload['tenant_id'], TENANT_A);
   assert.equal(payload['subject_tenant_id'], SUBJECT_A1);
@@ -148,10 +145,12 @@ test('POST /v1/claimant-auth/redeem: 200 + Set-Cookie (httpOnly, SameSite=Lax)',
   assert.ok(consumed[0]?.consumed_at !== null);
 
   // Employee's first_seen_at + last_seen_at populated.
-  const empCheck = await privilegedSql<{
-    first_seen_at: Date | null;
-    last_seen_at: Date | null;
-  }[]>`
+  const empCheck = await privilegedSql<
+    {
+      first_seen_at: Date | null;
+      last_seen_at: Date | null;
+    }[]
+  >`
     SELECT first_seen_at, last_seen_at FROM subject_tenant_employee WHERE id = ${EMPLOYEE_VALID}
   `;
   assert.ok(empCheck[0]?.first_seen_at !== null);

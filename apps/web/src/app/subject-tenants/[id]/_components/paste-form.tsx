@@ -80,10 +80,7 @@ export function PasteForm({ subjectTenantId }: { subjectTenantId: string }) {
 
   return (
     <Form {...form}>
-      <form
-        onSubmit={(e) => void form.handleSubmit(onSubmit)(e)}
-        className="space-y-3"
-      >
+      <form onSubmit={(e) => void form.handleSubmit(onSubmit)(e)} className="space-y-3">
         <FormField
           control={form.control}
           name="raw_text"

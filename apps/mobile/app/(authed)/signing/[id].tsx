@@ -1,11 +1,5 @@
 import { useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { getSigningRequest, type SigningStatus } from '../../../src/api-client/signing.js';
@@ -106,11 +100,7 @@ export default function SigningScreen() {
   }
   if (state.kind === 'completed') {
     const message =
-      state.status === 'completed'
-        ? 'Signed'
-        : state.status === 'declined'
-          ? 'Declined'
-          : 'Voided';
+      state.status === 'completed' ? 'Signed' : state.status === 'declined' ? 'Declined' : 'Voided';
     return (
       <View style={styles.center}>
         <Text style={styles.completed}>{message}</Text>

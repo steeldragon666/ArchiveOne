@@ -1,9 +1,4 @@
-import type {
-  Classifier,
-  ClassifierInput,
-  ClassifierOutput,
-  ClassifiableKind,
-} from './types.js';
+import type { Classifier, ClassifierInput, ClassifierOutput, ClassifiableKind } from './types.js';
 
 type Rule = {
   pattern: RegExp;
@@ -50,7 +45,8 @@ const STUB_RULES: Rule[] = [
     anchor: '§355-25(2)(a)',
   },
   {
-    pattern: /\b(hypothes[ie][sz]e?d?|posit(?:ed|ing)?|theoris[ed]|theoriz[ed]|predict(?:ed|ion))\b/i,
+    pattern:
+      /\b(hypothes[ie][sz]e?d?|posit(?:ed|ing)?|theoris[ed]|theoriz[ed]|predict(?:ed|ion))\b/i,
     kind: 'HYPOTHESIS',
     confidence: 0.85,
     rationale: 'Stub: hypothesis-formation vocabulary',

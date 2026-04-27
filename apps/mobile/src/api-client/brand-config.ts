@@ -18,9 +18,7 @@ import type { BrandConfig } from './types.js';
  * Throws on non-2xx so callers can decide whether to fall back to
  * the trimmed brand from redeem or to DEFAULT_THEME.
  */
-export async function fetchBrandConfigByTenant(
-  tenantId: string,
-): Promise<BrandConfig> {
+export async function fetchBrandConfigByTenant(tenantId: string): Promise<BrandConfig> {
   const url = `${getApiBaseUrl()}/v1/brand-config/by-tenant/${tenantId}`;
   const res = await fetch(url, { method: 'GET' });
   if (!res.ok) {

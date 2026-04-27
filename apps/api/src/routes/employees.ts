@@ -124,7 +124,9 @@ async function sendInviteEmail(args: {
  * landing page so the brand is recognisable in the inbox.
  */
 async function resolveBrandHostForTenant(tenantId: string): Promise<string | null> {
-  const rows = await privilegedSql<{ custom_subdomain: string | null; custom_domain: string | null }[]>`
+  const rows = await privilegedSql<
+    { custom_subdomain: string | null; custom_domain: string | null }[]
+  >`
     SELECT custom_subdomain, custom_domain FROM brand_config WHERE tenant_id = ${tenantId}
   `;
   const row = rows[0];
@@ -220,8 +222,7 @@ export function registerEmployees(app: FastifyInstance): void {
       if ((err as { code?: string }).code === '23505') {
         return reply.status(409).send({
           error: 'employee_email_taken',
-          message:
-            'An active employee with that email already exists for this claimant',
+          message: 'An active employee with that email already exists for this claimant',
           requestId: req.id,
         });
       }

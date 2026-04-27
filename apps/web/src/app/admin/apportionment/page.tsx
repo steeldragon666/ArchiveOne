@@ -19,9 +19,8 @@ export default function ApportionmentPage() {
         <div>
           <h1 className="text-2xl font-bold">Apportionment workbench</h1>
           <p className="text-muted-foreground mt-2">
-            Set R&amp;D apportionment percentage per time entry. Flagged entries
-            (manual entries overlapping payroll-synced periods) require review
-            before they roll into the chain.
+            Set R&amp;D apportionment percentage per time entry. Flagged entries (manual entries
+            overlapping payroll-synced periods) require review before they roll into the chain.
           </p>
         </div>
         <ApportionmentTable />

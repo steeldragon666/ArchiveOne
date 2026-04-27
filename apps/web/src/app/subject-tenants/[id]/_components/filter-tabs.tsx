@@ -26,17 +26,10 @@ const TABS: ReadonlyArray<{ value: ListEventsFilter; label: string }> = [
   { value: 'overrides', label: 'Overrides' },
 ];
 
-const FILTER_VALUES = new Set<ListEventsFilter>([
-  'all',
-  'needs_review',
-  'ineligible',
-  'overrides',
-]);
+const FILTER_VALUES = new Set<ListEventsFilter>(['all', 'needs_review', 'ineligible', 'overrides']);
 
 export function parseFilter(raw: string | null): ListEventsFilter {
-  return raw && FILTER_VALUES.has(raw as ListEventsFilter)
-    ? (raw as ListEventsFilter)
-    : 'all';
+  return raw && FILTER_VALUES.has(raw as ListEventsFilter) ? (raw as ListEventsFilter) : 'all';
 }
 
 export interface FilterTabsProps {

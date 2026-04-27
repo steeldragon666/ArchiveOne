@@ -2,22 +2,14 @@ import { test, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import nock from 'nock';
-import {
-  buildAuthUrl,
-  exchangeCode,
-  refreshAccessToken,
-  listConnections,
-} from './oauth.js';
+import { buildAuthUrl, exchangeCode, refreshAccessToken, listConnections } from './oauth.js';
 import {
   listEmployees,
   listTimesheets,
   parseXeroDate,
   type XeroPayrollClientOptions,
 } from './client.js';
-import {
-  XERO_OAUTH_AUTHORIZE_URL,
-  XERO_PAYROLL_SCOPES,
-} from './types.js';
+import { XERO_OAUTH_AUTHORIZE_URL, XERO_PAYROLL_SCOPES } from './types.js';
 
 const TENANT_ID = '11111111-2222-3333-4444-555555555555';
 
@@ -96,11 +88,7 @@ test('exchangeCode: happy path includes code_verifier in form body', async () =>
 
   assert.equal(tokens.access_token, 'xero-access-1');
   assert.equal(tokens.refresh_token, 'xero-refresh-1');
-  assert.deepEqual(tokens.scopes, [
-    'offline_access',
-    'payroll.employees',
-    'payroll.timesheets',
-  ]);
+  assert.deepEqual(tokens.scopes, ['offline_access', 'payroll.employees', 'payroll.timesheets']);
   // expires_at ~= now + 1800s
   const expiresMs = tokens.expires_at.getTime();
   assert.ok(expiresMs >= before + 1800 * 1000 - 50);
@@ -142,9 +130,7 @@ test('exchangeCode: omits client_secret when absent (public-client PKCE-only flo
 });
 
 test('exchangeCode: 400 throws with descriptive message', async () => {
-  nock('https://identity.xero.com')
-    .post('/connect/token')
-    .reply(400, 'invalid_grant');
+  nock('https://identity.xero.com').post('/connect/token').reply(400, 'invalid_grant');
 
   await assert.rejects(
     exchangeCode({
@@ -192,9 +178,7 @@ test('refreshAccessToken: rotates tokens — new refresh_token returned', async 
 });
 
 test('refreshAccessToken: 401 throws', async () => {
-  nock('https://identity.xero.com')
-    .post('/connect/token')
-    .reply(401, 'invalid refresh token');
+  nock('https://identity.xero.com').post('/connect/token').reply(401, 'invalid refresh token');
 
   await assert.rejects(
     refreshAccessToken({

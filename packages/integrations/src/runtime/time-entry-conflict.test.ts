@@ -1,9 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  flagOverlappingManualEntries,
-  type SqlClient,
-} from './time-entry-conflict.js';
+import { flagOverlappingManualEntries, type SqlClient } from './time-entry-conflict.js';
 
 const TENANT_ID = '00000000-0000-4000-8000-000000000c01';
 const SUBJECT_ID = '00000000-0000-4000-8000-000000000c02';

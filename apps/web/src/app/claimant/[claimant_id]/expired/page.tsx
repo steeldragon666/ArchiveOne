@@ -23,12 +23,12 @@ export default function LinkExpiredPage() {
         </CardHeader>
         <CardContent className="space-y-3 text-sm text-slate-600">
           <p>
-            This sign-in link has expired or has already been used. Magic
-            links are valid for 15 minutes from the time they&apos;re sent.
+            This sign-in link has expired or has already been used. Magic links are valid for 15
+            minutes from the time they&apos;re sent.
           </p>
           <p>
-            To get a new link, contact your R&amp;D consultant — they can
-            resend the invite from their admin dashboard.
+            To get a new link, contact your R&amp;D consultant — they can resend the invite from
+            their admin dashboard.
           </p>
         </CardContent>
       </Card>

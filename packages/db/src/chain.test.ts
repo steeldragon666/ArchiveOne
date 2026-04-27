@@ -29,23 +29,41 @@ after(async () => {
 
 test('canonicaliseEvent produces deterministic JSON with sorted keys', () => {
   const a = canonicaliseEvent({
-    subject_tenant_id: 'a', kind: 'HYPOTHESIS', payload: { x: 1, y: 2 },
-    classification: null, captured_at: new Date('2026-04-27T00:00:00Z'),
-    captured_by_user_id: 'u', override_of_event_id: null, override_new_kind: null, override_reason: null,
+    subject_tenant_id: 'a',
+    kind: 'HYPOTHESIS',
+    payload: { x: 1, y: 2 },
+    classification: null,
+    captured_at: new Date('2026-04-27T00:00:00Z'),
+    captured_by_user_id: 'u',
+    override_of_event_id: null,
+    override_new_kind: null,
+    override_reason: null,
   });
   const b = canonicaliseEvent({
-    captured_by_user_id: 'u', override_reason: null, classification: null,
-    payload: { y: 2, x: 1 }, kind: 'HYPOTHESIS', captured_at: new Date('2026-04-27T00:00:00Z'),
-    subject_tenant_id: 'a', override_new_kind: null, override_of_event_id: null,
+    captured_by_user_id: 'u',
+    override_reason: null,
+    classification: null,
+    payload: { y: 2, x: 1 },
+    kind: 'HYPOTHESIS',
+    captured_at: new Date('2026-04-27T00:00:00Z'),
+    subject_tenant_id: 'a',
+    override_new_kind: null,
+    override_of_event_id: null,
   });
   assert.equal(a, b, 'canonical form must be order-independent');
 });
 
 test('hashEvent: prev=null produces stable hex hash', () => {
   const h = hashEvent(null, {
-    subject_tenant_id: 'a', kind: 'HYPOTHESIS', payload: { _v: 1, source: 'paste', raw_text: 'hello' },
-    classification: null, captured_at: new Date('2026-04-27T00:00:00Z'),
-    captured_by_user_id: 'u', override_of_event_id: null, override_new_kind: null, override_reason: null,
+    subject_tenant_id: 'a',
+    kind: 'HYPOTHESIS',
+    payload: { _v: 1, source: 'paste', raw_text: 'hello' },
+    classification: null,
+    captured_at: new Date('2026-04-27T00:00:00Z'),
+    captured_by_user_id: 'u',
+    override_of_event_id: null,
+    override_new_kind: null,
+    override_reason: null,
   });
   assert.match(h, /^[0-9a-f]{64}$/);
 });
@@ -88,11 +106,26 @@ test('canonicaliseEvent rejects Infinity in payload', () => {
 
 test('insertEventWithChain: first event has prev_hash=null', async () => {
   const e = await insertEventWithChain({
-    tenant_id: TENANT_ID, subject_tenant_id: SUBJECT_ID, kind: 'HYPOTHESIS',
+    tenant_id: TENANT_ID,
+    subject_tenant_id: SUBJECT_ID,
+    kind: 'HYPOTHESIS',
     payload: { _v: 1, source: 'paste', raw_text: 'first event' },
-    classification: { kind: 'HYPOTHESIS', confidence: 0.9, rationale: 'r', statutory_anchor: null, model: 'stub-v1.0.0', prompt_version: 'classify@1.0.0', tokens_in: 0, tokens_out: 0, cache_hit: false },
-    captured_at: new Date(), captured_by_user_id: USER_ID,
-    override_of_event_id: null, override_new_kind: null, override_reason: null,
+    classification: {
+      kind: 'HYPOTHESIS',
+      confidence: 0.9,
+      rationale: 'r',
+      statutory_anchor: null,
+      model: 'stub-v1.0.0',
+      prompt_version: 'classify@1.0.0',
+      tokens_in: 0,
+      tokens_out: 0,
+      cache_hit: false,
+    },
+    captured_at: new Date(),
+    captured_by_user_id: USER_ID,
+    override_of_event_id: null,
+    override_new_kind: null,
+    override_reason: null,
   });
   assert.equal(e.prev_hash, null);
   assert.match(e.hash, /^[0-9a-f]{64}$/);
@@ -100,18 +133,28 @@ test('insertEventWithChain: first event has prev_hash=null', async () => {
 
 test('insertEventWithChain: second event extends prev_hash', async () => {
   const e1 = await insertEventWithChain({
-    tenant_id: TENANT_ID, subject_tenant_id: SUBJECT_ID, kind: 'OBSERVATION',
+    tenant_id: TENANT_ID,
+    subject_tenant_id: SUBJECT_ID,
+    kind: 'OBSERVATION',
     payload: { _v: 1, source: 'paste', raw_text: 'second' },
     classification: null,
-    captured_at: new Date(), captured_by_user_id: USER_ID,
-    override_of_event_id: null, override_new_kind: null, override_reason: null,
+    captured_at: new Date(),
+    captured_by_user_id: USER_ID,
+    override_of_event_id: null,
+    override_new_kind: null,
+    override_reason: null,
   });
   const e2 = await insertEventWithChain({
-    tenant_id: TENANT_ID, subject_tenant_id: SUBJECT_ID, kind: 'EXPERIMENT',
+    tenant_id: TENANT_ID,
+    subject_tenant_id: SUBJECT_ID,
+    kind: 'EXPERIMENT',
     payload: { _v: 1, source: 'paste', raw_text: 'third' },
     classification: null,
-    captured_at: new Date(), captured_by_user_id: USER_ID,
-    override_of_event_id: null, override_new_kind: null, override_reason: null,
+    captured_at: new Date(),
+    captured_by_user_id: USER_ID,
+    override_of_event_id: null,
+    override_new_kind: null,
+    override_reason: null,
   });
   assert.equal(e2.prev_hash, e1.hash);
 });

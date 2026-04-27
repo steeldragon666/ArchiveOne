@@ -5,8 +5,7 @@ import { SignJWT } from 'jose';
 import { sql, privilegedSql } from '@cpa/db/client';
 import { buildApp } from '../app.js';
 
-const SESSION_SECRET =
-  process.env['SESSION_JWT_SECRET'] ?? 'dev-only-32-bytes-of-entropy-pad!';
+const SESSION_SECRET = process.env['SESSION_JWT_SECRET'] ?? 'dev-only-32-bytes-of-entropy-pad!';
 process.env['SESSION_JWT_SECRET'] = SESSION_SECRET;
 
 const TENANT_A = '00000000-0000-4000-8000-00000000c1201';

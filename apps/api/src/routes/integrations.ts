@@ -213,121 +213,116 @@ export function registerIntegrations(app: FastifyInstance): void {
   app.get<{
     Params: { provider: string };
     Querystring: { code?: string; state?: string; error?: string };
-  }>(
-    '/v1/integrations/:provider/callback',
-    { preHandler: requireSession },
-    async (req, reply) => {
-      const role = req.user!.role;
-      if (role !== 'admin' && role !== 'consultant') {
-        return reply.status(403).send({
-          error: 'forbidden',
-          message: 'Admin or consultant role required',
-          requestId: req.id,
-        });
-      }
-      const parsed = integrationProvider.safeParse(req.params.provider);
-      if (!parsed.success) {
-        return reply.status(400).send({
-          error: 'invalid_provider',
-          message: `Provider must be one of: ${INTEGRATION_PROVIDERS.join(', ')}`,
-          requestId: req.id,
-        });
-      }
-      const provider = parsed.data;
-      const cfg = getProviderOAuthConfig(provider);
-      if (!cfg) {
-        return reply.status(412).send({
-          error: 'provider_not_configured',
-          message: `Integration "${provider}" is not configured on this server`,
-          requestId: req.id,
-        });
-      }
+  }>('/v1/integrations/:provider/callback', { preHandler: requireSession }, async (req, reply) => {
+    const role = req.user!.role;
+    if (role !== 'admin' && role !== 'consultant') {
+      return reply.status(403).send({
+        error: 'forbidden',
+        message: 'Admin or consultant role required',
+        requestId: req.id,
+      });
+    }
+    const parsed = integrationProvider.safeParse(req.params.provider);
+    if (!parsed.success) {
+      return reply.status(400).send({
+        error: 'invalid_provider',
+        message: `Provider must be one of: ${INTEGRATION_PROVIDERS.join(', ')}`,
+        requestId: req.id,
+      });
+    }
+    const provider = parsed.data;
+    const cfg = getProviderOAuthConfig(provider);
+    if (!cfg) {
+      return reply.status(412).send({
+        error: 'provider_not_configured',
+        message: `Integration "${provider}" is not configured on this server`,
+        requestId: req.id,
+      });
+    }
 
-      // Provider returned an error param (user denied, scope mismatch,
-      // etc.). Surface 400 with the provider's error string.
-      if (req.query.error) {
-        return reply.status(400).send({
-          error: 'oauth_error',
-          message: `Provider returned error: ${req.query.error}`,
-          requestId: req.id,
-        });
-      }
-      if (!req.query.code || !req.query.state) {
-        return reply.status(400).send({
-          error: 'invalid_callback',
-          message: 'Missing code or state on callback',
-          requestId: req.id,
-        });
-      }
+    // Provider returned an error param (user denied, scope mismatch,
+    // etc.). Surface 400 with the provider's error string.
+    if (req.query.error) {
+      return reply.status(400).send({
+        error: 'oauth_error',
+        message: `Provider returned error: ${req.query.error}`,
+        requestId: req.id,
+      });
+    }
+    if (!req.query.code || !req.query.state) {
+      return reply.status(400).send({
+        error: 'invalid_callback',
+        message: 'Missing code or state on callback',
+        requestId: req.id,
+      });
+    }
 
-      const cookieName = `${OAUTH_STATE_COOKIE_PREFIX}${provider}`;
-      const cookieRaw = req.cookies[cookieName];
-      if (!cookieRaw) {
-        return reply.status(400).send({
-          error: 'oauth_state_expired',
-          message: 'OAuth state cookie missing or expired',
-          requestId: req.id,
-        });
-      }
-      let stash: { state: string; verifier: string };
-      try {
-        stash = JSON.parse(cookieRaw) as { state: string; verifier: string };
-      } catch {
-        return reply.status(400).send({
-          error: 'oauth_state_malformed',
-          message: 'OAuth state cookie malformed',
-          requestId: req.id,
-        });
-      }
-      if (stash.state !== req.query.state) {
-        return reply.status(400).send({
-          error: 'oauth_state_mismatch',
-          message: 'OAuth state does not match — possible CSRF',
-          requestId: req.id,
-        });
-      }
+    const cookieName = `${OAUTH_STATE_COOKIE_PREFIX}${provider}`;
+    const cookieRaw = req.cookies[cookieName];
+    if (!cookieRaw) {
+      return reply.status(400).send({
+        error: 'oauth_state_expired',
+        message: 'OAuth state cookie missing or expired',
+        requestId: req.id,
+      });
+    }
+    let stash: { state: string; verifier: string };
+    try {
+      stash = JSON.parse(cookieRaw) as { state: string; verifier: string };
+    } catch {
+      return reply.status(400).send({
+        error: 'oauth_state_malformed',
+        message: 'OAuth state cookie malformed',
+        requestId: req.id,
+      });
+    }
+    if (stash.state !== req.query.state) {
+      return reply.status(400).send({
+        error: 'oauth_state_mismatch',
+        message: 'OAuth state does not match — possible CSRF',
+        requestId: req.id,
+      });
+    }
 
-      // Clear the state cookie immediately after use. Even if the token
-      // exchange fails downstream, we don't want a replayable PKCE
-      // verifier hanging around.
-      void reply.clearCookie(cookieName, { path: '/' });
+    // Clear the state cookie immediately after use. Even if the token
+    // exchange fails downstream, we don't want a replayable PKCE
+    // verifier hanging around.
+    void reply.clearCookie(cookieName, { path: '/' });
 
-      const exchangeReq = {
-        token_url: cfg.token_url,
-        client_id: cfg.client_id,
-        ...(cfg.client_secret !== undefined ? { client_secret: cfg.client_secret } : {}),
-        code: req.query.code,
-        pkce_verifier: stash.verifier,
-        redirect_uri: cfg.redirect_uri,
-      };
-      let tokens;
-      try {
-        tokens = await exchangeCodeForTokens(exchangeReq);
-      } catch (err) {
-        req.log.error({ err, provider }, 'oauth code exchange failed');
-        return reply.status(502).send({
-          error: 'oauth_exchange_failed',
-          message: 'Failed to exchange authorization code for tokens',
-          requestId: req.id,
-        });
-      }
+    const exchangeReq = {
+      token_url: cfg.token_url,
+      client_id: cfg.client_id,
+      ...(cfg.client_secret !== undefined ? { client_secret: cfg.client_secret } : {}),
+      code: req.query.code,
+      pkce_verifier: stash.verifier,
+      redirect_uri: cfg.redirect_uri,
+    };
+    let tokens;
+    try {
+      tokens = await exchangeCodeForTokens(exchangeReq);
+    } catch (err) {
+      req.log.error({ err, provider }, 'oauth code exchange failed');
+      return reply.status(502).send({
+        error: 'oauth_exchange_failed',
+        message: 'Failed to exchange authorization code for tokens',
+        requestId: req.id,
+      });
+    }
 
-      const encKey = getTokenEncryptionKey();
-      const accessEncrypted = encryptToken(tokens.access_token, encKey);
-      const refreshEncrypted =
-        tokens.refresh_token !== undefined
-          ? encryptToken(tokens.refresh_token, encKey)
-          : null;
-      const scopes = tokens.scopes ?? null;
+    const encKey = getTokenEncryptionKey();
+    const accessEncrypted = encryptToken(tokens.access_token, encKey);
+    const refreshEncrypted =
+      tokens.refresh_token !== undefined ? encryptToken(tokens.refresh_token, encKey) : null;
+    const scopes = tokens.scopes ?? null;
 
-      const tenantId = req.user!.tenantId!;
-      await sql.begin(async (tx) => {
-        await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
-        // Upsert: re-authorising replaces the existing (tenant, provider)
-        // row. The unique index on (tenant_id, provider) is what makes
-        // ON CONFLICT work. We reset sync_state to 'idle' on re-auth so
-        // a previously-failed connection is effectively healed.
-        await tx`
+    const tenantId = req.user!.tenantId!;
+    await sql.begin(async (tx) => {
+      await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+      // Upsert: re-authorising replaces the existing (tenant, provider)
+      // row. The unique index on (tenant_id, provider) is what makes
+      // ON CONFLICT work. We reset sync_state to 'idle' on re-auth so
+      // a previously-failed connection is effectively healed.
+      await tx`
           INSERT INTO integration_connection (
             id, tenant_id, provider, access_token_encrypted, refresh_token_encrypted,
             expires_at, scopes, sync_state, last_error
@@ -345,15 +340,14 @@ export function registerIntegrations(app: FastifyInstance): void {
             last_error = NULL,
             updated_at = NOW()
         `;
-      });
+    });
 
-      // 302 back to the consultant portal admin page (P3 stub — the actual
-      // admin UI lands in P3c). Tests assert on the Location header.
-      const successRedirect =
-        process.env['INTEGRATIONS_SUCCESS_REDIRECT'] ?? '/admin/integrations?connected=' + provider;
-      return reply.status(302).header('Location', successRedirect).send();
-    },
-  );
+    // 302 back to the consultant portal admin page (P3 stub — the actual
+    // admin UI lands in P3c). Tests assert on the Location header.
+    const successRedirect =
+      process.env['INTEGRATIONS_SUCCESS_REDIRECT'] ?? '/admin/integrations?connected=' + provider;
+    return reply.status(302).header('Location', successRedirect).send();
+  });
 
   app.delete<{ Params: { provider: string } }>(
     '/v1/integrations/:provider',

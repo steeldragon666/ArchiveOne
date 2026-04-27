@@ -55,11 +55,7 @@ after(async () => {
   await privilegedSql.end();
 });
 
-const jwtFor = (
-  userId: string,
-  email: string,
-  tenantId: string,
-): Promise<string> =>
+const jwtFor = (userId: string, email: string, tenantId: string): Promise<string> =>
   signSession(
     {
       sub: userId,

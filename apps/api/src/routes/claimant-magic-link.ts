@@ -123,11 +123,9 @@ export async function verifyClaimantSession(
   secret: string,
 ): Promise<ClaimantSessionPrincipal> {
   const { jwtVerify } = await import('jose');
-  const { payload } = await jwtVerify(
-    jwt,
-    new TextEncoder().encode(secret),
-    { audience: PWA_CLAIMANT_AUDIENCE },
-  );
+  const { payload } = await jwtVerify(jwt, new TextEncoder().encode(secret), {
+    audience: PWA_CLAIMANT_AUDIENCE,
+  });
   if (typeof payload.sub !== 'string' || payload.sub.length === 0) {
     throw new Error('claimant JWT missing sub');
   }
@@ -160,20 +158,20 @@ export function registerClaimantMagicLinkRedeem(app: FastifyInstance): void {
   app.post('/v1/claimant-auth/redeem', async (req, reply) => {
     const parsed = claimantRedeemBody.safeParse(req.body);
     if (!parsed.success) {
-      return reply
-        .status(400)
-        .send(errEnvelope('INVALID_BODY', 'Body must be { token }', req.id));
+      return reply.status(400).send(errEnvelope('INVALID_BODY', 'Body must be { token }', req.id));
     }
     const { token } = parsed.data;
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
 
     // Step 1: lookup the magic-link row by hash.
-    const tokenRows = await privilegedSql<{
-      id: string;
-      employee_id: string;
-      expires_at: Date;
-      consumed_at: Date | null;
-    }[]>`
+    const tokenRows = await privilegedSql<
+      {
+        id: string;
+        employee_id: string;
+        expires_at: Date;
+        consumed_at: Date | null;
+      }[]
+    >`
       SELECT id, employee_id, expires_at, consumed_at
         FROM magic_link_token
        WHERE token_hash = ${tokenHash}
@@ -186,9 +184,7 @@ export function registerClaimantMagicLinkRedeem(app: FastifyInstance): void {
     }
     const now = Date.now();
     if (tokenRow.consumed_at !== null) {
-      return reply
-        .status(401)
-        .send(errEnvelope('UNAUTHENTICATED', 'token already used', req.id));
+      return reply.status(401).send(errEnvelope('UNAUTHENTICATED', 'token already used', req.id));
     }
     if (new Date(tokenRow.expires_at).getTime() <= now) {
       return reply
@@ -205,29 +201,27 @@ export function registerClaimantMagicLinkRedeem(app: FastifyInstance): void {
       RETURNING id
     `;
     if (!consumed[0]) {
-      return reply
-        .status(401)
-        .send(errEnvelope('UNAUTHENTICATED', 'token already used', req.id));
+      return reply.status(401).send(errEnvelope('UNAUTHENTICATED', 'token already used', req.id));
     }
 
     // Step 3: load the employee. Reject deactivated employees — same
     // policy as F7.
-    const employeeRows = await privilegedSql<{
-      id: string;
-      subject_tenant_id: string;
-      tenant_id: string;
-      name: string;
-      deactivated_at: Date | null;
-    }[]>`
+    const employeeRows = await privilegedSql<
+      {
+        id: string;
+        subject_tenant_id: string;
+        tenant_id: string;
+        name: string;
+        deactivated_at: Date | null;
+      }[]
+    >`
       SELECT id, subject_tenant_id, tenant_id, name, deactivated_at
         FROM subject_tenant_employee
        WHERE id = ${tokenRow.employee_id}
     `;
     const employee = employeeRows[0];
     if (!employee || employee.deactivated_at !== null) {
-      return reply
-        .status(401)
-        .send(errEnvelope('UNAUTHENTICATED', 'employee not active', req.id));
+      return reply.status(401).send(errEnvelope('UNAUTHENTICATED', 'employee not active', req.id));
     }
 
     // Step 4: bump first_seen_at / last_seen_at on the employee row.

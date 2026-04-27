@@ -52,10 +52,10 @@ The mobile app reads env vars at build time via `EXPO_PUBLIC_*`
 prefixing (Expo's convention — only `EXPO_PUBLIC_*` vars are available
 to JS at runtime).
 
-| Variable | Required | Default | Notes |
-|---|---|---|---|
-| `EXPO_PUBLIC_API_URL` | yes | `https://platform.com.au` | Base URL for the platform API. Set to `http://localhost:3000` (or your LAN IP for a real device) for local dev. |
-| `EXPO_PUBLIC_DEFAULT_BRAND_HOST` | no | `platform.com.au` | The hostname the magic-link redeem flow falls back to when the deep link doesn't carry a firm-specific brand host. |
+| Variable                         | Required | Default                   | Notes                                                                                                              |
+| -------------------------------- | -------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `EXPO_PUBLIC_API_URL`            | yes      | `https://platform.com.au` | Base URL for the platform API. Set to `http://localhost:3000` (or your LAN IP for a real device) for local dev.    |
+| `EXPO_PUBLIC_DEFAULT_BRAND_HOST` | no       | `platform.com.au`         | The hostname the magic-link redeem flow falls back to when the deep link doesn't carry a firm-specific brand host. |
 
 For local development against a Fastify API on your machine:
 
@@ -172,9 +172,9 @@ available.
 
 ```ts
 type MobileQueueRow = {
-  local_id: string;        // uuid generated client-side, used as API idempotency key
+  local_id: string; // uuid generated client-side, used as API idempotency key
   kind: 'event' | 'media_artefact' | 'time_entry' | 'signing_response';
-  payload: string;         // JSON
+  payload: string; // JSON
   created_at: number;
   status: 'queued' | 'syncing' | 'synced' | 'failed';
   remote_id?: string;

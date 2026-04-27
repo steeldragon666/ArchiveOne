@@ -7,24 +7,14 @@ test('verifyHmacSha256 returns true for a valid hex signature', () => {
   const secret = 'shh';
   const payload = Buffer.from('{"event":"x"}');
   const sig = crypto.createHmac('sha256', secret).update(payload).digest('hex');
-  assert.equal(
-    verifyHmacSha256({ payload, signature_header: sig, secret }),
-    true,
-  );
+  assert.equal(verifyHmacSha256({ payload, signature_header: sig, secret }), true);
 });
 
 test('verifyHmacSha256 accepts uppercase signatures (case-insensitive hex)', () => {
   const secret = 'shh';
   const payload = 'string-payload';
-  const sig = crypto
-    .createHmac('sha256', secret)
-    .update(payload)
-    .digest('hex')
-    .toUpperCase();
-  assert.equal(
-    verifyHmacSha256({ payload, signature_header: sig, secret }),
-    true,
-  );
+  const sig = crypto.createHmac('sha256', secret).update(payload).digest('hex').toUpperCase();
+  assert.equal(verifyHmacSha256({ payload, signature_header: sig, secret }), true);
 });
 
 test('verifyHmacSha256 returns false for a tampered payload', () => {
@@ -32,10 +22,7 @@ test('verifyHmacSha256 returns false for a tampered payload', () => {
   const original = Buffer.from('{"amount":10}');
   const tampered = Buffer.from('{"amount":9999}');
   const sig = crypto.createHmac('sha256', secret).update(original).digest('hex');
-  assert.equal(
-    verifyHmacSha256({ payload: tampered, signature_header: sig, secret }),
-    false,
-  );
+  assert.equal(verifyHmacSha256({ payload: tampered, signature_header: sig, secret }), false);
 });
 
 test('verifyHmacSha256 returns false on malformed signature header', () => {
@@ -64,23 +51,14 @@ test('verifyDocuSignSignature accepts a valid base64 signature', () => {
   const secret = 'docusign-key';
   const payload = Buffer.from('<root>signed-payload</root>');
   const sig = crypto.createHmac('sha256', secret).update(payload).digest('base64');
-  assert.equal(
-    verifyDocuSignSignature({ payload, signature_header: sig, secret }),
-    true,
-  );
+  assert.equal(verifyDocuSignSignature({ payload, signature_header: sig, secret }), true);
 });
 
 test('verifyDocuSignSignature rejects a bad signature', () => {
   const secret = 'docusign-key';
   const payload = Buffer.from('<root>signed-payload</root>');
-  const wrong = crypto
-    .createHmac('sha256', 'different-key')
-    .update(payload)
-    .digest('base64');
-  assert.equal(
-    verifyDocuSignSignature({ payload, signature_header: wrong, secret }),
-    false,
-  );
+  const wrong = crypto.createHmac('sha256', 'different-key').update(payload).digest('base64');
+  assert.equal(verifyDocuSignSignature({ payload, signature_header: wrong, secret }), false);
 });
 
 test('verifyDocuSignSignature returns false when payload is tampered', () => {

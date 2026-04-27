@@ -12,13 +12,7 @@ import { useSessionStore } from '../auth/session-store.js';
  * TODO(post-merge): replace `SigningRequest` / `SigningStatus` with
  * the shared schemas equivalents once @cpa/schemas/signing lands.
  */
-export type SigningStatus =
-  | 'pending'
-  | 'sent'
-  | 'delivered'
-  | 'completed'
-  | 'declined'
-  | 'voided';
+export type SigningStatus = 'pending' | 'sent' | 'delivered' | 'completed' | 'declined' | 'voided';
 
 export type SigningRequest = {
   id: string;

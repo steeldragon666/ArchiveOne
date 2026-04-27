@@ -6,8 +6,7 @@ import { sql, privilegedSql } from '@cpa/db/client';
 import { buildApp } from '../app.js';
 import { MOBILE_AUDIENCE } from '../middleware/mobile-jwt-verifier.js';
 
-const SESSION_SECRET =
-  process.env['SESSION_JWT_SECRET'] ?? 'dev-only-32-bytes-of-entropy-pad!';
+const SESSION_SECRET = process.env['SESSION_JWT_SECRET'] ?? 'dev-only-32-bytes-of-entropy-pad!';
 process.env['SESSION_JWT_SECRET'] = SESSION_SECRET;
 
 const TENANT_A = '00000000-0000-4000-8000-0000000f7001';
@@ -131,21 +130,16 @@ test('POST /v1/auth/magic-link/redeem: 200 + access_token + refresh_token + sess
   assert.equal(body.brand_config.primary_color, '#aabbcc');
 
   // Verify access_token is a valid mobile JWT.
-  const { payload } = await jwtVerify(
-    body.access_token,
-    new TextEncoder().encode(SESSION_SECRET),
-    { audience: MOBILE_AUDIENCE },
-  );
+  const { payload } = await jwtVerify(body.access_token, new TextEncoder().encode(SESSION_SECRET), {
+    audience: MOBILE_AUDIENCE,
+  });
   assert.equal(payload.sub, EMPLOYEE_VALID);
   assert.equal(payload['tenant_id'], TENANT_A);
   assert.equal(payload['subject_tenant_id'], SUBJECT_A1);
 
   // Verify mobile_session row was inserted with the right fingerprint
   // and refresh_token hash.
-  const refreshHash = crypto
-    .createHash('sha256')
-    .update(body.refresh_token)
-    .digest('hex');
+  const refreshHash = crypto.createHash('sha256').update(body.refresh_token).digest('hex');
   const sessions = await privilegedSql<
     { device_fingerprint: string; push_token: string | null; expires_at: Date }[]
   >`
@@ -168,10 +162,12 @@ test('POST /v1/auth/magic-link/redeem: 200 + access_token + refresh_token + sess
   assert.ok(consumed[0]?.consumed_at !== null);
 
   // Employee's first_seen_at + last_seen_at should be populated.
-  const empCheck = await privilegedSql<{
-    first_seen_at: Date | null;
-    last_seen_at: Date | null;
-  }[]>`
+  const empCheck = await privilegedSql<
+    {
+      first_seen_at: Date | null;
+      last_seen_at: Date | null;
+    }[]
+  >`
     SELECT first_seen_at, last_seen_at FROM subject_tenant_employee WHERE id = ${EMPLOYEE_VALID}
   `;
   assert.ok(empCheck[0]?.first_seen_at !== null);
@@ -216,7 +212,10 @@ test('POST /v1/auth/magic-link/redeem: 401 on unknown token', async () => {
   const res = await app.inject({
     method: 'POST',
     url: '/v1/auth/magic-link/redeem',
-    payload: { token: 'this-is-not-a-real-token-' + crypto.randomBytes(16).toString('hex'), device_fingerprint: 'd' },
+    payload: {
+      token: 'this-is-not-a-real-token-' + crypto.randomBytes(16).toString('hex'),
+      device_fingerprint: 'd',
+    },
   });
   assert.equal(res.statusCode, 401);
   await app.close();

@@ -64,11 +64,7 @@ function BrandReadView({ tenantId }: { tenantId: string }) {
     return <p className="text-slate-500">Loading brand settings…</p>;
   }
   if (brand.error || !brand.data) {
-    return (
-      <p className="text-red-500">
-        Failed to load brand settings. Refresh to retry.
-      </p>
-    );
+    return <p className="text-red-500">Failed to load brand settings. Refresh to retry.</p>;
   }
 
   return (
@@ -76,9 +72,7 @@ function BrandReadView({ tenantId }: { tenantId: string }) {
       <Card>
         <CardHeader>
           <CardTitle>Current settings</CardTitle>
-          <CardDescription>
-            Read-only snapshot of the active brand_config row.
-          </CardDescription>
+          <CardDescription>Read-only snapshot of the active brand_config row.</CardDescription>
         </CardHeader>
         <CardContent>
           <ReadOnlyFields config={brand.data} />
@@ -88,8 +82,8 @@ function BrandReadView({ tenantId }: { tenantId: string }) {
         <CardHeader>
           <CardTitle>Logo</CardTitle>
           <CardDescription>
-            PNG/JPEG/WEBP/SVG, up to 2 MB. Replaces the firm&apos;s logo across the mobile app
-            and claimant dashboard.
+            PNG/JPEG/WEBP/SVG, up to 2 MB. Replaces the firm&apos;s logo across the mobile app and
+            claimant dashboard.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -100,15 +94,12 @@ function BrandReadView({ tenantId }: { tenantId: string }) {
         <CardHeader>
           <CardTitle>Theme</CardTitle>
           <CardDescription>
-            Pick the primary and accent colors used across mobile + web. Live preview updates
-            as you type.
+            Pick the primary and accent colors used across mobile + web. Live preview updates as you
+            type.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <ThemePicker
-            primary={brand.data.primary_color}
-            accent={brand.data.accent_color}
-          />
+          <ThemePicker primary={brand.data.primary_color} accent={brand.data.accent_color} />
         </CardContent>
       </Card>
       <Card>
@@ -127,8 +118,9 @@ function BrandReadView({ tenantId }: { tenantId: string }) {
         <CardHeader>
           <CardTitle>White-label subdomain</CardTitle>
           <CardDescription>
-            Pick a subdomain on platform.com.au. Mobile employees and claimants reach your firm
-            at <code>your-firm.platform.com.au</code>. 3-30 characters, lowercase letters / digits / dashes.
+            Pick a subdomain on platform.com.au. Mobile employees and claimants reach your firm at{' '}
+            <code>your-firm.platform.com.au</code>. 3-30 characters, lowercase letters / digits /
+            dashes.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -140,8 +132,7 @@ function BrandReadView({ tenantId }: { tenantId: string }) {
           <CardTitle>Custom domain (optional)</CardTitle>
           <CardDescription>
             Bring your own domain — e.g. <code>platform.acmeconsulting.com.au</code>. We&apos;ll
-            verify a CNAME record at your DNS provider, then issue an SSL certificate
-            automatically.
+            verify a CNAME record at your DNS provider, then issue an SSL certificate automatically.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -155,8 +146,8 @@ function BrandReadView({ tenantId }: { tenantId: string }) {
         <CardHeader>
           <CardTitle>Email sender domain</CardTitle>
           <CardDescription>
-            Send transactional emails (magic links, invites) from your own domain. Publish 3
-            DKIM TXT records to authorise <code>mail.your-firm.com</code> as a sender.
+            Send transactional emails (magic links, invites) from your own domain. Publish 3 DKIM
+            TXT records to authorise <code>mail.your-firm.com</code> as a sender.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -252,7 +243,9 @@ function DetailsForm({ config }: { config: BrandConfig }) {
               <FormControl>
                 <Input type="email" placeholder="help@acme.com" {...field} />
               </FormControl>
-              <FormDescription>Where claimants email for help. Leave blank to omit.</FormDescription>
+              <FormDescription>
+                Where claimants email for help. Leave blank to omit.
+              </FormDescription>
               <FormMessage />
             </FormItem>
           )}

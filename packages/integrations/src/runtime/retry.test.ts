@@ -77,10 +77,12 @@ test('withRetry respects max_delay_ms cap', async () => {
   }) as typeof globalThis.setTimeout;
   try {
     await assert.rejects(
-      withRetry(
-        () => Promise.reject(new Error('x')),
-        { max_attempts: 5, initial_delay_ms: 1000, max_delay_ms: 1500, jitter_ratio: 0 },
-      ),
+      withRetry(() => Promise.reject(new Error('x')), {
+        max_attempts: 5,
+        initial_delay_ms: 1000,
+        max_delay_ms: 1500,
+        jitter_ratio: 0,
+      }),
     );
     // Without cap, delays would be [1000, 2000, 4000, 8000]. Cap clamps to 1500.
     assert.deepEqual(delays, [1000, 1500, 1500, 1500]);

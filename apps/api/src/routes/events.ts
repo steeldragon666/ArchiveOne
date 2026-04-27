@@ -231,8 +231,7 @@ export function registerEvents(app: FastifyInstance): void {
     if (!parsed.success) {
       return reply.status(400).send({
         error: 'invalid_query',
-        message:
-          'Query must include subject_tenant_id; optional filter, limit (1..200), cursor',
+        message: 'Query must include subject_tenant_id; optional filter, limit (1..200), cursor',
         requestId: req.id,
       });
     }
@@ -305,12 +304,14 @@ export function registerEvents(app: FastifyInstance): void {
       const nextCursor =
         hasMore && last
           ? encodeCursor({
-              captured_at: typeof last.captured_at === 'string'
-                ? last.captured_at
-                : last.captured_at.toISOString(),
-              received_at: typeof last.received_at === 'string'
-                ? last.received_at
-                : last.received_at.toISOString(),
+              captured_at:
+                typeof last.captured_at === 'string'
+                  ? last.captured_at
+                  : last.captured_at.toISOString(),
+              received_at:
+                typeof last.received_at === 'string'
+                  ? last.received_at
+                  : last.received_at.toISOString(),
               id: last.id,
             })
           : null;

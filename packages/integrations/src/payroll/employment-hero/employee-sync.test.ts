@@ -86,7 +86,9 @@ test('syncEmployees: 3 employees on a single page → upserted=3, deactivated=0'
   assert.equal(result.deactivated, 0);
   // 3 INSERT...ON CONFLICT statements, zero UPDATE statements.
   assert.equal(queries.length, 3);
-  assert.ok(queries.every((q) => q.sql.startsWith('\n        INSERT INTO subject_tenant_employee')));
+  assert.ok(
+    queries.every((q) => q.sql.startsWith('\n        INSERT INTO subject_tenant_employee')),
+  );
 });
 
 test('syncEmployees: terminated status triggers a follow-up UPDATE deactivating the row', async () => {

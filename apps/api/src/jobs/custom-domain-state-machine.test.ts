@@ -26,12 +26,7 @@ after(async () => {
 
 const setRow = async (
   custom_domain: string | null,
-  custom_domain_status:
-    | 'unconfigured'
-    | 'cname_pending'
-    | 'cert_pending'
-    | 'active'
-    | 'failed',
+  custom_domain_status: 'unconfigured' | 'cname_pending' | 'cert_pending' | 'active' | 'failed',
 ): Promise<void> => {
   await privilegedSql`
     INSERT INTO brand_config (tenant_id, display_name, custom_domain, custom_domain_status)
@@ -43,7 +38,10 @@ const setRow = async (
   `;
 };
 
-const stubResolver = (cnames: string[]): CnameResolver => () => Promise.resolve(cnames);
+const stubResolver =
+  (cnames: string[]): CnameResolver =>
+  () =>
+    Promise.resolve(cnames);
 const errorResolver = (): CnameResolver => () => Promise.reject(new Error('ENODATA'));
 
 test('cname_pending + matching CNAME → transitions to cert_pending', async () => {
@@ -100,10 +98,12 @@ test('cert_pending → transitions to active with placeholder ARN', async () => 
   assert.equal(result.status, 'active');
   assert.equal(result.transitioned, true);
 
-  const rows = await privilegedSql<{
-    custom_domain_status: string;
-    custom_domain_acm_arn: string | null;
-  }[]>`
+  const rows = await privilegedSql<
+    {
+      custom_domain_status: string;
+      custom_domain_acm_arn: string | null;
+    }[]
+  >`
     SELECT custom_domain_status, custom_domain_acm_arn
       FROM brand_config WHERE tenant_id = ${TENANT_ID}
   `;

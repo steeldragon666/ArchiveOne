@@ -127,13 +127,15 @@ export function registerMobileEvents(app: FastifyInstance): void {
   app.post('/v1/mobile/events', { preHandler: requireMobileSession }, async (req, reply) => {
     const parsed = createMobileEventBody.safeParse(req.body);
     if (!parsed.success) {
-      return reply.status(400).send(
-        errEnvelope(
-          'INVALID_BODY',
-          'Body must be { subject_tenant_id?, captured_at_local, payload: { source: "voice" | "hypothesis_prompt", ... } }',
-          req.id,
-        ),
-      );
+      return reply
+        .status(400)
+        .send(
+          errEnvelope(
+            'INVALID_BODY',
+            'Body must be { subject_tenant_id?, captured_at_local, payload: { source: "voice" | "hypothesis_prompt", ... } }',
+            req.id,
+          ),
+        );
     }
     const body: MobileEventBody = parsed.data;
     const principal = req.mobileUser!;
@@ -150,11 +152,7 @@ export function registerMobileEvents(app: FastifyInstance): void {
       return reply
         .status(403)
         .send(
-          errEnvelope(
-            'FORBIDDEN',
-            'subject_tenant_id does not match employee binding',
-            req.id,
-          ),
+          errEnvelope('FORBIDDEN', 'subject_tenant_id does not match employee binding', req.id),
         );
     }
 
@@ -188,12 +186,14 @@ export function registerMobileEvents(app: FastifyInstance): void {
       // the unique-violation 23505 round-trip below for the common
       // "already received" case, and guarantees the response payload is
       // identical across re-tries (same id, hash, etc.).
-      const existing = await privilegedSql<{
-        id: string;
-        captured_at: Date;
-        received_at: Date;
-        hash: string;
-      }[]>`
+      const existing = await privilegedSql<
+        {
+          id: string;
+          captured_at: Date;
+          received_at: Date;
+          hash: string;
+        }[]
+      >`
         SELECT id, captured_at, received_at, hash FROM event
          WHERE idempotency_key = ${idempotencyKey}
            AND tenant_id = ${principal.tenantId}
@@ -205,8 +205,10 @@ export function registerMobileEvents(app: FastifyInstance): void {
             id: e.id,
             tenant_id: principal.tenantId,
             subject_tenant_id: subjectTenantId,
-            captured_at: e.captured_at instanceof Date ? e.captured_at.toISOString() : e.captured_at,
-            received_at: e.received_at instanceof Date ? e.received_at.toISOString() : e.received_at,
+            captured_at:
+              e.captured_at instanceof Date ? e.captured_at.toISOString() : e.captured_at,
+            received_at:
+              e.received_at instanceof Date ? e.received_at.toISOString() : e.received_at,
             hash: e.hash,
           },
           duplicate: true,
@@ -223,9 +225,7 @@ export function registerMobileEvents(app: FastifyInstance): void {
     // event is required to change kind after the fact (audit invariant).
     const variant = body.payload;
     const isVoice = variant.source === 'voice';
-    const eventKind: 'SUPPORTING' | 'HYPOTHESIS' = isVoice
-      ? 'SUPPORTING'
-      : 'HYPOTHESIS';
+    const eventKind: 'SUPPORTING' | 'HYPOTHESIS' = isVoice ? 'SUPPORTING' : 'HYPOTHESIS';
     const eventPayload: Record<string, unknown> = isVoice
       ? {
           _v: 1,
@@ -265,12 +265,14 @@ export function registerMobileEvents(app: FastifyInstance): void {
       // partial index throws 23505 — re-resolve and return the
       // surviving row.
       if ((err as { code?: string }).code === '23505' && idempotencyKey) {
-        const winners = await privilegedSql<{
-          id: string;
-          captured_at: Date;
-          received_at: Date;
-          hash: string;
-        }[]>`
+        const winners = await privilegedSql<
+          {
+            id: string;
+            captured_at: Date;
+            received_at: Date;
+            hash: string;
+          }[]
+        >`
           SELECT id, captured_at, received_at, hash FROM event
            WHERE idempotency_key = ${idempotencyKey}
              AND tenant_id = ${principal.tenantId}
@@ -316,10 +318,12 @@ export function registerMobileEvents(app: FastifyInstance): void {
     // populate its local cache without a follow-up GET. captured_at /
     // received_at are server-side; the mobile UI uses captured_at_local
     // (in the payload) for its own offline-friendly ordering.
-    const fresh = await privilegedSql<{
-      captured_at: Date;
-      received_at: Date;
-    }[]>`
+    const fresh = await privilegedSql<
+      {
+        captured_at: Date;
+        received_at: Date;
+      }[]
+    >`
       SELECT captured_at, received_at FROM event WHERE id = ${inserted.id}
     `;
     const f = fresh[0]!;

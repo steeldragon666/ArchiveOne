@@ -9,10 +9,7 @@ import type { RetryOptions } from './types.js';
  * sync across callers. After the last attempt fails, rethrows the
  * most recent error.
  */
-export async function withRetry<T>(
-  fn: () => Promise<T>,
-  opts: RetryOptions = {},
-): Promise<T> {
+export async function withRetry<T>(fn: () => Promise<T>, opts: RetryOptions = {}): Promise<T> {
   const max = opts.max_attempts ?? 5;
   const initial = opts.initial_delay_ms ?? 200;
   const maxDelay = opts.max_delay_ms ?? 30_000;

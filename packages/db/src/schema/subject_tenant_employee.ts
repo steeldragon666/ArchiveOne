@@ -29,12 +29,7 @@ import { user } from './user.js';
  *
  * Naming convention: camelCase TS / snake_case SQL (per T5/T6 chain).
  */
-export const PAYROLL_PROVIDERS = [
-  'employment_hero',
-  'keypay',
-  'deputy',
-  'xero_payroll',
-] as const;
+export const PAYROLL_PROVIDERS = ['employment_hero', 'keypay', 'deputy', 'xero_payroll'] as const;
 export type PayrollProvider = (typeof PAYROLL_PROVIDERS)[number];
 
 export const subjectTenantEmployee = pgTable(

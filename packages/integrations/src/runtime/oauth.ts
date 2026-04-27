@@ -61,9 +61,7 @@ type TokenResponse = {
  * client-side from `expires_in` so callers don't have to track wall-clock
  * arithmetic themselves.
  */
-export async function exchangeCodeForTokens(
-  req: OAuthExchangeRequest,
-): Promise<OAuthTokens> {
+export async function exchangeCodeForTokens(req: OAuthExchangeRequest): Promise<OAuthTokens> {
   const body = new URLSearchParams();
   body.set('grant_type', 'authorization_code');
   body.set('client_id', req.client_id);

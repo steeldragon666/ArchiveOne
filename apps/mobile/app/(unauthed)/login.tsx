@@ -17,12 +17,8 @@ export default function LoginScreen() {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>CPA Scribe</Text>
-      <Text style={styles.body}>
-        Check your email for a sign-in link from your firm.
-      </Text>
-      <Text style={styles.help}>
-        Tap the link on this device to continue.
-      </Text>
+      <Text style={styles.body}>Check your email for a sign-in link from your firm.</Text>
+      <Text style={styles.help}>Tap the link on this device to continue.</Text>
     </View>
   );
 }

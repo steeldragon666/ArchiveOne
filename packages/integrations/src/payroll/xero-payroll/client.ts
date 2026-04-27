@@ -1,9 +1,5 @@
 import { withRetry } from '../../runtime/retry.js';
-import {
-  XERO_API_BASE,
-  type XeroPayrollEmployee,
-  type XeroPayrollTimesheet,
-} from './types.js';
+import { XERO_API_BASE, type XeroPayrollEmployee, type XeroPayrollTimesheet } from './types.js';
 
 /**
  * Xero Payroll AU API client (T-B18).

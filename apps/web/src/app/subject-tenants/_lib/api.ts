@@ -67,9 +67,7 @@ export interface CreateSubjectTenantInput {
   kind: SubjectTenantKind;
 }
 
-export async function createSubjectTenant(
-  input: CreateSubjectTenantInput,
-): Promise<SubjectTenant> {
+export async function createSubjectTenant(input: CreateSubjectTenantInput): Promise<SubjectTenant> {
   const body = await apiFetch<{ subject_tenant: SubjectTenant }>('/v1/subject-tenants', {
     method: 'POST',
     body: JSON.stringify(input),
@@ -102,16 +100,10 @@ export async function createEvent(input: CreateEventInput): Promise<ApiEvent> {
   return body.event;
 }
 
-export async function overrideEvent(
-  id: string,
-  input: OverrideEventInput,
-): Promise<ApiEvent> {
-  const body = await apiFetch<{ override_event: ApiEvent }>(
-    `/v1/events/${id}/override`,
-    {
-      method: 'POST',
-      body: JSON.stringify(input),
-    },
-  );
+export async function overrideEvent(id: string, input: OverrideEventInput): Promise<ApiEvent> {
+  const body = await apiFetch<{ override_event: ApiEvent }>(`/v1/events/${id}/override`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
   return body.override_event;
 }

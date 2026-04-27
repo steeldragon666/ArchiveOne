@@ -139,9 +139,7 @@ test('pullTimesheets: composes ISO timestamps + converts NumberOfUnits→minutes
           StartDate: '/Date(1777075200000+0000)/',
           EndDate: '/Date(1777075200000+0000)/',
           Status: 'APPROVED',
-          TimesheetLines: [
-            { Date: '/Date(1777075200000+0000)/', NumberOfUnits: 4.25 },
-          ],
+          TimesheetLines: [{ Date: '/Date(1777075200000+0000)/', NumberOfUnits: 4.25 }],
         },
       ],
     });
@@ -186,9 +184,7 @@ test('pullTimesheets: REJECTED timesheet skipped wholesale (no DB calls)', async
           StartDate: '/Date(1777075200000+0000)/',
           EndDate: '/Date(1777161600000+0000)/',
           Status: 'REJECTED',
-          TimesheetLines: [
-            { Date: '/Date(1777075200000+0000)/', NumberOfUnits: 8 },
-          ],
+          TimesheetLines: [{ Date: '/Date(1777075200000+0000)/', NumberOfUnits: 8 }],
         },
         {
           TimesheetID: 'ts-good',
@@ -196,9 +192,7 @@ test('pullTimesheets: REJECTED timesheet skipped wholesale (no DB calls)', async
           StartDate: '/Date(1777075200000+0000)/',
           EndDate: '/Date(1777075200000+0000)/',
           Status: 'APPROVED',
-          TimesheetLines: [
-            { Date: '/Date(1777075200000+0000)/', NumberOfUnits: 8 },
-          ],
+          TimesheetLines: [{ Date: '/Date(1777075200000+0000)/', NumberOfUnits: 8 }],
         },
       ],
     });
@@ -237,9 +231,7 @@ test('pullTimesheets: existing row → updated=1', async () => {
           StartDate: '/Date(1777075200000+0000)/',
           EndDate: '/Date(1777075200000+0000)/',
           Status: 'APPROVED',
-          TimesheetLines: [
-            { Date: '/Date(1777075200000+0000)/', NumberOfUnits: 8 },
-          ],
+          TimesheetLines: [{ Date: '/Date(1777075200000+0000)/', NumberOfUnits: 8 }],
         },
       ],
     });
@@ -443,9 +435,7 @@ test('pullTimesheets: T-B21 — manual entry overlapping payroll → flag UPDATE
           StartDate: '/Date(1777075200000+0000)/',
           EndDate: '/Date(1777075200000+0000)/',
           Status: 'APPROVED',
-          TimesheetLines: [
-            { Date: '/Date(1777075200000+0000)/', NumberOfUnits: 8 },
-          ],
+          TimesheetLines: [{ Date: '/Date(1777075200000+0000)/', NumberOfUnits: 8 }],
         },
       ],
     });

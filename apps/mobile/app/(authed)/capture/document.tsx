@@ -100,10 +100,13 @@ export default function DocumentCaptureScreen() {
 
       {state.kind === 'idle' ? (
         <>
-          <Text style={styles.help}>
-            Pick a PDF, image, or Word document from your device.
-          </Text>
-          <Pressable onPress={handlePick} style={[styles.action, styles.submit]}>
+          <Text style={styles.help}>Pick a PDF, image, or Word document from your device.</Text>
+          <Pressable
+            onPress={() => {
+              void handlePick();
+            }}
+            style={[styles.action, styles.submit]}
+          >
             <Text style={styles.actionLabel}>Pick a document</Text>
           </Pressable>
         </>
@@ -124,16 +127,19 @@ export default function DocumentCaptureScreen() {
             <Pressable onPress={handleDiscard} style={[styles.action, styles.discard]}>
               <Text style={styles.actionLabel}>Discard</Text>
             </Pressable>
-            <Pressable onPress={handleSubmit} style={[styles.action, styles.submit]}>
+            <Pressable
+              onPress={() => {
+                void handleSubmit();
+              }}
+              style={[styles.action, styles.submit]}
+            >
               <Text style={styles.actionLabel}>Upload</Text>
             </Pressable>
           </View>
         </>
       ) : null}
 
-      {state.kind === 'uploading' ? (
-        <Text style={styles.help}>Uploading…</Text>
-      ) : null}
+      {state.kind === 'uploading' ? <Text style={styles.help}>Uploading…</Text> : null}
     </View>
   );
 }

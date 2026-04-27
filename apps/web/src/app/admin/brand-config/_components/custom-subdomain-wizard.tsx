@@ -39,11 +39,7 @@ type Status =
   | { kind: 'available' }
   | { kind: 'unavailable'; reason: SubdomainAvailabilityReason };
 
-export function CustomSubdomainWizard({
-  currentSubdomain,
-}: {
-  currentSubdomain: string | null;
-}) {
+export function CustomSubdomainWizard({ currentSubdomain }: { currentSubdomain: string | null }) {
   const qc = useQueryClient();
   const { toast } = useToast();
   const [value, setValue] = useState(currentSubdomain ?? '');
@@ -117,15 +113,16 @@ export function CustomSubdomainWizard({
     },
   });
 
-  const canSave =
-    status.kind === 'available' && value !== '' && value !== currentSubdomain;
+  const canSave = status.kind === 'available' && value !== '' && value !== currentSubdomain;
 
   return (
     <div className="space-y-3">
       {currentSubdomain && (
         <p className="text-sm text-muted-foreground">
           Your current white-label URL:{' '}
-          <code className="text-foreground">https://{currentSubdomain}.{PLATFORM_HOST}</code>
+          <code className="text-foreground">
+            https://{currentSubdomain}.{PLATFORM_HOST}
+          </code>
         </p>
       )}
       <div className="flex items-center gap-2">

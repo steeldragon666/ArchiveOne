@@ -37,8 +37,7 @@ const errEnvelope = (
   requestId,
 });
 
-const isoOf = (v: Date | string): string =>
-  typeof v === 'string' ? v : v.toISOString();
+const isoOf = (v: Date | string): string => (typeof v === 'string' ? v : v.toISOString());
 
 interface RawMediaRow {
   id: string;
@@ -89,11 +88,7 @@ const rowToArtefact = (r: RawMediaRow): MediaArtefact => ({
  * is unique). If two events reference the same artefact, both rows
  * point at one S3 object.
  */
-function buildS3Key(args: {
-  tenantId: string;
-  subjectTenantId: string;
-  sha256: string;
-}): string {
+function buildS3Key(args: { tenantId: string; subjectTenantId: string; sha256: string }): string {
   return `tenants/${args.tenantId}/subjects/${args.subjectTenantId}/${args.sha256}`;
 }
 
@@ -123,13 +118,15 @@ export function registerMedia(app: FastifyInstance): void {
     async (req, reply) => {
       const parsed = presignedUploadBody.safeParse(req.body);
       if (!parsed.success) {
-        return reply.status(400).send(
-          errEnvelope(
-            'INVALID_BODY',
-            'Body must be { content_type, size_bytes (≤ 50MB), sha256 (64 hex) }',
-            req.id,
-          ),
-        );
+        return reply
+          .status(400)
+          .send(
+            errEnvelope(
+              'INVALID_BODY',
+              'Body must be { content_type, size_bytes (≤ 50MB), sha256 (64 hex) }',
+              req.id,
+            ),
+          );
       }
       const principal = req.mobileUser!;
       const { sha256 } = parsed.data;
@@ -160,85 +157,66 @@ export function registerMedia(app: FastifyInstance): void {
    * rejected with 404 (the event's tenant doesn't match the JWT's
    * tenant).
    */
-  app.post(
-    '/v1/media/finalize',
-    { preHandler: requireMobileSession },
-    async (req, reply) => {
-      const parsed = finalizeMediaBody.safeParse(req.body);
-      if (!parsed.success) {
-        return reply.status(400).send(
+  app.post('/v1/media/finalize', { preHandler: requireMobileSession }, async (req, reply) => {
+    const parsed = finalizeMediaBody.safeParse(req.body);
+    if (!parsed.success) {
+      return reply
+        .status(400)
+        .send(
           errEnvelope(
             'INVALID_BODY',
             'Body must be { s3_key, content_hash (64 hex), mime_type, size_bytes, exif?, event_id? }',
             req.id,
           ),
         );
-      }
-      const principal = req.mobileUser!;
-      const body = parsed.data;
+    }
+    const principal = req.mobileUser!;
+    const body = parsed.data;
 
-      // Verify the s3_key is one we issued for this caller. The key
-      // format encodes tenant + subject + hash, so a key that doesn't
-      // start with the caller's prefix is either spoofed or stale.
-      const expectedPrefix = `tenants/${principal.tenantId}/subjects/${principal.subjectTenantId}/`;
-      if (!body.s3_key.startsWith(expectedPrefix)) {
-        return reply
-          .status(403)
-          .send(
-            errEnvelope(
-              'FORBIDDEN',
-              's3_key does not match caller scope',
-              req.id,
-            ),
-          );
-      }
+    // Verify the s3_key is one we issued for this caller. The key
+    // format encodes tenant + subject + hash, so a key that doesn't
+    // start with the caller's prefix is either spoofed or stale.
+    const expectedPrefix = `tenants/${principal.tenantId}/subjects/${principal.subjectTenantId}/`;
+    if (!body.s3_key.startsWith(expectedPrefix)) {
+      return reply
+        .status(403)
+        .send(errEnvelope('FORBIDDEN', 's3_key does not match caller scope', req.id));
+    }
 
-      // The trailing segment of our own keys is the sha256 — confirm
-      // the client's claimed content_hash matches it. If it doesn't,
-      // either the client lied at presign-time or the upload swapped
-      // bytes between presign + finalize.
-      const trailing = body.s3_key.slice(expectedPrefix.length);
-      if (trailing !== body.content_hash) {
-        return reply
-          .status(400)
-          .send(
-            errEnvelope(
-              'HASH_MISMATCH',
-              'content_hash does not match s3_key suffix',
-              req.id,
-            ),
-          );
-      }
+    // The trailing segment of our own keys is the sha256 — confirm
+    // the client's claimed content_hash matches it. If it doesn't,
+    // either the client lied at presign-time or the upload swapped
+    // bytes between presign + finalize.
+    const trailing = body.s3_key.slice(expectedPrefix.length);
+    if (trailing !== body.content_hash) {
+      return reply
+        .status(400)
+        .send(errEnvelope('HASH_MISMATCH', 'content_hash does not match s3_key suffix', req.id));
+    }
 
-      // Optional event_id check. The RLS-scoped SELECT serves as both
-      // existence + cross-firm guard.
-      if (body.event_id) {
-        const eventVisible = await sql.begin(async (tx) => {
-          await tx`SELECT set_config('app.current_tenant_id', ${principal.tenantId}, true)`;
-          const rows = await tx<{ id: string }[]>`
+    // Optional event_id check. The RLS-scoped SELECT serves as both
+    // existence + cross-firm guard.
+    if (body.event_id) {
+      const eventVisible = await sql.begin(async (tx) => {
+        await tx`SELECT set_config('app.current_tenant_id', ${principal.tenantId}, true)`;
+        const rows = await tx<{ id: string }[]>`
             SELECT id FROM event WHERE id = ${body.event_id!}
           `;
-          return rows[0] != null;
-        });
-        if (!eventVisible) {
-          return reply
-            .status(404)
-            .send(
-              errEnvelope(
-                'EVENT_NOT_FOUND',
-                'No event with that id in this firm',
-                req.id,
-              ),
-            );
-        }
+        return rows[0] != null;
+      });
+      if (!eventVisible) {
+        return reply
+          .status(404)
+          .send(errEnvelope('EVENT_NOT_FOUND', 'No event with that id in this firm', req.id));
       }
+    }
 
-      // Insert under privileged sql — the employee binding gives us
-      // tenant scoping at the JWT layer, and we need to write across
-      // RLS for the insert path. The SELECT below uses RLS to read
-      // back the inserted row.
-      try {
-        const inserted = await privilegedSql<RawMediaRow[]>`
+    // Insert under privileged sql — the employee binding gives us
+    // tenant scoping at the JWT layer, and we need to write across
+    // RLS for the insert path. The SELECT below uses RLS to read
+    // back the inserted row.
+    try {
+      const inserted = await privilegedSql<RawMediaRow[]>`
           INSERT INTO media_artefact (
             tenant_id, subject_tenant_id, event_id, uploaded_by_employee_id,
             s3_key, content_hash, mime_type, size_bytes, exif,
@@ -261,14 +239,14 @@ export function registerMedia(app: FastifyInstance): void {
             s3_key, content_hash, mime_type, size_bytes, exif,
             ocr_text, ocr_status, virus_scan_status, uploaded_at
         `;
-        const row = inserted[0]!;
-        return await reply.status(201).send({ media: rowToArtefact(row) });
-      } catch (err) {
-        // Unique violation on (tenant, subject, content_hash) — a prior
-        // finalize already inserted this row. Return 200 + existing
-        // row for idempotency.
-        if ((err as { code?: string }).code === '23505') {
-          const existing = await privilegedSql<RawMediaRow[]>`
+      const row = inserted[0]!;
+      return await reply.status(201).send({ media: rowToArtefact(row) });
+    } catch (err) {
+      // Unique violation on (tenant, subject, content_hash) — a prior
+      // finalize already inserted this row. Return 200 + existing
+      // row for idempotency.
+      if ((err as { code?: string }).code === '23505') {
+        const existing = await privilegedSql<RawMediaRow[]>`
             SELECT
               id, tenant_id, subject_tenant_id, event_id, uploaded_by_employee_id,
               s3_key, content_hash, mime_type, size_bytes, exif,
@@ -278,17 +256,14 @@ export function registerMedia(app: FastifyInstance): void {
                AND subject_tenant_id = ${principal.subjectTenantId}
                AND content_hash = ${body.content_hash}
           `;
-          const winner = existing[0];
-          if (winner) {
-            return reply
-              .status(200)
-              .send({ media: rowToArtefact(winner), duplicate: true });
-          }
+        const winner = existing[0];
+        if (winner) {
+          return reply.status(200).send({ media: rowToArtefact(winner), duplicate: true });
         }
-        throw err;
       }
-    },
-  );
+      throw err;
+    }
+  });
 
   // ---------------- Consultant CRUD (T-A8) ----------------
 
@@ -308,13 +283,9 @@ export function registerMedia(app: FastifyInstance): void {
   app.get('/v1/media', { preHandler: requireSession }, async (req, reply) => {
     const parsed = listMediaQuery.safeParse(req.query);
     if (!parsed.success) {
-      return reply.status(400).send(
-        errEnvelope(
-          'INVALID_QUERY',
-          'Query must be { subject_tenant_id: uuid }',
-          req.id,
-        ),
-      );
+      return reply
+        .status(400)
+        .send(errEnvelope('INVALID_QUERY', 'Query must be { subject_tenant_id: uuid }', req.id));
     }
     const { subject_tenant_id } = parsed.data;
     const tenantId = req.user!.tenantId!;
@@ -353,9 +324,7 @@ export function registerMedia(app: FastifyInstance): void {
     async (req, reply) => {
       const idParsed = Uuid.safeParse(req.params.id);
       if (!idParsed.success) {
-        return reply
-          .status(400)
-          .send(errEnvelope('INVALID_PARAM', 'id must be a UUID v4', req.id));
+        return reply.status(400).send(errEnvelope('INVALID_PARAM', 'id must be a UUID v4', req.id));
       }
       const tenantId = req.user!.tenantId!;
       const rows = await sql.begin(async (tx) => {
@@ -403,9 +372,7 @@ export function registerMedia(app: FastifyInstance): void {
     async (req, reply) => {
       const idParsed = Uuid.safeParse(req.params.id);
       if (!idParsed.success) {
-        return reply
-          .status(400)
-          .send(errEnvelope('INVALID_PARAM', 'id must be a UUID v4', req.id));
+        return reply.status(400).send(errEnvelope('INVALID_PARAM', 'id must be a UUID v4', req.id));
       }
       const tenantId = req.user!.tenantId!;
       const deleted = await sql.begin(async (tx) => {

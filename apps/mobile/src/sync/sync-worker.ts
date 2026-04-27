@@ -1,12 +1,6 @@
 import * as Network from 'expo-network';
 import * as FileSystem from 'expo-file-system';
-import {
-  nextQueued,
-  markSyncing,
-  markSynced,
-  markFailed,
-  type QueueRow,
-} from './queue.js';
+import { nextQueued, markSyncing, markSynced, markFailed, type QueueRow } from './queue.js';
 import { getApiBaseUrl } from '../auth/redeem.js';
 import { useSessionStore } from '../auth/session-store.js';
 
@@ -311,7 +305,6 @@ export async function drainQueue(dispatch: Dispatcher = defaultDispatcher): Prom
   if (!(await isOnline())) return 0;
 
   let synced = 0;
-  // eslint-disable-next-line no-constant-condition
   while (true) {
     const row = await nextQueued();
     if (!row) break;

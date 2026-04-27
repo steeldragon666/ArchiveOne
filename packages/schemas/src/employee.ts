@@ -12,12 +12,7 @@ import { Iso8601, Uuid } from './primitives.js';
  * consumer is the `subject_tenant_employee` row contract; payroll-side
  * timesheet ingestion (D14-D15) will reuse this enum directly.
  */
-export const PAYROLL_PROVIDERS = [
-  'employment_hero',
-  'keypay',
-  'deputy',
-  'xero_payroll',
-] as const;
+export const PAYROLL_PROVIDERS = ['employment_hero', 'keypay', 'deputy', 'xero_payroll'] as const;
 export const payrollProvider = z.enum(PAYROLL_PROVIDERS);
 export type PayrollProvider = z.infer<typeof payrollProvider>;
 

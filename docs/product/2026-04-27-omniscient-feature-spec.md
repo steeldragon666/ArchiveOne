@@ -24,6 +24,7 @@ Before module-level design, every feature is tested against five filters that co
 This is the single most important module and the product's structural defence against Synnch, against Big 4 internal accelerators, and against international entrants. It is the "audit-ready from the start" promise made operational.
 
 **Core capabilities:**
+
 - **Activity register with hierarchical IDs.** Auto-generated CA-## (Core) and SA-## (Supporting) IDs, with hypothesis, technical uncertainty statement, systematic experimentation log, expected/actual outcome fields. Locked to Section 355-25 / 355-30 statutory wording.
 - **Technical uncertainty register.** Per-activity uncertainty entries with date created, hypothesis evolution log, references to prior art / competent professional knowledge state, experimental method, results, conclusion. Immutable revision history (append-only) so AusIndustry can trace knowledge state at the date of experimentation.
 - **Contemporaneous evidence chain.** Every activity links to source artefacts: meeting notes, design docs, code commits, lab notebook entries, invoices, timesheets. Each artefact stamped with cryptographic content hash + ingestion timestamp + source-system metadata. SHA-256 evidence chain.
@@ -40,6 +41,7 @@ This is the single most important module and the product's structural defence ag
 Where 85–90% time savings actually land, and the surface where Aaron's existing prompt/agent stack converts directly into product.
 
 **For R&DTI narratives:**
+
 - **Core Activity narrative drafter.** Trained on historic AusIndustry decisions, the Body by Michael, Ultimate Vision Inventions, GQHC, and Active Sports Management tribunal precedents, AusIndustry sector guides (software, biotech, energy, agriculture, manufacturing, food, construction), and the June 2024 Guide to Interpretation. Drafts portal-ready wording for systematic experimentation, hypothesis, technical uncertainty, new knowledge.
 - **Supporting Activity drafter.** With dominant-purpose test logic. AI flags activities that read as "ordinary business" and suggests reframing to demonstrate direct relation to a core activity.
 - **Eligibility risk scorer.** Per-activity score against sector guides; surfaces specific risk language. Confidence indicator visible to consultant.
@@ -48,6 +50,7 @@ Where 85–90% time savings actually land, and the surface where Aaron's existin
 - **AusIndustry portal mirror.** Drafts in the exact field structure and word limits of the AusIndustry portal, including character counts, mandatory subheadings, and the new Finding application format from July 2024.
 
 **For grants:**
+
 - **Eligibility analyser.** Upload a Grant Opportunity Guidelines PDF; AI extracts criteria, scoring rubric, weightings, and gap analysis against firm's client profile.
 - **Selection criterion drafter.** Per-criterion drafting with explicit scoring-rubric alignment, evidence/case-study insertion from a firm knowledge base, word-count enforcement.
 - **Budget builder.** Co-contribution calculator with valuation methodology (project-period chargeout, fully-loaded labour rates, cost-based IP — DIDG framework). Generates Commonwealth-audit-defensible co-contribution tables.
@@ -63,6 +66,7 @@ The differentiation against Drafter (Funding Centre's AU-native AI grant tool): 
 Second monetisation layer beyond firm subscription. Firm pays the annual tier; each client gets a branded mobile/web companion app at A$300–600 per active client, billable at the firm's discretion.
 
 **Capabilities:**
+
 - **Daily contemporaneous capture.** Push notification at end of day: "30 seconds — what R&D did you work on today?" Voice note → AI transcript → activity register entry, linked to staff timesheet.
 - **Evidence vault.** Photo/video/document upload tagged to project and activity. Auto-OCR'd, content-hashed, timestamped.
 - **Hypothesis prompts.** Before starting a new experiment: "What outcome do you predict? What does success look like? What are you uncertain about?" Captures pre-experiment state — solves the Body by Michael hypothesis-pre-dating problem.
@@ -92,12 +96,14 @@ Firm-level operations layer. Competes with Karbon (accounting practice managemen
 ## Module 5 — Integrations
 
 **Tier A — must-have on day one:**
+
 - Xero (Synnch is the only Xero-certified R&DTI app globally; you must match).
 - MYOB (Synnch gap — closes a chunk of the AU SME market that Synnch can't serve).
 - AusIndustry portal API (where it exists; otherwise structured export matching portal field names).
 - GrantConnect (no commercial tool currently has API access; bridge with structured scraper + email parser).
 
 **Tier B — strong differentiators:**
+
 - QuickBooks Online (smaller AU footprint but real).
 - Jira, Linear, GitHub, GitLab, Asana, ClickUp (software-claim evidentiary capture).
 - Employment Hero, KeyPay, Deputy (payroll for time apportionment).
@@ -105,6 +111,7 @@ Firm-level operations layer. Competes with Karbon (accounting practice managemen
 - Microsoft 365 / Google Workspace (calendar events as evidence, email thread ingestion).
 
 **Tier C — strategic moats:**
+
 - Slack, Teams, Discord (technical discussion → contemporaneous evidence).
 - Notion, Confluence, OneNote, Obsidian (lab notebooks, design docs).
 - Figma, Miro (design experimentation evidence).
@@ -160,22 +167,22 @@ Bundled with R&DTI in Tier 2/3, available standalone for grant-only consultancie
 
 ## Tier mapping
 
-| Capability | Tier 1 (10–20 claims, A$24K) | Tier 2 (20–60 claims, A$48K) | Tier 3 (60+ claims, A$120K) |
-|---|---|---|---|
-| Evidence & Compliance Engine | ✓ Full | ✓ Full | ✓ Full + custom QMS templates |
-| AI Co-Author — R&DTI | ✓ | ✓ | ✓ + per-firm fine-tune |
-| AI Co-Author — Grants | Add-on (+A$8K) | ✓ | ✓ |
-| Client Mobile App | A$500/client | A$400/client | A$300/client |
-| Practice OS / Workflow | Core | Full | Full + multi-office |
-| Integrations Tier A | ✓ | ✓ | ✓ |
-| Integrations Tier B | 3 included | All | All |
-| Integrations Tier C | — | 5 included | All + custom |
-| White-label | Co-branded only | Full white-label | Full + reseller admin |
-| Australian data residency | ✓ | ✓ | ✓ + dedicated tenant |
-| PI insurance subrogation pack | — | ✓ | ✓ |
-| SOC 2 / ISO 27001 attestations | Shared | Shared | Dedicated |
-| User seats | 5 | 15 | 50 |
-| Support | Email, 48hr | Email + Slack, 8hr | Dedicated CSM |
+| Capability                     | Tier 1 (10–20 claims, A$24K) | Tier 2 (20–60 claims, A$48K) | Tier 3 (60+ claims, A$120K)   |
+| ------------------------------ | ---------------------------- | ---------------------------- | ----------------------------- |
+| Evidence & Compliance Engine   | ✓ Full                       | ✓ Full                       | ✓ Full + custom QMS templates |
+| AI Co-Author — R&DTI           | ✓                            | ✓                            | ✓ + per-firm fine-tune        |
+| AI Co-Author — Grants          | Add-on (+A$8K)               | ✓                            | ✓                             |
+| Client Mobile App              | A$500/client                 | A$400/client                 | A$300/client                  |
+| Practice OS / Workflow         | Core                         | Full                         | Full + multi-office           |
+| Integrations Tier A            | ✓                            | ✓                            | ✓                             |
+| Integrations Tier B            | 3 included                   | All                          | All                           |
+| Integrations Tier C            | —                            | 5 included                   | All + custom                  |
+| White-label                    | Co-branded only              | Full white-label             | Full + reseller admin         |
+| Australian data residency      | ✓                            | ✓                            | ✓ + dedicated tenant          |
+| PI insurance subrogation pack  | —                            | ✓                            | ✓                             |
+| SOC 2 / ISO 27001 attestations | Shared                       | Shared                       | Dedicated                     |
+| User seats                     | 5                            | 15                           | 50                            |
+| Support                        | Email, 48hr                  | Email + Slack, 8hr           | Dedicated CSM                 |
 
 Per-claim overage above 20/60/100 respectively at A$1,000/A$800/A$500 per claim — natural expansion revenue.
 
