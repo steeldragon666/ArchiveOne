@@ -53,6 +53,14 @@ export const updateBrandConfigBody = z
     display_name: z.string().min(1).max(200).optional(),
     primary_color: hexColor.optional(),
     accent_color: hexColor.optional(),
+    /**
+     * Set by the logo-upload flow (T-C2): the client first POSTs to
+     * `/v1/brand-config/logo-upload-url` for a pre-signed PUT URL +
+     * tenant-scoped key, then PATCHes here with the returned key. The
+     * server validates the shape but does NOT verify that the object
+     * exists in S3 yet — that lands with the storage-infra task.
+     */
+    logo_s3_key: z.string().min(1).max(500).optional(),
     support_email: z.string().email().optional(),
     terms_of_service_url: z.string().url().optional(),
     landing_page_config: z.unknown().optional(),

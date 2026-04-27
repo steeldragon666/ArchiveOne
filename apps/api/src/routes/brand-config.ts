@@ -1,7 +1,23 @@
+import crypto from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
 import { requireSession } from '@cpa/auth';
 import { sql, privilegedSql } from '@cpa/db/client';
 import { updateBrandConfigBody, type BrandConfig } from '@cpa/schemas';
+
+/**
+ * Whitelist of mime types accepted by the logo uploader. Mirrors the
+ * client-side `<input accept=…>` and the public mobile + claimant
+ * surfaces' image renderer (PNG/JPEG/WEBP/SVG). 2 MB cap is the same
+ * size limit consultants will see in the UI — keep both ends in sync.
+ */
+const LOGO_CONTENT_TYPE = /^image\/(png|jpeg|jpg|webp|svg\+xml)$/;
+const LOGO_MAX_BYTES = 2 * 1024 * 1024;
+
+const logoUploadUrlBody = z.object({
+  content_type: z.string().regex(LOGO_CONTENT_TYPE),
+  size_bytes: z.number().int().positive().max(LOGO_MAX_BYTES),
+});
 
 interface BrandRow {
   tenant_id: string;
@@ -85,7 +101,7 @@ export function registerBrandConfig(app: FastifyInstance): void {
       return reply.status(400).send({
         error: 'invalid_body',
         message:
-          'Body must be a subset of { display_name, primary_color, accent_color, support_email, terms_of_service_url, landing_page_config }',
+          'Body must be a subset of { display_name, primary_color, accent_color, logo_s3_key, support_email, terms_of_service_url, landing_page_config }',
         requestId: req.id,
       });
     }
@@ -120,6 +136,7 @@ export function registerBrandConfig(app: FastifyInstance): void {
       const dn = patch.display_name;
       const pc = patch.primary_color;
       const ac = patch.accent_color;
+      const lk = patch.logo_s3_key;
       const se = patch.support_email;
       const tu = patch.terms_of_service_url;
       const lpcPresent = 'landing_page_config' in patch;
@@ -130,6 +147,7 @@ export function registerBrandConfig(app: FastifyInstance): void {
            SET display_name = COALESCE(${dn ?? null}, display_name),
                primary_color = COALESCE(${pc ?? null}, primary_color),
                accent_color = COALESCE(${ac ?? null}, accent_color),
+               logo_s3_key = CASE WHEN ${lk ?? null}::text IS NULL THEN logo_s3_key ELSE ${lk ?? null} END,
                support_email = CASE WHEN ${se ?? null}::text IS NULL THEN support_email ELSE ${se ?? null} END,
                terms_of_service_url = CASE WHEN ${tu ?? null}::text IS NULL THEN terms_of_service_url ELSE ${tu ?? null} END,
                landing_page_config = CASE WHEN ${lpcPresent} THEN ${lpc}::jsonb ELSE landing_page_config END,
@@ -150,4 +168,47 @@ export function registerBrandConfig(app: FastifyInstance): void {
       return { brand_config: toApi(row) };
     });
   });
+
+  /**
+   * POST /v1/brand-config/logo-upload-url  (admin-only)
+   *
+   * Returns a pre-signed S3 PUT URL the browser uses to upload the
+   * logo blob directly. After the PUT succeeds, the client PATCHes
+   * /v1/brand-config with `logo_s3_key` to "publish" the new logo.
+   *
+   * STUB: this task only wires the contract — the real S3 client lands
+   * with the storage-infra task. We return a placeholder URL so the
+   * client component can flow end-to-end against a known shape, and
+   * the s3_key it ships back through PATCH is already the production
+   * format (`brand-config/{tenantId}/logo-{uuid}.{ext}`) so DB rows
+   * written today don't need re-keying when real S3 lights up.
+   */
+  app.post(
+    '/v1/brand-config/logo-upload-url',
+    { preHandler: requireSession },
+    async (req, reply) => {
+      if (req.user!.role !== 'admin') {
+        return reply.status(403).send({
+          error: 'forbidden',
+          message: 'Admin role required',
+          requestId: req.id,
+        });
+      }
+      const parsed = logoUploadUrlBody.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'invalid_body',
+          message:
+            'Body must be { content_type: image/(png|jpeg|jpg|webp|svg+xml), size_bytes: 1..2_097_152 }',
+          requestId: req.id,
+        });
+      }
+      const tenantId = req.user!.tenantId!;
+      // content_type is image/... — split('/')[1] is always defined.
+      const ext = parsed.data.content_type.split('/')[1]!.replace('+xml', '');
+      const s3Key = `brand-config/${tenantId}/logo-${crypto.randomUUID()}.${ext}`;
+      const upload_url = `https://placeholder.s3.amazonaws.com/${s3Key}?X-Amz-Signature=stub`;
+      return { upload_url, s3_key: s3Key };
+    },
+  );
 }

@@ -31,3 +31,32 @@ export async function updateBrandConfig(body: UpdateBrandConfigBody): Promise<Br
   });
   return res.brand_config;
 }
+
+/**
+ * Logo upload (T-C2).
+ *
+ * Two-step: ask the API for a pre-signed S3 URL keyed to the tenant +
+ * mime, then PUT the blob directly. After the PUT succeeds the caller
+ * patches /v1/brand-config with the returned `s3_key`. The current
+ * server returns a placeholder URL — see api/routes/brand-config.ts —
+ * so the PUT is intentionally skipped client-side until real S3 wires
+ * up. Both ends speak the same shape today so the cutover is data-only.
+ */
+export interface LogoUploadUrlBody {
+  content_type: string;
+  size_bytes: number;
+}
+
+export interface LogoUploadUrlResponse {
+  upload_url: string;
+  s3_key: string;
+}
+
+export async function requestLogoUploadUrl(
+  body: LogoUploadUrlBody,
+): Promise<LogoUploadUrlResponse> {
+  return apiFetch<LogoUploadUrlResponse>('/v1/brand-config/logo-upload-url', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}

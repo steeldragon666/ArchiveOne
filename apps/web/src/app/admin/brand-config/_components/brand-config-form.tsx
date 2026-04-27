@@ -4,6 +4,7 @@ import type { BrandConfig } from '@cpa/schemas';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useWhoami } from '@/hooks/use-whoami';
 import { getBrandConfig } from '../_lib/api';
+import { LogoUpload } from './logo-upload';
 
 /**
  * Brand-config form (T-C1 read-only scaffold).
@@ -52,12 +53,23 @@ function BrandReadView({ tenantId }: { tenantId: string }) {
         <CardHeader>
           <CardTitle>Current settings</CardTitle>
           <CardDescription>
-            Editing is disabled in this build. The logo uploader, theme picker, and text fields
-            land in C2–C4.
+            The theme picker (C3) and text fields (C4) land alongside this logo uploader.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <ReadOnlyFields config={brand.data} />
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>Logo</CardTitle>
+          <CardDescription>
+            PNG/JPEG/WEBP/SVG, up to 2 MB. Replaces the firm&apos;s logo across the mobile app
+            and claimant dashboard.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <LogoUpload currentLogo={brand.data.logo_s3_key} />
         </CardContent>
       </Card>
     </div>
