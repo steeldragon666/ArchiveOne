@@ -13,16 +13,6 @@ const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 export const hexColor = z.string().regex(HEX_COLOR, 'must be a 6-digit hex color like #00aaff');
 
 /**
- * Public-facing brand-config shape (T-F9).
- *
- * The unauthed GET endpoint returns this subset — display fields, plus
- * the hostnames and the freeform `landing_page_config` jsonb. NEVER
- * includes operational fields (`email_sender_dkim_status`,
- * `custom_domain_acm_arn`, `custom_domain_status`) — those are admin-
- * only and surfaced through a separate /v1/brand-config/admin route in
- * a future task (C7).
- */
-/**
  * Custom-domain lifecycle status (T-C6 / T-C7). Mirrors
  * `brand_config.custom_domain_status` in the DB schema. The state
  * machine drives transitions:
@@ -37,6 +27,18 @@ export const customDomainStatus = z.enum([
   'failed',
 ]);
 export type CustomDomainStatusValue = z.infer<typeof customDomainStatus>;
+
+/**
+ * DKIM verification status (T-C8 / T-C9). Mirrors
+ * `brand_config.email_sender_dkim_status` in the DB schema. Lifecycle:
+ *   unconfigured → pending → verified | failed
+ *
+ * v1 stub flips pending → verified directly via the C9 manual check;
+ * real DNS TXT lookup + DKIM token validation lands with the SES
+ * wiring task.
+ */
+export const dkimStatus = z.enum(['unconfigured', 'pending', 'verified', 'failed']);
+export type DkimStatusValue = z.infer<typeof dkimStatus>;
 
 export const brandConfig = z.object({
   tenant_id: Uuid,
@@ -56,6 +58,13 @@ export const brandConfig = z.object({
    * the privacy boundary.
    */
   custom_domain_status: customDomainStatus.optional(),
+  /**
+   * Email sender + DKIM status — admin-only on the same boundary as
+   * custom_domain_status. The wizard reads these to decide whether to
+   * render the "set sender" form or the "verify TXT" instructions.
+   */
+  email_sender_domain: z.string().nullable().optional(),
+  email_sender_dkim_status: dkimStatus.optional(),
   landing_page_config: z.unknown().nullable(),
 });
 export type BrandConfig = z.infer<typeof brandConfig>;
@@ -156,3 +165,17 @@ export const setCustomDomainBody = z
   })
   .strict();
 export type SetCustomDomainBody = z.infer<typeof setCustomDomainBody>;
+
+/**
+ * Email-sender domain body (T-C8).
+ *
+ * Sets `email_sender_domain` + flips `email_sender_dkim_status` to
+ * `pending`; the response carries 3 placeholder DKIM records the firm
+ * publishes. Real DKIM token generation lands with the SES wiring task.
+ */
+export const setEmailSenderBody = z
+  .object({
+    email_sender_domain: customDomain,
+  })
+  .strict();
+export type SetEmailSenderBody = z.infer<typeof setEmailSenderBody>;

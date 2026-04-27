@@ -21,6 +21,7 @@ import { useWhoami } from '@/hooks/use-whoami';
 import { getAdminBrandConfig, updateBrandConfig } from '../_lib/api';
 import { CustomDomainWizard } from './custom-domain-wizard';
 import { CustomSubdomainWizard } from './custom-subdomain-wizard';
+import { EmailSenderWizard } from './email-sender-wizard';
 import { LogoUpload } from './logo-upload';
 import { ThemePicker } from './theme-picker';
 
@@ -147,6 +148,21 @@ function BrandReadView({ tenantId }: { tenantId: string }) {
           <CustomDomainWizard
             currentDomain={brand.data.custom_domain}
             currentStatus={brand.data.custom_domain_status ?? 'unconfigured'}
+          />
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>Email sender domain</CardTitle>
+          <CardDescription>
+            Send transactional emails (magic links, invites) from your own domain. Publish 3
+            DKIM TXT records to authorise <code>mail.your-firm.com</code> as a sender.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <EmailSenderWizard
+            currentDomain={brand.data.email_sender_domain ?? null}
+            currentStatus={brand.data.email_sender_dkim_status ?? 'unconfigured'}
           />
         </CardContent>
       </Card>

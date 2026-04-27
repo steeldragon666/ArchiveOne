@@ -440,6 +440,58 @@ test('POST /v1/brand-config/custom-domain: 400 on invalid domain format (T-C6)',
   await app.close();
 });
 
+test('POST /v1/brand-config/email-sender: 200 sets pending + returns 3 DKIM records (T-C8)', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'POST',
+    url: '/v1/brand-config/email-sender',
+    cookies: { cpa_session: await adminJwt() },
+    payload: { email_sender_domain: 'mail.firma.example.com' },
+  });
+  assert.equal(res.statusCode, 200);
+  const body = res.json<{
+    status: string;
+    dkim_records: Array<{ name: string; type: string; value: string }>;
+  }>();
+  assert.equal(body.status, 'pending');
+  assert.equal(body.dkim_records.length, 3);
+  assert.equal(body.dkim_records[0]?.name, 'selector1._domainkey.mail.firma.example.com');
+  assert.equal(body.dkim_records[0]?.type, 'TXT');
+  assert.match(body.dkim_records[0]?.value ?? '', /^v=DKIM1; k=rsa; p=/);
+
+  // Verify persistence.
+  const rows = await privilegedSql<{
+    email_sender_domain: string | null;
+    email_sender_dkim_status: string;
+  }[]>`
+    SELECT email_sender_domain, email_sender_dkim_status
+      FROM brand_config WHERE tenant_id = ${TENANT_A}
+  `;
+  assert.equal(rows[0]?.email_sender_domain, 'mail.firma.example.com');
+  assert.equal(rows[0]?.email_sender_dkim_status, 'pending');
+
+  // Restore seed values.
+  await privilegedSql`
+    UPDATE brand_config
+       SET email_sender_domain = NULL,
+           email_sender_dkim_status = 'verified'
+     WHERE tenant_id = ${TENANT_A}
+  `;
+  await app.close();
+});
+
+test('POST /v1/brand-config/email-sender: 400 on bad domain (T-C8)', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'POST',
+    url: '/v1/brand-config/email-sender',
+    cookies: { cpa_session: await adminJwt() },
+    payload: { email_sender_domain: 'not a domain' },
+  });
+  assert.equal(res.statusCode, 400);
+  await app.close();
+});
+
 test('DELETE /v1/brand-config/custom-domain: 200 resets to unconfigured (T-C6)', async () => {
   const app = buildApp();
   // First put TENANT_A in cname_pending state.

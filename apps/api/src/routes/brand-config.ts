@@ -6,6 +6,7 @@ import { sql, privilegedSql } from '@cpa/db/client';
 import {
   checkSubdomainAvailabilityBody,
   setCustomDomainBody,
+  setEmailSenderBody,
   updateBrandConfigBody,
   type BrandConfig,
 } from '@cpa/schemas';
@@ -68,6 +69,8 @@ interface BrandRow {
   custom_subdomain: string | null;
   custom_domain: string | null;
   custom_domain_status?: BrandConfig['custom_domain_status'];
+  email_sender_domain?: string | null;
+  email_sender_dkim_status?: BrandConfig['email_sender_dkim_status'];
   landing_page_config: unknown;
 }
 
@@ -81,11 +84,18 @@ const toApi = (r: BrandRow): BrandConfig => ({
   terms_of_service_url: r.terms_of_service_url,
   custom_subdomain: r.custom_subdomain,
   custom_domain: r.custom_domain,
-  // custom_domain_status is admin-scoped — present on PATCH responses
-  // (admin-only) and the wizard's GET path, omitted from the public
-  // by-tenant lookup so mobile clients can't probe lifecycle state.
+  // custom_domain_status / email_sender_* are admin-scoped — present on
+  // PATCH responses (admin-only) and the wizard's GET path, omitted from
+  // the public by-tenant lookup so mobile clients can't probe lifecycle
+  // state.
   ...(r.custom_domain_status !== undefined
     ? { custom_domain_status: r.custom_domain_status }
+    : {}),
+  ...(r.email_sender_domain !== undefined
+    ? { email_sender_domain: r.email_sender_domain }
+    : {}),
+  ...(r.email_sender_dkim_status !== undefined
+    ? { email_sender_dkim_status: r.email_sender_dkim_status }
     : {}),
   landing_page_config: r.landing_page_config ?? null,
 });
@@ -353,6 +363,7 @@ export function registerBrandConfig(app: FastifyInstance): void {
       SELECT tenant_id, display_name, primary_color, accent_color,
              logo_s3_key, support_email, terms_of_service_url,
              custom_subdomain, custom_domain, custom_domain_status,
+             email_sender_domain, email_sender_dkim_status,
              landing_page_config
         FROM brand_config
        WHERE tenant_id = ${tenantId}
@@ -510,6 +521,77 @@ export function registerBrandConfig(app: FastifyInstance): void {
     },
   );
 
-  // POST /v1/brand-config/email-sender          → registered in T-C8
+  /**
+   * POST /v1/brand-config/email-sender  (admin-only)
+   *
+   * Wizard sets the sender domain + flips `email_sender_dkim_status`
+   * to `pending`, returning 3 placeholder DKIM TXT records for the
+   * firm to publish at their DNS provider. The C9 verification job
+   * advances the status to `verified` once the records resolve.
+   *
+   * STUB: real DKIM tokens come from SES `VerifyDomainDkim`. For v1 we
+   * generate base64url-random placeholders so the wizard's full flow
+   * runs end-to-end before the SES wiring lands. Tokens are NOT persisted
+   * — the wizard re-displays them once and the user is responsible for
+   * pasting them into DNS. (Real impl will add a `dkim_tokens jsonb`
+   * column or store on SES's side and re-fetch.)
+   */
+  app.post(
+    '/v1/brand-config/email-sender',
+    { preHandler: requireSession },
+    async (req, reply) => {
+      if (req.user!.role !== 'admin') {
+        return reply.status(403).send({
+          error: 'forbidden',
+          message: 'Admin role required',
+          requestId: req.id,
+        });
+      }
+      const parsed = setEmailSenderBody.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'invalid_body',
+          message:
+            'Body must be { email_sender_domain: <lowercase FQDN, 4-253 chars> }',
+          requestId: req.id,
+        });
+      }
+      const { email_sender_domain } = parsed.data;
+      const tenantId = req.user!.tenantId!;
+
+      await privilegedSql`
+        UPDATE brand_config
+           SET email_sender_domain = ${email_sender_domain},
+               email_sender_dkim_status = 'pending',
+               updated_at = NOW()
+         WHERE tenant_id = ${tenantId}
+      `;
+
+      const tokens = [
+        crypto.randomBytes(24).toString('base64url'),
+        crypto.randomBytes(24).toString('base64url'),
+        crypto.randomBytes(24).toString('base64url'),
+      ];
+      const dkim_records = tokens.map((tok, i) => ({
+        name: `selector${i + 1}._domainkey.${email_sender_domain}`,
+        type: 'TXT',
+        // SES emits records like `v=DKIM1; k=rsa; p=<base64-public-key>`.
+        // The shape matches so the user can paste it directly when real
+        // DKIM lands and rotate without changing their DNS layout.
+        value: `v=DKIM1; k=rsa; p=${tok}`,
+      }));
+
+      return {
+        status: 'pending',
+        dkim_records,
+        instructions: [
+          `Create 3 TXT records at your DNS provider — one for each selector below.`,
+          `Once published, click "Verify DNS" to check propagation. DNS changes`,
+          `can take up to 24 hours.`,
+        ].join('\n'),
+      };
+    },
+  );
+
   // POST /v1/brand-config/email-sender/check   → registered in T-C9
 }

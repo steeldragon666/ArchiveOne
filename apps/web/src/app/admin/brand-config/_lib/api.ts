@@ -150,3 +150,30 @@ export async function checkCustomDomain(): Promise<CustomDomainCheckResponse> {
     method: 'POST',
   });
 }
+
+/**
+ * Email sender wizard helpers (T-C8).
+ *
+ * `setEmailSender` flips DKIM status to `pending` and returns 3 TXT
+ * records to publish. The C9 `checkEmailSender` helper lands with the
+ * verification job.
+ */
+export interface DkimRecord {
+  name: string;
+  type: 'TXT';
+  value: string;
+}
+export interface SetEmailSenderResponse {
+  status: 'pending';
+  dkim_records: DkimRecord[];
+  instructions: string;
+}
+
+export async function setEmailSender(
+  email_sender_domain: string,
+): Promise<SetEmailSenderResponse> {
+  return apiFetch<SetEmailSenderResponse>('/v1/brand-config/email-sender', {
+    method: 'POST',
+    body: JSON.stringify({ email_sender_domain }),
+  });
+}
