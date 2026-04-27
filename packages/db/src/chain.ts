@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { sql } from './client.js';
+import { privilegedSql, sql } from './client.js';
 
 export type EventForHashing = {
   subject_tenant_id: string;
@@ -96,7 +96,7 @@ export async function insertEventWithChain(input: InsertEventInput): Promise<Ins
       ) VALUES (
         ${id}, ${input.tenant_id}, ${input.subject_tenant_id},
         ${input.project_id ?? null}, ${input.milestone_id ?? null}, ${input.kind},
-        ${input.payload as never}::jsonb, ${input.classification as never}::jsonb,
+        ${JSON.stringify(input.payload)}::jsonb, ${input.classification === null ? null : JSON.stringify(input.classification)}::jsonb,
         ${input.override_of_event_id ?? null},
         ${input.override_new_kind ?? null},
         ${input.override_reason ?? null},
@@ -116,7 +116,13 @@ export type ChainStatus = {
 };
 
 export async function verifyChain(subjectTenantId: string): Promise<ChainStatus> {
-  const rows = await sql<
+  // Read via privilegedSql (cpa, RLS-bypass) because verifyChain is a
+  // read-only audit function — the API layer that calls it has already
+  // checked tenant access. Using sql (cpa_app) here would require us to
+  // know the tenant_id and set the GUC; postgres-js's pooled connection
+  // would also surface the empty-string GUC quirk if a prior call left
+  // the connection "touched" but without a current tenant.
+  const rows = await privilegedSql<
     (EventForHashing & {
       id: string;
       prev_hash: string | null;
