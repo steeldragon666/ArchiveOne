@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useWhoami } from '@/hooks/use-whoami';
 import { getBrandConfig } from '../_lib/api';
 import { LogoUpload } from './logo-upload';
+import { ThemePicker } from './theme-picker';
 
 /**
  * Brand-config form (T-C1 read-only scaffold).
@@ -70,6 +71,21 @@ function BrandReadView({ tenantId }: { tenantId: string }) {
         </CardHeader>
         <CardContent>
           <LogoUpload currentLogo={brand.data.logo_s3_key} />
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>Theme</CardTitle>
+          <CardDescription>
+            Pick the primary and accent colors used across mobile + web. Live preview updates
+            as you type.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ThemePicker
+            primary={brand.data.primary_color}
+            accent={brand.data.accent_color}
+          />
         </CardContent>
       </Card>
     </div>
