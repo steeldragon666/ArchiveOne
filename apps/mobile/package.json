@@ -8,7 +8,7 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "build": "expo export",
+    "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src app",
     "test": "tsx --test \"src/**/*.test.ts\""
