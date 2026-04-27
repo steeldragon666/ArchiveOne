@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import {
+  checkCustomDomain,
   disconnectCustomDomain,
   setCustomDomain,
   type SetCustomDomainResponse,
@@ -77,6 +78,30 @@ export function CustomDomainWizard({
     onError: (e) =>
       toast({
         title: 'Disconnect failed',
+        description: e instanceof Error ? e.message : 'Unknown error',
+        variant: 'destructive',
+      }),
+  });
+
+  const refresh = useMutation({
+    mutationFn: () => checkCustomDomain(),
+    onSuccess: (res) => {
+      void qc.invalidateQueries({ queryKey: ['brand-config'] });
+      if (res.transitioned) {
+        toast({ title: `Status advanced to ${res.status}` });
+      } else {
+        toast({
+          title: 'No change yet',
+          description:
+            res.status === 'cname_pending'
+              ? 'Waiting for DNS propagation. Try again in a few minutes.'
+              : `Current status: ${res.status}`,
+        });
+      }
+    },
+    onError: (e) =>
+      toast({
+        title: 'Refresh failed',
         description: e instanceof Error ? e.message : 'Unknown error',
         variant: 'destructive',
       }),
@@ -155,9 +180,13 @@ export function CustomDomainWizard({
           >
             {disconnect.isPending ? 'Disconnecting…' : 'Disconnect domain'}
           </Button>
-          {/* Refresh button wires up in T-C7. */}
-          <Button type="button" variant="outline" disabled title="Refresh status (T-C7)">
-            Refresh
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => refresh.mutate()}
+            disabled={refresh.isPending}
+          >
+            {refresh.isPending ? 'Checking…' : 'Refresh'}
           </Button>
         </div>
       </div>

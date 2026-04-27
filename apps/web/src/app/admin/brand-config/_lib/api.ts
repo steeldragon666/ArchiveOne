@@ -133,3 +133,20 @@ export async function disconnectCustomDomain(): Promise<{ status: 'unconfigured'
     method: 'DELETE',
   });
 }
+
+/**
+ * Trigger the custom-domain state machine (T-C7). Returns the row's
+ * status after one advance step plus whether it transitioned. The
+ * wizard refetches brand_config when `transitioned: true` so the UI
+ * branch (cname_pending → cert_pending → active) re-renders.
+ */
+export interface CustomDomainCheckResponse {
+  status: string;
+  transitioned: boolean;
+}
+
+export async function checkCustomDomain(): Promise<CustomDomainCheckResponse> {
+  return apiFetch<CustomDomainCheckResponse>('/v1/brand-config/custom-domain/check', {
+    method: 'POST',
+  });
+}

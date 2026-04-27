@@ -479,7 +479,37 @@ export function registerBrandConfig(app: FastifyInstance): void {
     },
   );
 
-  // POST /v1/brand-config/custom-domain/check  → registered in T-C7
+  /**
+   * POST /v1/brand-config/custom-domain/check  (admin-only)
+   *
+   * Manual trigger for the custom-domain state machine (T-C7). The
+   * wizard wires this to a "Refresh" button so the user doesn't sit
+   * watching DNS propagation. Internally it just calls
+   * `advanceCustomDomainState`; the same handler runs from a periodic
+   * background job once that scheduling lands.
+   *
+   * Response shape: `{ status, transitioned }` — clients use
+   * `transitioned` to decide whether to refetch the brand_config
+   * (status changed) versus quietly retry on the next user click.
+   */
+  app.post(
+    '/v1/brand-config/custom-domain/check',
+    { preHandler: requireSession },
+    async (req, reply) => {
+      if (req.user!.role !== 'admin') {
+        return reply.status(403).send({
+          error: 'forbidden',
+          message: 'Admin role required',
+          requestId: req.id,
+        });
+      }
+      const tenantId = req.user!.tenantId!;
+      const { advanceCustomDomainState } = await import('../jobs/custom-domain-state-machine.js');
+      const result = await advanceCustomDomainState(tenantId);
+      return result;
+    },
+  );
+
   // POST /v1/brand-config/email-sender          → registered in T-C8
   // POST /v1/brand-config/email-sender/check   → registered in T-C9
 }
