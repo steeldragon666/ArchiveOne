@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useVoiceRecorder, type VoiceRecording } from '../../../src/hooks/use-voice-recorder.js';
 import { enqueueVoiceEvent } from '../../../src/api-client/events.js';
+import { useTheme } from '../../../src/branding/use-theme.js';
 
 /**
  * Voice capture screen (T-A1).
@@ -30,6 +31,7 @@ type ScreenState =
 export default function VoiceCaptureScreen() {
   const router = useRouter();
   const recorder = useVoiceRecorder();
+  const theme = useTheme();
   const [state, setState] = useState<ScreenState>({ kind: 'idle' });
   const [error, setError] = useState<string | null>(null);
   const stopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -130,6 +132,7 @@ export default function VoiceCaptureScreen() {
         disabled={state.kind === 'previewing' || state.kind === 'submitting'}
         style={({ pressed }) => [
           styles.recordButton,
+          { backgroundColor: theme.primary_color },
           state.kind === 'recording' && styles.recordButtonActive,
           pressed && styles.recordButtonPressed,
         ]}
