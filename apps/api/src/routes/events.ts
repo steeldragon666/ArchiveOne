@@ -263,14 +263,17 @@ export function registerEvents(app: FastifyInstance): void {
       // Cursor predicate: lexicographic (captured_at, received_at, id) DESC.
       // Postgres doesn't have a "row-tuple <" comparison that works cleanly
       // with timestamps + uuid + nullable order columns, so we expand it.
+      // Explicit ::timestamptz casts on the cursor strings — same rationale
+      // as chain.ts insertEventWithChain (postgres-js + Node 22 doesn't
+      // round-trip Dates cleanly on the bind path).
       const cursorClause = decoded
         ? tx`AND (
-            captured_at < ${decoded.captured_at}
-            OR (captured_at = ${decoded.captured_at} AND received_at < ${decoded.received_at})
+            captured_at < ${decoded.captured_at}::timestamptz
+            OR (captured_at = ${decoded.captured_at}::timestamptz AND received_at < ${decoded.received_at}::timestamptz)
             OR (
-              captured_at = ${decoded.captured_at}
-              AND received_at = ${decoded.received_at}
-              AND id < ${decoded.id}
+              captured_at = ${decoded.captured_at}::timestamptz
+              AND received_at = ${decoded.received_at}::timestamptz
+              AND id < ${decoded.id}::uuid
             )
           )`
         : tx``;

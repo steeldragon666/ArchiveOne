@@ -86,6 +86,15 @@ export async function insertEventWithChain(input: InsertEventInput): Promise<Ins
     const prevHash = prevRows[0]?.hash ?? null;
     const newHash = hashEvent(prevHash, input);
     const id = crypto.randomUUID();
+    // captured_at is bound as an ISO string + ::timestamptz cast rather than
+    // a raw Date. postgres-js v3.4.9 + Node 22 (CI) fails to serialise a Date
+    // parameter on the prepared-statement Bind path — `Buffer.byteLength` in
+    // newer Node refuses non-string/Buffer args, and the `serializers[1184]`
+    // toISOString conversion isn't running before the bind for reasons we
+    // didn't fully untangle. Stringifying upfront is the same pattern we use
+    // for jsonb params (JSON.stringify + ::jsonb) — explicit serialisation +
+    // explicit DB-side cast.
+    const capturedAtIso = input.captured_at.toISOString();
     await tx`
       INSERT INTO event (
         id, tenant_id, subject_tenant_id, project_id, milestone_id, kind,
@@ -101,7 +110,7 @@ export async function insertEventWithChain(input: InsertEventInput): Promise<Ins
         ${input.override_new_kind ?? null},
         ${input.override_reason ?? null},
         ${prevHash}, ${newHash}, ${input.idempotency_key ?? null},
-        ${input.captured_at}, ${input.captured_by_user_id}
+        ${capturedAtIso}::timestamptz, ${input.captured_by_user_id}
       )
     `;
     return { id, prev_hash: prevHash, hash: newHash };
