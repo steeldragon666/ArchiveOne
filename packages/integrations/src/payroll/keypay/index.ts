@@ -4,4 +4,7 @@
 // namespaced `payroll/index.ts` re-export.
 export * from './types.js';
 export { listEmployees, listTimesheets } from './client.js';
-// employee-sync + time-entry-pull added in B13
+export { syncEmployees } from './employee-sync.js';
+export type { SqlClient, SyncEmployeesOpts, SyncEmployeesResult } from './employee-sync.js';
+export { pullTimesheets } from './time-entry-pull.js';
+export type { PullTimesheetsOpts, PullTimesheetsResult } from './time-entry-pull.js';
