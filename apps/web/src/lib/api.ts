@@ -60,11 +60,21 @@ interface ApiErrorBody {
  *   }
  */
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  // Only set content-type: application/json when we're actually sending
+  // a JSON body. Fastify's content-type-parser rejects requests with
+  // 'application/json' header but empty body ("Body cannot be empty when
+  // content-type is set to 'application/json'"), so DELETE/GET requests
+  // (which never carry a body) must send no content-type at all.
+  const hasBody = init?.body !== undefined && init.body !== null;
+  const headers: Record<string, string> = {};
+  if (hasBody) {
+    headers['content-type'] = 'application/json';
+  }
   const res = await fetch(path, {
     ...init,
     credentials: 'include',
     headers: {
-      'content-type': 'application/json',
+      ...headers,
       ...init?.headers,
     },
   });

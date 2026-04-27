@@ -2,7 +2,6 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { flushSync } from 'react-dom';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { Button } from '@/components/ui/button';
@@ -81,29 +80,17 @@ export function EditUserForm({ user }: { user: UserRef }) {
   const onRemove = () => {
     remove.mutate(undefined, {
       onSuccess: () => {
-        // Close the dialog SYNCHRONOUSLY via flushSync before toast/nav.
-        // Radix's modal Dialog applies aria-hidden to all sibling DOM
-        // (including the Toast portal at document.body root) for SR
-        // isolation. With React 18 auto-batching, setConfirmOpen(false)
-        // followed by toast()/router.push() in the same handler land in
-        // one commit — the toast renders into a still-aria-hidden tree
-        // and Playwright filters it from accessible content; router.push
-        // races with focus restoration to a still-mounted button.
-        // flushSync forces the dialog close to commit + cleanup effects
-        // (focus restore, sibling aria-hidden removal) to run NOW, so
-        // the subsequent toast + router.push see a clean DOM.
-        flushSync(() => {
-          setConfirmOpen(false);
-        });
+        // Close the confirmation dialog before navigating so the focus
+        // trap unmounts cleanly and router.push lands without racing
+        // Radix's exit animation.
+        setConfirmOpen(false);
         toast({ title: 'Removed from firm' });
         router.push('/users');
       },
       onError: (err) => {
-        // Same dialog/aria-hidden coupling as onSuccess — flush the close
-        // synchronously so the toast renders into an accessible DOM.
-        flushSync(() => {
-          setConfirmOpen(false);
-        });
+        // Close the dialog before showing the toast so the destructive
+        // surface isn't covered by the modal overlay.
+        setConfirmOpen(false);
         if (err instanceof ConflictError) {
           toast({
             title: 'Cannot remove',
