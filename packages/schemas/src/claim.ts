@@ -67,7 +67,7 @@ export const CreateClaimBody = z.object({
   subject_tenant_id: Uuid,
   fiscal_year: z.number().int(),
   stage: ClaimStage.optional(),
-  ausindustry_reference: z.string().optional(),
+  ausindustry_reference: z.string().min(1).max(200).optional(),
 });
 export type CreateClaimBody = z.infer<typeof CreateClaimBody>;
 

@@ -36,6 +36,11 @@ import { validateStageTransition } from '../lib/claim-stage.js';
 // currently a no-op (the table doesn't exist yet). Remove the no-op when the
 // assignee table lands. See: T-A2 plan, "assignee filter".
 
+// TODO(p4-a-cleanup): The A2 quality review (2026-04-28) flagged that
+// PATCH /:id sets identical-value branches still bump updated_at and run
+// the UPDATE; consider short-circuiting in a future task. Lower priority
+// since no event pollution.
+
 /**
  * Raw claim row as stored in postgres. Columns are snake_case to match
  * the SQL surface; conversion to the wire format (still snake_case but
@@ -328,6 +333,7 @@ export function registerClaims(app: FastifyInstance): void {
                  created_at, updated_at
             FROM claim
            WHERE id = ${id}
+             AND tenant_id = ${tenantId}
         `;
         const prev = before[0];
         if (!prev) return { kind: 'not_found' as const };
@@ -356,6 +362,7 @@ export function registerClaims(app: FastifyInstance): void {
                  ${setSubmitted}
                  updated_at = NOW()
            WHERE id = ${id}
+             AND tenant_id = ${tenantId}
            RETURNING id, tenant_id, subject_tenant_id, fiscal_year, stage,
                      ausindustry_reference, submitted_at, submitted_by_user_id,
                      created_at, updated_at
@@ -476,6 +483,7 @@ export function registerClaims(app: FastifyInstance): void {
                  created_at, updated_at
             FROM claim
            WHERE id = ${id}
+             AND tenant_id = ${tenantId}
         `;
         const prev = before[0];
         if (!prev) return { kind: 'not_found' as const };
@@ -507,6 +515,7 @@ export function registerClaims(app: FastifyInstance): void {
                  ${setSubmittedAt}
                  updated_at = NOW()
            WHERE id = ${id}
+             AND tenant_id = ${tenantId}
            RETURNING id, tenant_id, subject_tenant_id, fiscal_year, stage,
                      ausindustry_reference, submitted_at, submitted_by_user_id,
                      created_at, updated_at

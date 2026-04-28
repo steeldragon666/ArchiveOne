@@ -495,11 +495,19 @@ test('PATCH /v1/claims/:id/stage: 403 backward by consultant', async () => {
     assert.equal(body.error, 'forbidden');
     await app.close();
   } finally {
+    await privilegedSql`DELETE FROM event WHERE payload ->> 'claim_id' = ${CLAIM_FOR_CONS_BACK}`;
     await privilegedSql`DELETE FROM claim WHERE id = ${CLAIM_FOR_CONS_BACK}`;
   }
 });
 
 test('PATCH /v1/claims/:id/stage: 200 no-op when from === to (idempotent, no event)', async () => {
+  // Defensive: clear any stray events from previous tests so the
+  // "no event written" assertion below is unambiguous.
+  await privilegedSql`
+    DELETE FROM event
+    WHERE payload->>'claim_id' = ${CLAIM_PRESEED_A_ENGAGEMENT}
+  `;
+
   // Seeded preseed-engagement row sits at 'engagement'. Asking it to
   // advance to 'engagement' is a no-op — the route returns 200 with the
   // current row and emits no event (avoids ledger pollution on retries).
@@ -710,6 +718,7 @@ test('PATCH /v1/claims/:id: 200 submitted_at-only patch (no event because no aus
     assert.equal(eventRows.length, 0);
     await app.close();
   } finally {
+    await privilegedSql`DELETE FROM event WHERE payload ->> 'claim_id' = ${CLAIM_FOR_PARTIAL}`;
     await privilegedSql`DELETE FROM claim WHERE id = ${CLAIM_FOR_PARTIAL}`;
   }
 });
