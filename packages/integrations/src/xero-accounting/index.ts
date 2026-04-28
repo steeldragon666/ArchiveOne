@@ -56,9 +56,12 @@ export {
 //      distinguish the two modules. Currently payroll says "xero" while
 //      accounting says "xero accounting".
 //   3. Extract `PAGE_SIZE`, `toDateOnly`, `toAmountString` to a shared
-//      `xero-accounting/sync-shared.ts` module. These helpers are now
-//      triplicated across sync-invoices.ts, sync-bank-tx.ts, and
-//      sync-receipts.ts (3 copies × 3 helpers = 9 identical line-blocks).
-//      Cross-cutting cleanup task can sweep all three at once.
+//      `xero-accounting/sync-shared.ts` module. `PAGE_SIZE` is now
+//      quadruplicated across sync-invoices.ts, sync-bank-tx.ts,
+//      sync-receipts.ts, and sync-contacts.ts (4 copies). `toDateOnly`
+//      and `toAmountString` remain triplicated across sync-invoices.ts,
+//      sync-bank-tx.ts, and sync-receipts.ts (3 copies each) — they are
+//      expenditure-row helpers and not used by sync-contacts.ts.
+//      Cross-cutting cleanup task can sweep all four at once.
 // Both touch xero-payroll which is outside Swimlane B's scope. Track
 // in a cross-cutting cleanup PR after the swimlanes merge.
