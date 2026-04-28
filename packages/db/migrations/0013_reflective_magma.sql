@@ -82,19 +82,21 @@ CREATE UNIQUE INDEX "expenditure_source_external_unique" ON "expenditure" USING 
 ALTER TABLE "expenditure" ADD CONSTRAINT expenditure_source_valid
   CHECK (source IN ('xero_invoice', 'xero_bank_tx', 'xero_receipt', 'manual'));
 
+-- AUD only in P4; multi-currency support is deferred to P9. Loosening this
+-- CHECK is the P9 trigger — see expenditure.ts JSDoc rationale.
 ALTER TABLE "expenditure" ADD CONSTRAINT expenditure_currency_aud
   CHECK (currency = 'AUD');
 
 ALTER TABLE "expenditure_line" ADD CONSTRAINT expenditure_line_rd_percent_range
   CHECK (rd_percent IS NULL OR (rd_percent >= 0 AND rd_percent <= 100));
 
-ALTER TABLE "expenditure_mapping_rule" ADD CONSTRAINT mapping_rule_rd_percent_range
+ALTER TABLE "expenditure_mapping_rule" ADD CONSTRAINT expenditure_mapping_rule_rd_percent_range
   CHECK (rd_percent >= 0 AND rd_percent <= 100);
 
 -- NULL-as-wildcard semantics for mapping_rule.source: a rule with NULL
 -- source applies to any source classification. Mirror the same literal
 -- list as `expenditure_source_valid` (must match `EXPENDITURE_SOURCES`).
-ALTER TABLE "expenditure_mapping_rule" ADD CONSTRAINT mapping_rule_source_valid
+ALTER TABLE "expenditure_mapping_rule" ADD CONSTRAINT expenditure_mapping_rule_source_valid
   CHECK (source IS NULL OR source IN ('xero_invoice', 'xero_bank_tx', 'xero_receipt', 'manual'));
 
 --> statement-breakpoint
