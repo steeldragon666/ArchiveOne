@@ -52,7 +52,7 @@
     }
   },
   "scripts": {
-    "build": "tsc -b",
+    "build": "tsc -b && node scripts/copy-fixtures.mjs",
     "test": "tsx --env-file-if-exists=../../.env --test --test-force-exit \"src/**/*.test.ts\"",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src"

@@ -1,7 +1,8 @@
 import { privilegedSql } from '@cpa/db/client';
 import { insertEventWithChain } from '@cpa/db';
 import { ExpenditureIngestedPayload } from '@cpa/schemas';
-import { parseXeroDate, xeroAccountingGet } from './client.js';
+import { parseXeroDate } from './client.js';
+import { createXeroAccountingGet } from './client-factory.js';
 
 /**
  * Xero Accounting invoice sync (T-B2).
@@ -202,6 +203,11 @@ export async function syncInvoices(
     events_written: 0,
   };
 
+  // Resolve the HTTP client once via the factory. Returns the real
+  // fetch-based client, or the deterministic stub when XERO_IMPL=stub.
+  // See `client-factory.ts` header for the swap rationale.
+  const xeroGet = createXeroAccountingGet();
+
   let page = 1;
   while (true) {
     const query: Record<string, string> = {
@@ -220,7 +226,7 @@ export async function syncInvoices(
       extraHeaders['If-Modified-Since'] = options.since.toUTCString();
     }
 
-    const data = (await xeroAccountingGet(
+    const data = (await xeroGet(
       {
         access_token: connection.access_token,
         xero_tenant_id: connection.xero_tenant_id,

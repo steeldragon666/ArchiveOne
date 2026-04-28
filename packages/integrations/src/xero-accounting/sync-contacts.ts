@@ -1,5 +1,5 @@
 import { privilegedSql } from '@cpa/db/client';
-import { xeroAccountingGet } from './client.js';
+import { createXeroAccountingGet } from './client-factory.js';
 
 /**
  * Xero Accounting contacts sync (T-B5).
@@ -127,6 +127,11 @@ export async function syncContacts(
     updated: 0,
   };
 
+  // Resolve the HTTP client once via the factory. Returns the real
+  // fetch-based client, or the deterministic stub when XERO_IMPL=stub.
+  // See `client-factory.ts` header for the swap rationale.
+  const xeroGet = createXeroAccountingGet();
+
   let page = 1;
   while (true) {
     const query: Record<string, string> = {
@@ -144,7 +149,7 @@ export async function syncContacts(
       extraHeaders['If-Modified-Since'] = options.since.toUTCString();
     }
 
-    const data = (await xeroAccountingGet(
+    const data = (await xeroGet(
       {
         access_token: connection.access_token,
         xero_tenant_id: connection.xero_tenant_id,

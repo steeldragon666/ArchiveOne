@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import nock from 'nock';
 import {
   runXeroAccountingSyncForAllConnections,
   registerXeroAccountingSyncJob,
@@ -8,6 +9,13 @@ import {
   type XeroAccountingSyncDeps,
   type PgBossLike,
 } from './xero-accounting-sync.js';
+import {
+  syncInvoices as realSyncInvoices,
+  syncBankTransactions as realSyncBankTransactions,
+  syncReceipts as realSyncReceipts,
+  syncContacts as realSyncContacts,
+  syncAccounts as realSyncAccounts,
+} from '@cpa/integrations/xero-accounting';
 
 const CONN_A = '00000000-0000-4000-8000-000000000b61';
 const CONN_B = '00000000-0000-4000-8000-000000000b62';
@@ -544,4 +552,162 @@ test('advisory lock is released after sync (try/finally)', async () => {
   // Lock acquired (1) and released (1).
   assert.equal(stub.lock_calls, 1);
   assert.equal(stub.unlock_calls, 1);
+});
+
+// -- B7 integration: stub fallback wired through runOneConnection ---------
+//
+// Proves the factory swap (`XERO_IMPL=stub` → `xeroAccountingGetStub`)
+// flows through the real B2-B5 sync code into `runOneConnection`, with
+// no network calls. Existing B6 tests above mock at the sync-function
+// deps layer and stay green under both env states; this test replaces
+// the deps overrides with thin closures that thread a SQL stub through
+// the REAL sync functions, so the factory + fixture path executes
+// end-to-end.
+test('B7 stub: runOneConnection completes 5-sync sequence via factory + fixtures', async () => {
+  const ORIGINAL_XERO_IMPL = process.env.XERO_IMPL;
+  process.env.XERO_IMPL = 'stub';
+
+  // nock.disableNetConnect proves no fetch reaches the wire — if the
+  // factory failed to swap and the real client tried to call api.xero.com,
+  // nock would throw a "Disallowed net connect" error.
+  nock.disableNetConnect();
+
+  try {
+    // Per-row SQL behaviour: all 5 syncs share the same stub. The stub
+    // routes by SQL substring + returns canned rows that drive the
+    // INSERT-path through every sync. See sync-invoices.test.ts for the
+    // shape this stub mirrors.
+    let nextId = 1;
+    const fakeId = (): string => `00000000-0000-4000-8000-${String(nextId++).padStart(12, '0')}`;
+
+    type SqlFn = NonNullable<XeroAccountingSyncDeps['sql_client']>;
+    const sqlStub: SqlFn = ((
+      strings: TemplateStringsArray,
+      ..._values: unknown[]
+    ): Promise<unknown[]> => {
+      const sqlText = strings.join('?');
+      // Connection select happens at the orchestrator, not here.
+      if (sqlText.includes('FROM integration_connection')) {
+        // Single matched row, expires in the future, no last_synced_at.
+        return Promise.resolve([
+          {
+            id: CONN_A,
+            tenant_id: TENANT_A,
+            access_token_encrypted: 'enc.blob',
+            external_account_id: 'xero-org-stub',
+            last_synced_at: null,
+            expires_at: FUTURE_EXPIRES_AT,
+          },
+        ]);
+      }
+      if (sqlText.includes('pg_try_advisory_lock')) {
+        return Promise.resolve([{ acquired: true }]);
+      }
+      if (sqlText.includes('pg_advisory_unlock')) {
+        return Promise.resolve([{ pg_advisory_unlock: true }]);
+      }
+      if (sqlText.includes('SELECT id FROM expenditure')) {
+        // INSERT path — no existing row.
+        return Promise.resolve([]);
+      }
+      if (sqlText.includes('SELECT id FROM subject_tenant')) {
+        return Promise.resolve([{ id: fakeId() }]);
+      }
+      if (sqlText.includes('INSERT INTO expenditure (') && sqlText.includes('RETURNING id')) {
+        return Promise.resolve([{ id: fakeId() }]);
+      }
+      if (sqlText.includes('INSERT INTO xero_contact')) {
+        // ON CONFLICT UPSERT — return inserted=true to simulate first run.
+        return Promise.resolve([{ inserted: true }]);
+      }
+      if (sqlText.includes('INSERT INTO xero_account')) {
+        return Promise.resolve([{ inserted: true }]);
+      }
+      // Receipts reimbursee resolver — no match (keeps the path simple
+      // without needing to seed user / tenant_user rows).
+      if (sqlText.includes('FROM "user"')) {
+        return Promise.resolve([]);
+      }
+      // UPDATE statements (sync_state transitions, expenditure UPDATE on
+      // the UPDATE path which we don't exercise here) and DELETE
+      // (expenditure_line full-replace on UPDATE) — return empty.
+      return Promise.resolve([]);
+    }) as unknown as SqlFn;
+
+    // The real sync functions accept sql_client + chain_insert via their
+    // options bag and default to the production singletons. Wrap each so
+    // runOneConnection's `{ mode, since }` baseSyncOpts get augmented with
+    // our SQL stub + a no-op chain inserter. This keeps runOneConnection's
+    // call-shape unchanged while letting the real syncs execute against
+    // an in-memory backend.
+    const chainInsertStub = ((): Parameters<typeof realSyncInvoices>[1]['chain_insert'] => {
+      const fn: NonNullable<Parameters<typeof realSyncInvoices>[1]['chain_insert']> = () =>
+        Promise.resolve({
+          id: '00000000-0000-4000-8000-eeeeeeeeeeee',
+          prev_hash: null,
+          hash: 'fakehash',
+        });
+      return fn;
+    })();
+
+    const deps: XeroAccountingSyncDeps = {
+      sql_client: sqlStub,
+      decrypt: () => 'decrypted-access-token',
+      get_encryption_key: () => 'fake-key',
+      sync_invoices: (conn, opts) =>
+        realSyncInvoices(conn, {
+          ...opts,
+          sql_client: sqlStub,
+          chain_insert: chainInsertStub,
+        }),
+      sync_bank_transactions: (conn, opts) =>
+        realSyncBankTransactions(conn, {
+          ...opts,
+          sql_client: sqlStub,
+          chain_insert: chainInsertStub,
+        }),
+      sync_receipts: (conn, opts) =>
+        realSyncReceipts(conn, {
+          ...opts,
+          sql_client: sqlStub,
+          chain_insert: chainInsertStub,
+        }),
+      sync_contacts: (conn, opts) => realSyncContacts(conn, { ...opts, sql_client: sqlStub }),
+      sync_accounts: (conn, opts) => realSyncAccounts(conn, { ...opts, sql_client: sqlStub }),
+    };
+
+    const result = await runXeroAccountingSyncForAllConnections(deps);
+
+    // The orchestrator must have walked the full 5-sync sequence for the
+    // single connection, picking up the fixture counts.
+    assert.equal(result.matched, 1);
+    assert.equal(result.ran, 1);
+    assert.equal(result.failed, 0);
+    assert.equal(result.skipped, 0);
+    const r = result.per_connection[0];
+    assert.ok(r);
+    assert.equal(r.ran, true);
+    assert.equal(r.error, undefined);
+
+    // Fixture-driven counts. See packages/integrations/src/xero-accounting/
+    // fixtures/*.json for the source data.
+    assert.equal(r.invoices?.fetched, 3);
+    assert.equal(r.invoices?.inserted, 3);
+    assert.equal(r.bank_transactions?.fetched, 3);
+    assert.equal(r.bank_transactions?.inserted, 3);
+    assert.equal(r.receipts?.fetched, 2);
+    assert.equal(r.receipts?.inserted, 2);
+    assert.equal(r.contacts?.fetched, 6);
+    assert.equal(r.contacts?.inserted, 6);
+    assert.equal(r.accounts?.fetched, 10);
+    assert.equal(r.accounts?.inserted, 10);
+  } finally {
+    nock.enableNetConnect();
+    nock.cleanAll();
+    if (ORIGINAL_XERO_IMPL === undefined) {
+      delete process.env.XERO_IMPL;
+    } else {
+      process.env.XERO_IMPL = ORIGINAL_XERO_IMPL;
+    }
+  }
 });

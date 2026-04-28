@@ -1,0 +1,66 @@
+{
+  "Receipts": [
+    {
+      "ReceiptID": "e1e1e1e1-1111-4111-8111-e1e1e1e1e1e1",
+      "Status": "AUTHORISED",
+      "Date": "/Date(1640995200000+0000)/",
+      "UpdatedDateUTC": "/Date(1641000000000+0000)/",
+      "Contact": {
+        "ContactID": "c0c0c0c0-1111-4111-8111-c0c0c0c0c0c0",
+        "Name": "Cab Co"
+      },
+      "User": {
+        "UserID": "u1u1u1u1-1111-4111-8111-u1u1u1u1u1u1",
+        "Email": "alice@stub-firm.com.au",
+        "FirstName": "Alice",
+        "LastName": "Consultant"
+      },
+      "Reference": "Conference travel",
+      "CurrencyCode": "AUD",
+      "Total": "85.50",
+      "SubTotal": "77.73",
+      "TotalTax": "7.77",
+      "LineItems": [
+        {
+          "LineItemID": "e1e1e1e1-aaaa-4aaa-8aaa-e1e1e1e1e1e1",
+          "Description": "Taxi to airport",
+          "Quantity": 1,
+          "UnitAmount": "85.50",
+          "LineAmount": "85.50",
+          "AccountCode": "453"
+        }
+      ]
+    },
+    {
+      "ReceiptID": "e2e2e2e2-2222-4222-8222-e2e2e2e2e2e2",
+      "Status": "AUTHORISED",
+      "Date": "/Date(1641081600000+0000)/",
+      "UpdatedDateUTC": "/Date(1641100000000+0000)/",
+      "Contact": {
+        "ContactID": "c0c0c0c0-2222-4222-8222-c0c0c0c0c0c0",
+        "Name": "Conference Catering"
+      },
+      "User": {
+        "UserID": "u2u2u2u2-2222-4222-8222-u2u2u2u2u2u2",
+        "Email": "bob@stub-firm.com.au",
+        "FirstName": "Bob",
+        "LastName": "Engineer"
+      },
+      "Reference": "Conference lunch",
+      "CurrencyCode": "AUD",
+      "Total": "120.00",
+      "SubTotal": "109.09",
+      "TotalTax": "10.91",
+      "LineItems": [
+        {
+          "LineItemID": "e2e2e2e2-bbbb-4bbb-8bbb-e2e2e2e2e2e2",
+          "Description": "Lunch x4",
+          "Quantity": 4,
+          "UnitAmount": "30.00",
+          "LineAmount": "120.00",
+          "AccountCode": "420"
+        }
+      ]
+    }
+  ]
+}

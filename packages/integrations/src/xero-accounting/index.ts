@@ -15,6 +15,8 @@
 export * from './types.js';
 export * from './oauth.js';
 export { parseXeroDate, xeroAccountingGet, type XeroAccountingClientOptions } from './client.js';
+export { createXeroAccountingGet, type XeroAccountingGet } from './client-factory.js';
+export { xeroAccountingGetStub } from './stub-client.js';
 export {
   syncInvoices,
   type SyncInvoicesConnection,

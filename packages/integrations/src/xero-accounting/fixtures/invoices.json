@@ -1,0 +1,112 @@
+{
+  "Invoices": [
+    {
+      "InvoiceID": "f1f1f1f1-1111-4111-8111-f1f1f1f1f1f1",
+      "Type": "ACCPAY",
+      "Status": "AUTHORISED",
+      "Date": "/Date(1640995200000+0000)/",
+      "DueDate": "/Date(1641600000000+0000)/",
+      "UpdatedDateUTC": "/Date(1641000000000+0000)/",
+      "Contact": {
+        "ContactID": "c0c0c0c0-1111-4111-8111-c0c0c0c0c0c0",
+        "Name": "AWS Australia"
+      },
+      "InvoiceNumber": "INV-STUB-001",
+      "Reference": "AWS Subscription Jan",
+      "CurrencyCode": "AUD",
+      "Total": "1000.00",
+      "SubTotal": "909.09",
+      "TotalTax": "90.91",
+      "LineItems": [
+        {
+          "LineItemID": "11111111-aaaa-4aaa-8aaa-111111111111",
+          "Description": "EC2 compute hours",
+          "Quantity": 1,
+          "UnitAmount": "500.00",
+          "LineAmount": "500.00",
+          "AccountCode": "400"
+        },
+        {
+          "LineItemID": "11111111-aaaa-4aaa-8aaa-111111111112",
+          "Description": "S3 storage",
+          "Quantity": 1,
+          "UnitAmount": "500.00",
+          "LineAmount": "500.00",
+          "AccountCode": "400"
+        }
+      ]
+    },
+    {
+      "InvoiceID": "f2f2f2f2-2222-4222-8222-f2f2f2f2f2f2",
+      "Type": "ACCPAY",
+      "Status": "PAID",
+      "Date": "/Date(1641081600000+0000)/",
+      "DueDate": "/Date(1641686400000+0000)/",
+      "UpdatedDateUTC": "/Date(1641100000000+0000)/",
+      "Contact": {
+        "ContactID": "c0c0c0c0-2222-4222-8222-c0c0c0c0c0c0",
+        "Name": "Officeworks"
+      },
+      "InvoiceNumber": "INV-STUB-002",
+      "Reference": "Office supplies — paid Jan",
+      "CurrencyCode": "AUD",
+      "Total": "250.50",
+      "SubTotal": "227.73",
+      "TotalTax": "22.77",
+      "LineItems": [
+        {
+          "LineItemID": "22222222-bbbb-4bbb-8bbb-222222222221",
+          "Description": "Whiteboard markers",
+          "Quantity": 5,
+          "UnitAmount": "10.10",
+          "LineAmount": "50.50",
+          "AccountCode": "453"
+        },
+        {
+          "LineItemID": "22222222-bbbb-4bbb-8bbb-222222222222",
+          "Description": "Standing desk",
+          "Quantity": 1,
+          "UnitAmount": "200.00",
+          "LineAmount": "200.00",
+          "AccountCode": "461"
+        }
+      ]
+    },
+    {
+      "InvoiceID": "f3f3f3f3-3333-4333-8333-f3f3f3f3f3f3",
+      "Type": "ACCPAY",
+      "Status": "AUTHORISED",
+      "Date": "/Date(1641168000000+0000)/",
+      "DueDate": "/Date(1641772800000+0000)/",
+      "UpdatedDateUTC": "/Date(1641200000000+0000)/",
+      "Contact": {
+        "ContactID": "c0c0c0c0-3333-4333-8333-c0c0c0c0c0c0",
+        "Name": "Telstra"
+      },
+      "InvoiceNumber": "INV-STUB-003",
+      "Reference": "Mobile + internet",
+      "CurrencyCode": "AUD",
+      "Total": "120.00",
+      "SubTotal": "109.09",
+      "TotalTax": "10.91",
+      "LineItems": [
+        {
+          "LineItemID": "33333333-cccc-4ccc-8ccc-333333333331",
+          "Description": "Mobile plan",
+          "Quantity": 1,
+          "UnitAmount": "60.00",
+          "LineAmount": "60.00",
+          "AccountCode": "489"
+        },
+        {
+          "LineItemID": "33333333-cccc-4ccc-8ccc-333333333332",
+          "Description": "NBN business",
+          "Quantity": 1,
+          "UnitAmount": "60.00",
+          "LineAmount": "60.00",
+          "AccountCode": "489"
+        }
+      ]
+    }
+  ]
+}
