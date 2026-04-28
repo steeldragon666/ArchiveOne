@@ -31,6 +31,20 @@ import { findLinkedEventForActivity } from '../lib/activity-artefacts.js';
 //      dep, and a structurally-typed wrapper drifts from the actual
 //      callback shape (helper-thenable vs Promise). Worth doing once the
 //      uncertainty register (A6) needs the same lookup.
+//
+// TODO(p4-a-cleanup): A4 quality review (2026-04-28) flagged additional
+// items beyond the Critical fix landed in this commit:
+//   - Important #2: Consolidate disambiguation into a single CTE-based
+//     query (`WITH self AS (...), later_events AS (...)`) so DELETE on a
+//     stale link does one trip instead of two helper folds + a SELECT.
+//     Beneficial when A5/A6 add more callers to activity-artefacts.ts.
+//   - Important #4: Add expression index on
+//     `(payload->>'activity_id') WHERE kind IN ('ARTEFACT_LINKED','ARTEFACT_UNLINKED')`
+//     before A6 (uncertainty register) lands; helper is currently full-scan
+//     on event-table for activity-link history.
+//   - Minor #8: Add Zod Uuid.safeParse on URL params (event_id, activity_id)
+//     to surface 400 instead of relying on postgres cast errors for malformed
+//     UUIDs. Same gap exists across A1-A4 routes.
 
 /**
  * Register the activity artefact-link routes (T-A4 of the P4 plan).
@@ -323,13 +337,31 @@ export function registerArtefactLinks(app: FastifyInstance): void {
         // requirement — distinguishing 404 from 409 in the error gives
         // the consultant portal a clearer signal (already-unlinked is a
         // recoverable race; truly-missing is a stale URL).
-        const existsRows = await sql<{ id: string }[]>`
-          SELECT id FROM event
-           WHERE id = ${event_id}
-             AND kind = 'ARTEFACT_LINKED'
-             AND payload ->> 'activity_id' = ${activity_id}
-             AND tenant_id = ${tenantId}
-        `;
+        //
+        // Disambiguation read goes through `sql.begin` + `set_config`
+        // because the `event_tenant_isolation` policy in
+        // `migrations/0006_fair_network.sql` does NOT `NULLIF(..., '')`
+        // the GUC (unlike `subject_tenant`'s policy which was fixed in
+        // 0003). A bare `sql<>` template here would inherit whatever
+        // `app.current_tenant_id` the pool connection happens to have —
+        // and if that's unset/empty, the policy's `tenant_id = current_setting(...)::uuid`
+        // throws `invalid input syntax for type uuid: ""`, surfacing as
+        // a 500 instead of the intended 404/409. The session-level
+        // `set_config(..., false)` from auth middleware is connection-
+        // specific and doesn't always propagate across pool checkouts.
+        // No cross-tenant leak is possible (the explicit
+        // `AND tenant_id = ${tenantId}` filters anyway), but the wrong
+        // status code breaks optimistic-UI retry logic on the portal.
+        const existsRows = await sql.begin(async (tx) => {
+          await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+          return tx<{ id: string }[]>`
+            SELECT id FROM event
+             WHERE id = ${event_id}
+               AND kind = 'ARTEFACT_LINKED'
+               AND payload ->> 'activity_id' = ${activity_id}
+               AND tenant_id = ${tenantId}
+          `;
+        });
         if (existsRows.length === 0) {
           return reply.status(404).send({
             error: 'linked_event_not_found',

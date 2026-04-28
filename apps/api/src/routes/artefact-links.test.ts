@@ -236,11 +236,16 @@ const tenantBAdminJwt = (): Promise<string> =>
 // Helper: clear ARTEFACT_LINKED / ARTEFACT_UNLINKED events for a given
 // activity_id so each test starts from a clean slate. We don't drop the
 // fixture media/expenditure/etc. rows.
+//
+// Tenant-scoped for symmetry with the file's other DELETEs (lines 73-78);
+// cross-test isolation works today via disjoint UUID prefixes regardless,
+// but the explicit `tenant_id IN (...)` makes the contract clear.
 const clearLinkEvents = async (activityId: string): Promise<void> => {
   await privilegedSql`
     DELETE FROM event
      WHERE kind IN ('ARTEFACT_LINKED', 'ARTEFACT_UNLINKED')
        AND payload ->> 'activity_id' = ${activityId}
+       AND tenant_id IN (${TENANT_A}, ${TENANT_B})
   `;
 };
 
