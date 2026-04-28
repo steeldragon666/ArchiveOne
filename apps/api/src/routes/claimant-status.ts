@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { privilegedSql } from '@cpa/db/client';
+import type { ClaimStage } from '@cpa/db/schema';
 import {
   CLAIMANT_SESSION_COOKIE,
   verifyClaimantSession,
@@ -9,22 +10,12 @@ import {
 /**
  * Claim-stage placeholder (T-C12).
  *
- * The 7 stages match the design doc's claim-lifecycle taxonomy. v1
- * returns 'activity_capture' as a static value — the real driver lands
- * with the activity-capture / narrative-drafting workflow tasks. The
- * union is exported so the timeline component can render a fixed
- * sequence regardless of where the API decides to point.
+ * v1 returns 'activity_capture' as a static value — the real driver
+ * lands with the activity-capture / narrative-drafting workflow tasks.
+ * The 7-stage pipeline taxonomy lives in `@cpa/db/schema` (see
+ * `CLAIM_STAGES`) so the API contract, the DB CHECK constraint, and
+ * the Drizzle column enum stay aligned.
  */
-export const CLAIM_STAGES = [
-  'engagement',
-  'activity_capture',
-  'narrative_drafting',
-  'expenditure_schedule',
-  'review',
-  'submission',
-  'audit_defence',
-] as const;
-export type ClaimStage = (typeof CLAIM_STAGES)[number];
 
 export interface ClaimantStatusResponse {
   subject_tenant: { id: string; name: string; kind: 'claimant' | 'financier' };

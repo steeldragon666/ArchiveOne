@@ -26,7 +26,7 @@ interface ClaimantStatus {
     | 'narrative_drafting'
     | 'expenditure_schedule'
     | 'review'
-    | 'submission'
+    | 'submitted'
     | 'audit_defence';
   recent_events: Array<{
     id: string;

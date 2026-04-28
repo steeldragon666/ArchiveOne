@@ -12,7 +12,7 @@ const STAGES: Array<{ id: string; label: string }> = [
   { id: 'narrative_drafting', label: 'Narrative drafting' },
   { id: 'expenditure_schedule', label: 'Expenditure schedule' },
   { id: 'review', label: 'Review' },
-  { id: 'submission', label: 'Submission' },
+  { id: 'submitted', label: 'Submitted' },
   { id: 'audit_defence', label: 'Audit defence' },
 ];
 

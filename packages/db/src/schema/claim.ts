@@ -1,0 +1,97 @@
+import { index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { subjectTenant } from './subject_tenant.js';
+import { tenant } from './tenant.js';
+import { user } from './user.js';
+
+/**
+ * R&DTI claim — one fiscal-year submission per `subject_tenant`. The
+ * top-level container for the 7-stage Module 4 pipeline (engagement →
+ * scoping → drafting → review → finalising → submitting → submitted),
+ * per design doc §"Core tables".
+ *
+ * Uniqueness: `(subject_tenant_id, fiscal_year)` — each claimant gets
+ * exactly one claim row per fiscal year. AusIndustry only accepts one
+ * registration per entity per year, so this matches the regulator
+ * model.
+ *
+ * `fiscal_year` follows Australian convention: `2025` = FY ending June
+ * 2025 (i.e. 1 July 2024 – 30 June 2025).
+ *
+ * `stage` is the 7-stage pipeline state. Default `'engagement'` because
+ * a freshly-created claim begins at the kickoff/scoping conversation.
+ * F2 will add a CHECK constraint enforcing the valid enum values
+ * server-side; we leave `stage` as plain `text` here so the migration
+ * generator emits a vanilla TEXT column the F2 hand-authored block can
+ * augment.
+ *
+ * `ausindustry_reference` carries the regulator-issued registration ID
+ * once the claim is submitted (only known post-submission, hence
+ * nullable). `submitted_at` / `submitted_by_user_id` mark the
+ * submission event for audit trail.
+ *
+ * RLS-protected (F2 hand-authors): tenant_id =
+ *   current_setting('app.current_tenant_id', true)::uuid
+ *
+ * Naming convention: camelCase TS / snake_case SQL (per T5/T6 chain).
+ */
+
+/**
+ * Single source of truth for claim pipeline stages.
+ *
+ * Keep in sync with the `claim_stage_valid` CHECK constraint in
+ * `migrations/0012_hard_titania.sql`. The Drizzle column type uses
+ * `text({ enum: CLAIM_STAGES })` to narrow the TS type to this union,
+ * so any divergence between this array and the SQL CHECK would surface
+ * as a runtime constraint violation on insert/update.
+ *
+ * Consumers across the workspace (API routes, web components) should
+ * import from this file rather than redeclare the list — duplicated
+ * literal arrays drift silently and cannot be caught by the type
+ * checker.
+ */
+export const CLAIM_STAGES = [
+  'engagement',
+  'activity_capture',
+  'narrative_drafting',
+  'expenditure_schedule',
+  'review',
+  'submitted',
+  'audit_defence',
+] as const;
+export type ClaimStage = (typeof CLAIM_STAGES)[number];
+
+export const claim = pgTable(
+  'claim',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenant.id),
+    subjectTenantId: uuid('subject_tenant_id')
+      .notNull()
+      .references(() => subjectTenant.id),
+    // Australian fiscal year: 2025 = FY ending June 2025.
+    fiscalYear: integer('fiscal_year').notNull(),
+    // 7-stage pipeline; CHECK constraint enumerating valid values is
+    // hand-authored in 0012 (see DO-NOT-REGENERATE header in the .sql file).
+    stage: text('stage', { enum: CLAIM_STAGES }).notNull().default('engagement'),
+    ausindustryReference: text('ausindustry_reference'),
+    submittedAt: timestamp('submitted_at', { withTimezone: true }),
+    submittedByUserId: uuid('submitted_by_user_id').references(() => user.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => ({
+    tenantIdx: index('claim_tenant_idx').on(t.tenantId),
+    subjectTenantIdx: index('claim_subject_tenant_idx').on(t.subjectTenantId),
+    subjectTenantFiscalYearUnique: uniqueIndex('claim_subject_tenant_fiscal_year_unique').on(
+      t.subjectTenantId,
+      t.fiscalYear,
+    ),
+  }),
+);

@@ -1,10 +1,21 @@
 /**
- * Evidence-kind taxonomy for the R&D Tax Incentive (R&DTI) classifier.
+ * Classifier-domain evidence kinds for the R&D Tax Incentive (R&DTI)
+ * classifier.
  *
- * Anchored on Australian Income Tax Assessment Act 1997, Division 355. The
- * full taxonomy includes synthetic kinds emitted by reviewers (`OVERRIDE`)
- * that the model itself never produces; {@link CLASSIFIABLE_KINDS} is the
- * narrower set the classifier is allowed to return.
+ * Anchored on Australian Income Tax Assessment Act 1997, Division 355.
+ * Scope: the 12 R&D evidence categories the classifier may output
+ * ({@link CLASSIFIABLE_KINDS}) plus `OVERRIDE` (the synthetic kind a
+ * human reviewer emits to supersede a prior classification — the model
+ * itself never produces it).
+ *
+ * NOT the full kind universe — the DB column `event.kind` is wider.
+ * P4 added 14 state-transition kinds (ACTIVITY_CREATED, CLAIM_SUBMITTED,
+ * PROJECT_CREATED, etc.) that the classifier does not produce and does
+ * not validate against; those live in `EVIDENCE_KINDS` in
+ * `@cpa/db/schema/event.ts` and `evidenceKind` in `@cpa/schemas/event.ts`.
+ * Do not extend this list with state-transition kinds — that would
+ * widen the classifier's output domain to kinds it has no statutory
+ * basis to emit.
  */
 export const EVIDENCE_KINDS = [
   'HYPOTHESIS',

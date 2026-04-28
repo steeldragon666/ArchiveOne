@@ -11,3 +11,8 @@ export * from './media.js';
 export * from './integration-connection.js';
 export * from './signing.js';
 export * from './time-entry.js';
+export * from './project.js';
+export * from './claim.js';
+export * from './activity.js';
+export * from './expenditure.js';
+export * from './expenditure_mapping_rule.js';

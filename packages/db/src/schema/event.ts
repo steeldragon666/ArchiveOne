@@ -38,6 +38,29 @@ import { user } from './user.js';
  * Naming convention: camelCase TS / snake_case SQL (per T5/T6 chain
  * 2aa8e18 → 1149b17). Imports alphabetical (per T6 precedent).
  */
+
+/**
+ * Single source of truth for event evidence kinds.
+ *
+ * Keep in sync with the `event_kind_valid` CHECK constraint in
+ * `migrations/0006_fair_network.sql` (initial 13 kinds) and
+ * `migrations/0014_p4_evidence_kinds.sql` (14 P4 state-transition kinds).
+ * The Drizzle column type uses `text({ enum: EVIDENCE_KINDS })` to narrow
+ * the TS type to this union, so any divergence between this array and the
+ * SQL CHECK would surface as a runtime constraint violation on
+ * insert/update.
+ *
+ * The first 13 entries (HYPOTHESIS through OVERRIDE) are R&D evidence
+ * classifications and can be re-classified via OVERRIDE events. The 14
+ * P4 entries below are state-transition events (entity created, claim
+ * advanced, etc.) and cannot be re-classified — see the
+ * `event_override_new_kind_valid` CHECK in 0006 for the override-eligible
+ * subset (which is unchanged from 0006).
+ *
+ * Consumers across the workspace (API routes, web components, agents)
+ * should import from this file rather than redeclare the list — duplicated
+ * literal arrays drift silently and cannot be caught by the type checker.
+ */
 export const EVIDENCE_KINDS = [
   'HYPOTHESIS',
   'DESIGN',
@@ -52,6 +75,21 @@ export const EVIDENCE_KINDS = [
   'SUPPORTING',
   'INELIGIBLE',
   'OVERRIDE',
+  // P4 state-transition events (must match 0014_p4_evidence_kinds.sql)
+  'ACTIVITY_CREATED',
+  'ACTIVITY_UPDATED',
+  'ACTIVITY_LOCKED',
+  'ARTEFACT_LINKED',
+  'ARTEFACT_UNLINKED',
+  'EXPENDITURE_INGESTED',
+  'EXPENDITURE_LINE_MAPPED',
+  'EXPENDITURE_LINE_UNMAPPED',
+  'EXPENDITURE_VOIDED',
+  'CLAIM_STAGE_ADVANCED',
+  'CLAIM_SUBMITTED',
+  'PROJECT_CREATED',
+  'PROJECT_ARCHIVED',
+  'DOCUMENT_GENERATED',
 ] as const;
 export type EvidenceKind = (typeof EVIDENCE_KINDS)[number];
 
