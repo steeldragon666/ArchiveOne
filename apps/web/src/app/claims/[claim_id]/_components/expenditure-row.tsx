@@ -61,17 +61,43 @@ export interface ExpenditureRowProps {
   isPending: boolean;
   /** Fired when the user picks an activity from the inline picker. */
   onMap: (activityId: string) => void;
+  /**
+   * Fired when the user opens the apportionment dialog (parent renders
+   * the dialog and owns the submit / optimistic-update flow). Always
+   * available — the row delegates the entire dialog lifecycle upstream
+   * so the optimistic state mirrors the C5 single-map path.
+   */
+  onApportion: () => void;
 }
 
-export function ExpenditureRowItem({ row, activities, isPending, onMap }: ExpenditureRowProps) {
-  // Picker visibility is local — the rest of the optimistic flow lives
-  // in the parent. Closing the picker on a successful select is handled
-  // here (immediately on selection); reopening for re-map happens via
-  // the "Re-map" button, which sets this back to true.
-  const [picking, setPicking] = useState(false);
+/**
+ * Picker step state machine (local to the row):
+ *   - 'closed'  — show the "Map / Re-map" button.
+ *   - 'choose'  — user clicked the button; show two action buttons
+ *                 ("Single activity" / "Apportion across…") so they can
+ *                 pick which flow to start.
+ *   - 'pickone' — single-activity flow chosen; show the existing Radix
+ *                 Select (same UX as C5).
+ *
+ * Why a state machine rather than two booleans: keeping these states
+ * mutually-exclusive prevents the "Apportion option flashed past me but
+ * the dropdown opened" footgun if the user clicks rapidly. Also lets
+ * the closed-state action label depend on the current mapping shape
+ * without spreading conditionals.
+ */
+type PickerStep = 'closed' | 'choose' | 'pickone';
+
+export function ExpenditureRowItem({
+  row,
+  activities,
+  isPending,
+  onMap,
+  onApportion,
+}: ExpenditureRowProps) {
+  const [step, setStep] = useState<PickerStep>('closed');
 
   const onPickerChange = (activityId: string): void => {
-    setPicking(false);
+    setStep('closed');
     // Defer to parent so the optimistic update + toast happen in one
     // place. Empty string is the "no selection" sentinel from Radix —
     // ignore it (shouldn't happen in normal use, but defensive).
@@ -127,7 +153,24 @@ export function ExpenditureRowItem({ row, activities, isPending, onMap }: Expend
 
       {/* Mapping state + action */}
       <div className="flex shrink-0 items-center gap-2">
-        {row.current_mapping ? (
+        {row.current_apportionment ? (
+          // Apportionment is the most-specific local state — show it as
+          // a summary chip with the breakdown surfaced via the title
+          // attribute (hover) so the row stays compact. A click-to-expand
+          // affordance can land later if hover-only proves discoverability-
+          // weak; for now the chip + tooltip mirrors the C5 mapping chip.
+          <span
+            className="inline-flex items-center gap-1 text-xs"
+            title={apportionmentBreakdown(row)}
+          >
+            <span aria-hidden="true" className="text-muted-foreground">
+              →
+            </span>
+            <span className="rounded-md bg-violet-50 px-2 py-0.5 font-mono text-violet-700">
+              Apportioned across {row.current_apportionment.allocations.length} activities
+            </span>
+          </span>
+        ) : row.current_mapping ? (
           <span className="inline-flex items-center gap-1 text-xs">
             <span aria-hidden="true" className="text-muted-foreground">
               →
@@ -143,8 +186,12 @@ export function ExpenditureRowItem({ row, activities, isPending, onMap }: Expend
           <span className="text-xs italic text-muted-foreground">Unmapped</span>
         )}
 
-        {picking ? (
-          <Select onValueChange={onPickerChange} open onOpenChange={(o) => setPicking(o)}>
+        {step === 'pickone' ? (
+          <Select
+            onValueChange={onPickerChange}
+            open
+            onOpenChange={(o) => setStep(o ? 'pickone' : 'closed')}
+          >
             <SelectTrigger className="h-8 w-[14rem]" aria-label={`Pick activity for ${row.payee}`}>
               <SelectValue placeholder="Choose an activity…" />
             </SelectTrigger>
@@ -166,23 +213,84 @@ export function ExpenditureRowItem({ row, activities, isPending, onMap }: Expend
               )}
             </SelectContent>
           </Select>
+        ) : step === 'choose' ? (
+          // Two-button choice strip — clicking either commits to that
+          // flow. We deliberately don't use a Radix DropdownMenu here:
+          // the expenditure-tab list rows are dense and a popover floats
+          // out of the row, while the inline buttons stay anchored.
+          <div className="flex items-center gap-1">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={isPending || activities.length === 0}
+              onClick={() => setStep('pickone')}
+            >
+              Single activity
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={isPending || activities.length === 0}
+              onClick={() => {
+                setStep('closed');
+                onApportion();
+              }}
+            >
+              Apportion across…
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setStep('closed')}
+              aria-label="Cancel"
+            >
+              Cancel
+            </Button>
+          </div>
         ) : (
           <Button
             type="button"
             variant="outline"
             size="sm"
             disabled={isPending || activities.length === 0}
-            onClick={() => setPicking(true)}
+            onClick={() => setStep('choose')}
             aria-label={
-              row.current_mapping
-                ? `Re-map ${row.payee} (currently ${row.current_mapping.activity_code})`
-                : `Map ${row.payee} to an activity`
+              row.current_apportionment
+                ? `Re-allocate ${row.payee} (currently apportioned across ${row.current_apportionment.allocations.length} activities)`
+                : row.current_mapping
+                  ? `Re-map ${row.payee} (currently ${row.current_mapping.activity_code})`
+                  : `Map ${row.payee} to an activity`
             }
           >
-            {row.current_mapping ? 'Re-map' : 'Map to activity'}
+            {row.current_apportionment
+              ? 'Re-allocate'
+              : row.current_mapping
+                ? 'Re-map'
+                : 'Map to activity'}
           </Button>
         )}
       </div>
     </li>
   );
+}
+
+/**
+ * Build a multi-line breakdown string for the apportionment chip's
+ * tooltip. Keeps the chip compact while letting the user inspect each
+ * row's contribution. Format:
+ *   "CA-001 — Adaptive scaffolding algorithm: 60%
+ *    CA-002 — Sensor calibration trial: 40%"
+ *
+ * Native `title` only renders plaintext, so newlines (\n) are the
+ * portable line break. A future "click to expand" popover can replace
+ * this without changing the data model.
+ */
+function apportionmentBreakdown(row: Row): string {
+  if (!row.current_apportionment) return '';
+  return row.current_apportionment.allocations
+    .map((a) => `${a.activity_code} — ${a.activity_title}: ${a.percentage}%`)
+    .join('\n');
 }

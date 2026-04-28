@@ -72,24 +72,40 @@ export interface ProjectableEvent {
  *
  * Scope: this projection covers ONLY parent-level mapping (kind ===
  * 'EXPENDITURE_MAPPED'). It does NOT consume kind ===
- * 'EXPENDITURE_LINE_MAPPED' events, which represent line-item-level
- * mapping emitted by the apportionment / rule-engine surface (see F5+
- * — `packages/schemas/src/event.ts` defines that payload).
+ * 'EXPENDITURE_LINE_MAPPED' events (line-item-level mapping from the
+ * rule-engine surface — see F5+ in `packages/schemas/src/event.ts`)
+ * or the planned `EXPENDITURE_APPORTIONED` events (whole-expenditure
+ * percentage splits — landing in A-swimlane after C6).
  *
- * Composition: an expenditure can have BOTH a parent mapping (this
- * projection) and one or more line-level mappings (a separate
- * projection). The row-level UI is responsible for composing them —
- * typically:
- *   - if any line is mapped, show "partially mapped" or list the line
- *     activities
- *   - else if a parent mapping exists, show that
- *   - else "unmapped"
+ * Composition (3 levels, MOST-SPECIFIC WINS):
+ *   1. line-level mappings (`EXPENDITURE_LINE_MAPPED`, keyed by
+ *      `expenditure_line_id`) — most specific. When any line carries
+ *      a mapping, the row shows the line breakdown / "partially
+ *      mapped" state. Owned by F5+.
+ *   2. apportionment (`EXPENDITURE_APPORTIONED`, keyed by
+ *      `expenditure_id`) — a single expenditure split into multiple
+ *      activity percentages. Outranks the parent mapping for display
+ *      but does NOT supersede line mappings (a per-line split is more
+ *      specific than a whole-expenditure split). C6 ships the dialog;
+ *      the event kind lands in A-swimlane.
+ *   3. parent-level mapping (`EXPENDITURE_MAPPED`, this projection) —
+ *      least specific. Shown only when neither line mappings nor an
+ *      apportionment exist for the expenditure.
  *
- * Today (C5) the projection only operates on stub data that emits
- * parent-level events. The composition logic above is documented here
- * so that when A-swimlane lands real EXPENDITURE_MAPPED events AND F5+
- * lands real EXPENDITURE_LINE_MAPPED events, the row-UI knows to
- * compose both projections rather than choosing one.
+ * The row-level UI is responsible for composing them. Until A-swimlane
+ * ships the EXPENDITURE_APPORTIONED projection, C6 mirrors the
+ * apportionment intent client-side via `current_apportionment` on
+ * `ExpenditureRow` — see `expenditure-stub.ts` and
+ * `applyApportionmentOptimistic`. The row component (
+ * `expenditure-row.tsx`) checks `current_apportionment` before
+ * `current_mapping` so the precedence above is honoured locally.
+ *
+ * Today (C5/C6) this projection only operates on stub data that emits
+ * parent-level events. The composition rules above are documented here
+ * so that when A-swimlane lands real EXPENDITURE_MAPPED and
+ * EXPENDITURE_APPORTIONED events AND F5+ lands real
+ * EXPENDITURE_LINE_MAPPED events, the row-UI knows to compose all
+ * three projections rather than choosing one.
  *
  * Tie-breaker: when two events share the same `captured_at` (rare in
  * production — the chain assigns distinct timestamps — but achievable

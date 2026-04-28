@@ -1,10 +1,11 @@
-import type { Activity, Claim } from '@cpa/schemas';
+import type { Activity, Claim, Uuid } from '@cpa/schemas';
 import {
   filterExpenditures,
   STUB_ACTIVITY_IDS,
   STUB_EXPENDITURES,
   type ExpenditureRow,
 } from './expenditure-stub';
+import { isValidAllocationSet, type ValidatedAllocation } from './apportionment';
 import type { ExpenditureFilter } from './url-params';
 // import { apiFetch } from '@/lib/api'; // TODO(A2/A3): wire when A2 + A3 ship.
 
@@ -221,5 +222,89 @@ export async function listExpenditures(
  */
 export async function mapExpenditure(_expenditureId: string, _activityId: string): Promise<void> {
   // TODO(A?-mapping): wire to POST /v1/expenditures/:id/map.
+  return Promise.resolve();
+}
+
+/**
+ * TODO(A?-apportion): Submits an apportionment for a single expenditure
+ * across multiple activities. The future endpoint is:
+ *
+ *   POST /v1/expenditures/:id/apportion
+ *   Body: {
+ *     allocations: [
+ *       { activity_id: Uuid, percentage: number },
+ *       ...
+ *     ]
+ *   }
+ *
+ * Server-side validation:
+ *   - sum of percentages = 100.000 (±0.001 tolerance — must match the
+ *     `SUM_TOLERANCE` constant in `apportionment.ts` so the client's
+ *     disabled-submit and the server's reject align)
+ *   - every percentage strictly > 0 (zero-rows would be nonsensical)
+ *   - 1 ≤ allocations.length ≤ 5 (matches `MAX_ALLOCATIONS`)
+ *   - every activity_id resolves to an Activity scoped to the same
+ *     claim as the expenditure (server-side join)
+ *
+ * Emits an `EXPENDITURE_APPORTIONED` event (NEW kind — coordinate with
+ * A-swimlane to add it to packages/schemas/src/event.ts; do NOT add the
+ * event kind in this commit). Planned payload:
+ *
+ *   ExpenditureApportionedPayload = {
+ *     expenditure_id: Uuid,
+ *     allocations: [
+ *       {
+ *         activity_id: Uuid,
+ *         activity_code: string,        // denormalised for projection display
+ *         activity_title: string,       // denormalised for projection display
+ *         percentage: number,           // 0 < pct ≤ 100
+ *       },
+ *       ...
+ *     ],
+ *     mapped_by_user_id: Uuid,          // from the auth context
+ *     // apportioned_at is implicit — taken from the event's captured_at.
+ *   }
+ *
+ * Why a separate event kind (not piggyback on EXPENDITURE_MAPPED with
+ * an array)? Two reasons:
+ *   1. EXPENDITURE_MAPPED is keyed to a single activity_id; reshaping
+ *      it would break the projection helper (and the line-mapped
+ *      sibling). A new kind keeps each event's payload single-purpose.
+ *   2. Apportionment is a distinct user intent from "single mapping" —
+ *      the audit story needs to differentiate "this consultant said
+ *      this is one activity" from "this consultant said it's a split."
+ *
+ * Composition with existing events: see `expenditure-projection.ts`
+ * JSDoc for the parent/line/apportionment composition rules.
+ * EXPENDITURE_APPORTIONED is a third aggregate that takes precedence
+ * over parent EXPENDITURE_MAPPED but is overridden by line-level
+ * EXPENDITURE_LINE_MAPPED (which is the most specific).
+ *
+ * Stub implementation: simulates a small latency (so the dialog's
+ * submit-disabled state is visible during dev), validates the same
+ * shape the future server will reject on (so misuse from the dialog
+ * is caught locally), and resolves successfully. No random failure
+ * — error-path testing is exercised via the parent's
+ * Promise.allSettled aggregation when the C2-shaped wrapper is in
+ * place.
+ */
+export async function apportionExpenditure(
+  _expenditureId: Uuid,
+  allocations: ReadonlyArray<ValidatedAllocation>,
+): Promise<void> {
+  // Defensive parity with the future server-side validator. Reject
+  // anything the client should never send rather than silently letting
+  // the bug propagate to the optimistic-state revert.
+  //
+  // `ValidatedAllocation` is structurally a subtype of `Allocation`
+  // (same fields; activity_id strict-Uuid vs allocation's string with
+  // empty-sentinel) so the validation helper accepts it without a cast.
+  if (!isValidAllocationSet(allocations)) {
+    return Promise.reject(new Error('Invalid apportionment payload'));
+  }
+  // Tiny simulated latency so the disabled-submit state is visible in
+  // dev. Removed the moment the real endpoint is wired — see TODO above.
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  // TODO(A?-apportion): wire to POST /v1/expenditures/:id/apportion.
   return Promise.resolve();
 }

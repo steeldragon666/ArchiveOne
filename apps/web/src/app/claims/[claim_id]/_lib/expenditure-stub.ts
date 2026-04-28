@@ -52,6 +52,37 @@ export interface ExpenditureMapping {
 }
 
 /**
+ * One slice of an apportioned expenditure. Mirrors the planned
+ * `EXPENDITURE_APPORTIONED` payload's allocation shape (see
+ * `apportionment.ts` JSDoc for context). Denormalised for the same
+ * reason as ExpenditureMapping.
+ */
+export interface ExpenditureAllocation {
+  activity_id: string;
+  activity_code: string;
+  activity_title: string;
+  /** 0 < pct ≤ 100; sum across allocations = 100 within tolerance. */
+  percentage: number;
+}
+
+/**
+ * Apportionment projection — populated when the expenditure was split
+ * across multiple activities (P4 plan §C6). Mutually-meaningful with
+ * `current_mapping`: the projection in
+ * `expenditure-projection.ts` JSDoc spells out the precedence rules
+ * (line > apportionment > parent), and the row UI uses
+ * `current_apportionment` as the most-specific local-state shape until
+ * the server projection ships.
+ *
+ * Today (C6) this is set optimistically by the dialog's submit flow;
+ * the field is undefined for any row that hasn't been apportioned.
+ */
+export interface ExpenditureApportionment {
+  allocations: ExpenditureAllocation[];
+  apportioned_at: string;
+}
+
+/**
  * Single row in the expenditure list. The shape composes the relevant
  * `expenditure` columns (id, expenditure_date, total_amount, currency,
  * reference) with the joined-in `vendor_name` (the row's payee) and the
@@ -74,6 +105,12 @@ export interface ExpenditureRow {
   reference: string | null;
   /** Undefined when the row has never been mapped. */
   current_mapping?: ExpenditureMapping;
+  /**
+   * Undefined when the row has never been apportioned. When set, takes
+   * precedence over `current_mapping` in the row UI — see the
+   * composition rules in `expenditure-projection.ts` JSDoc.
+   */
+  current_apportionment?: ExpenditureApportionment;
 }
 
 // ---------------------------------------------------------------------------
@@ -216,13 +253,48 @@ export function filterExpenditures(
  * If `expenditure_id` doesn't match any row, returns the input slice
  * unchanged (defensive — avoids a silent no-op being mistaken for a
  * successful mapping by the caller).
+ *
+ * Composition note: setting a single mapping CLEARS any prior
+ * apportionment on the row — they're alternative states (the user
+ * picked "map to single activity" instead of "apportion"). The server
+ * projection in the future enforces this via the precedence rules
+ * (see `expenditure-projection.ts` JSDoc), but the local optimistic
+ * update mirrors that intent so the row UI stays consistent.
  */
 export function applyMappingOptimistic(
   rows: ReadonlyArray<ExpenditureRow>,
   expenditure_id: string,
   mapping: ExpenditureMapping,
 ): ExpenditureRow[] {
-  return rows.map((r) => (r.id === expenditure_id ? { ...r, current_mapping: mapping } : r));
+  return rows.map((r) =>
+    r.id === expenditure_id
+      ? { ...r, current_mapping: mapping, current_apportionment: undefined }
+      : r,
+  );
+}
+
+/**
+ * Reducer for the optimistic apportionment update. Returns a NEW array
+ * with the matching row's `current_apportionment` set to `apportionment`.
+ * Pure — same revert pattern as `applyMappingOptimistic`.
+ *
+ * Composition note: applying an apportionment leaves the row's
+ * `current_mapping` untouched. The row UI shows the apportionment
+ * (more specific) and the parent mapping is shadowed but preserved —
+ * matches the server-side composition where EXPENDITURE_APPORTIONED
+ * doesn't supersede the parent mapping event, it just outranks it for
+ * display (see `expenditure-projection.ts` JSDoc).
+ *
+ * Unknown id is a no-op (defensive — same as `applyMappingOptimistic`).
+ */
+export function applyApportionmentOptimistic(
+  rows: ReadonlyArray<ExpenditureRow>,
+  expenditure_id: string,
+  apportionment: ExpenditureApportionment,
+): ExpenditureRow[] {
+  return rows.map((r) =>
+    r.id === expenditure_id ? { ...r, current_apportionment: apportionment } : r,
+  );
 }
 
 /**

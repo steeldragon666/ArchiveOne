@@ -4,9 +4,21 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { Activity } from '@cpa/schemas';
 import { useToast } from '@/hooks/use-toast';
-import { listActivities, listExpenditures, mapExpenditure } from '../_lib/api';
-import { applyMappingOptimistic, type ExpenditureRow } from '../_lib/expenditure-stub';
+import {
+  apportionExpenditure,
+  listActivities,
+  listExpenditures,
+  mapExpenditure,
+} from '../_lib/api';
+import type { ValidatedAllocation } from '../_lib/apportionment';
+import {
+  applyApportionmentOptimistic,
+  applyMappingOptimistic,
+  type ExpenditureApportionment,
+  type ExpenditureRow,
+} from '../_lib/expenditure-stub';
 import { parseExpenditureFilter } from '../_lib/url-params';
+import { ExpenditureApportionDialog } from './expenditure-apportion-dialog';
 import { ExpenditureFilterChips } from './expenditure-filter';
 import { ExpenditureRowItem } from './expenditure-row';
 
@@ -79,6 +91,13 @@ export function ExpenditureTab({ claimId }: { claimId: string }) {
   // unmapped rows in a row" rhythm (the user clicks Map → picks → the
   // dropdown closes → they immediately click the next row's Map).
   const [pendingIds, setPendingIds] = useState<ReadonlySet<string>>(new Set());
+
+  // --- Apportion dialog state ---
+  // Owned at the parent so the optimistic update + revert + toast all
+  // live alongside the single-mapping flow. The dialog itself is
+  // stateless about which row it's editing — that's tracked here via
+  // `apportioningRowId` (null = closed).
+  const [apportioningRowId, setApportioningRowId] = useState<string | null>(null);
 
   const activitiesById = useMemo(() => {
     const m = new Map<string, Activity>();
@@ -167,6 +186,81 @@ export function ExpenditureTab({ claimId }: { claimId: string }) {
     [activitiesById, toast],
   );
 
+  // Apportion submit handler — same optimistic / revert / aggregate
+  // pattern as `onMap`. Returns a promise so the dialog can show its
+  // submitting state and close on success; on rejection the dialog
+  // stays open and we revert + toast.
+  const onApportionSubmit = useCallback(
+    async (expenditureId: string, allocations: ValidatedAllocation[]): Promise<void> => {
+      // Project the dialog's [{activity_id, percentage}] into the row's
+      // `current_apportionment` shape (denormalised activity_code +
+      // activity_title from the activities map). Same denormalisation
+      // pattern as `current_mapping` in the C5 path — the row UI shouldn't
+      // have to look up activity metadata at render time.
+      const denormalised: ExpenditureApportionment = {
+        allocations: allocations.map((a) => {
+          const activity = activitiesById.get(a.activity_id);
+          // Defensive: the dialog only offers the same activities the
+          // tab loaded, so this lookup should always hit. Fall back to
+          // the id if somehow it doesn't (won't happen in normal flow).
+          return {
+            activity_id: a.activity_id,
+            activity_code: activity?.code ?? a.activity_id,
+            activity_title: activity?.title ?? '',
+            percentage: a.percentage,
+          };
+        }),
+        apportioned_at: new Date().toISOString(),
+      };
+
+      let snapshot: ExpenditureRow[] = [];
+      setOptimisticRows((prev) => {
+        snapshot = prev;
+        return applyApportionmentOptimistic(prev, expenditureId, denormalised);
+      });
+      setPendingIds((prev) => {
+        const next = new Set(prev);
+        next.add(expenditureId);
+        return next;
+      });
+
+      // Promise.allSettled-shaped (single call today) — same idiom as
+      // onMap, so a future bulk-apportion flow drops in cleanly.
+      const results = await Promise.allSettled([apportionExpenditure(expenditureId, allocations)]);
+      const failed = results.filter((r) => r.status === 'rejected').length;
+
+      setPendingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(expenditureId);
+        return next;
+      });
+
+      if (failed > 0) {
+        for (const r of results) {
+          if (r.status === 'rejected') {
+            console.error(`apportionExpenditure failed for ${expenditureId}:`, r.reason);
+          }
+        }
+        setOptimisticRows(snapshot);
+        toast({
+          title: 'Apportionment failed',
+          description: `Could not apportion this expenditure across ${allocations.length} activities. Please try again.`,
+          variant: 'destructive',
+        });
+        // Re-throw so the dialog keeps itself open for a retry.
+        throw new Error('Apportionment failed');
+      }
+
+      toast({
+        title: `Apportioned across ${allocations.length} activities`,
+        description: denormalised.allocations
+          .map((a) => `${a.activity_code} ${a.percentage}%`)
+          .join(' · '),
+      });
+    },
+    [activitiesById, toast],
+  );
+
   if (expendituresQuery.isPending || activitiesQuery.isPending) {
     return <p className="text-sm text-muted-foreground">Loading expenditures…</p>;
   }
@@ -214,10 +308,38 @@ export function ExpenditureTab({ claimId }: { claimId: string }) {
               activities={activities}
               isPending={pendingIds.has(row.id)}
               onMap={(activityId) => void onMap(row.id, activityId)}
+              onApportion={() => setApportioningRowId(row.id)}
             />
           ))}
         </ul>
       )}
+
+      {/*
+        Apportion dialog — rendered at the tab level so the optimistic
+        update + revert + toast all live alongside the single-mapping
+        path. The dialog is keyed by the row id so opening it for a
+        different row resets its internal state.
+      */}
+      {apportioningRowId !== null &&
+        (() => {
+          const target = optimisticRows.find((r) => r.id === apportioningRowId);
+          if (!target) {
+            // Row was removed (filter switch + invalidation) while the
+            // dialog was open — close gracefully rather than crashing.
+            setApportioningRowId(null);
+            return null;
+          }
+          return (
+            <ExpenditureApportionDialog
+              key={apportioningRowId}
+              open
+              onOpenChange={(o) => !o && setApportioningRowId(null)}
+              row={target}
+              activities={activities}
+              onSubmit={(allocations) => onApportionSubmit(apportioningRowId, allocations)}
+            />
+          );
+        })()}
     </div>
   );
 }
