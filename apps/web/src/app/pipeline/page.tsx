@@ -5,6 +5,7 @@ import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { Claim } from '@cpa/schemas';
 import { AuthGuard } from '@/components/auth-guard';
+import { PipelineBulkToolbar } from './_components/pipeline-bulk-toolbar';
 import { PipelineFilters, type ConsultantOption } from './_components/pipeline-filters';
 import { PipelineKanban } from './_components/pipeline-kanban';
 import {
@@ -14,14 +15,17 @@ import {
   parseView,
   type PipelineView,
 } from './_components/url-params';
+import { usePipelineClaims } from './_lib/use-pipeline-claims';
+import { usePipelineSelection } from './_lib/use-pipeline-selection';
 import { useUsers } from '@/hooks/use-users';
 import { useWhoami } from '@/hooks/use-whoami';
 
 /**
- * /pipeline — Swimlane C entry point. Renders a filter bar + a view
- * placeholder. Concrete kanban view lands in C2 and the tabular view in
- * C3. C1 establishes the URL-driven filter conventions (?stage, ?view,
- * ?consultant, ?fy, ?sector) and the data-fetch shape.
+ * /pipeline — Swimlane C entry point. Renders a filter bar + (kanban or
+ * table) view + a shared bulk-action toolbar. C1 established URL-driven
+ * filter state; C2 added the kanban; C3 lifts state (claims + selection)
+ * into hooks so a selection in one view persists across the view toggle
+ * (and adds the table view in a follow-up commit).
  *
  * Following the P1 dynamic-route pattern (see subject-tenants/[id]/page.tsx):
  * `'use client'` + AuthGuard wraps the page; URL state is read via
@@ -29,9 +33,9 @@ import { useWhoami } from '@/hooks/use-whoami';
  * tenant-scoped data.
  *
  * NOTE: GET /v1/claims doesn't exist yet — that's Swimlane A's A2 task.
- * For C1 we stub the data fetch by short-circuiting useQuery to an empty
- * list. C2/C3 will swap in the real listClaims() call once A2 ships and
- * use the same query key + filter shape.
+ * For C1/C2/C3 we stub the data fetch by short-circuiting useQuery to an
+ * empty list. Swap to the real `listClaims()` call when A2 ships; the
+ * query key shape already matches.
  */
 export default function PipelinePage() {
   return (
@@ -78,12 +82,17 @@ function Inner() {
     queryFn: (): Promise<Claim[]> => Promise.resolve([]),
   });
 
-  // Role drives admin-only affordances inside the kanban (revert via
+  // Role drives admin-only affordances inside the views (revert via
   // context-menu, backward drag-drop, bulk-revert). AuthGuard guarantees
   // `whoami` data is loaded before children render, so the optional chain
   // here is just a TS courtesy — the value will be present.
   const whoami = useWhoami();
   const role = whoami.data?.user.role ?? 'viewer';
+
+  // Hooks lifted from the kanban so selection persists across the view
+  // toggle and a single mutation flow drives both views (C3 refactor).
+  const claimsHook = usePipelineClaims({ claims: claimsQuery.data ?? [] });
+  const selection = usePipelineSelection();
 
   return (
     <main className="container mx-auto space-y-6 px-4 py-8">
@@ -109,12 +118,16 @@ function Inner() {
         consultants={consultants}
       />
 
+      <PipelineBulkToolbar claims={claimsHook} selection={selection} role={role} />
+
       <ViewBody
         view={view}
         isPending={claimsQuery.isPending}
         error={claimsQuery.error}
-        claims={claimsQuery.data ?? []}
+        claimsHook={claimsHook}
+        selection={selection}
         role={role}
+        claimCount={claimsQuery.data?.length ?? 0}
       />
     </main>
   );
@@ -124,11 +137,21 @@ interface ViewBodyProps {
   view: PipelineView;
   isPending: boolean;
   error: unknown;
-  claims: Claim[];
+  claimsHook: ReturnType<typeof usePipelineClaims>;
+  selection: ReturnType<typeof usePipelineSelection>;
   role: 'admin' | 'consultant' | 'viewer';
+  claimCount: number;
 }
 
-function ViewBody({ view, isPending, error, claims, role }: ViewBodyProps) {
+function ViewBody({
+  view,
+  isPending,
+  error,
+  claimsHook,
+  selection,
+  role,
+  claimCount,
+}: ViewBodyProps) {
   if (isPending) {
     return <p className="text-sm text-muted-foreground">Loading claims…</p>;
   }
@@ -140,7 +163,7 @@ function ViewBody({ view, isPending, error, claims, role }: ViewBodyProps) {
     );
   }
   if (view === 'kanban') {
-    return <PipelineKanban claims={claims} role={role} />;
+    return <PipelineKanban claims={claimsHook} selection={selection} role={role} />;
   }
   // C3 (table view) lands the tabular view. Until then, the dashed
   // placeholder communicates the wait.
@@ -152,9 +175,9 @@ function ViewBody({ view, isPending, error, claims, role }: ViewBodyProps) {
     >
       <p className="font-medium">Table view coming in C3</p>
       <p className="mt-1 text-sm text-muted-foreground">
-        {claims.length === 0
+        {claimCount === 0
           ? 'No claims match the current filters.'
-          : `${claims.length} claim${claims.length === 1 ? '' : 's'} ready to render.`}
+          : `${claimCount} claim${claimCount === 1 ? '' : 's'} ready to render.`}
       </p>
     </section>
   );
