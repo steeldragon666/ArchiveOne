@@ -16,3 +16,6 @@ export * from './signing_request.js';
 export * from './brand_config.js';
 export * from './integration_connection.js';
 export * from './audit_score_snapshot.js';
+export * from './project.js';
+export * from './claim.js';
+export * from './activity.js';
