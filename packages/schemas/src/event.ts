@@ -356,6 +356,15 @@ export type ArtefactLinkedPayload = z.infer<typeof ArtefactLinkedPayload>;
 /**
  * ARTEFACT_UNLINKED — the inverse of ARTEFACT_LINKED. `reason` is
  * optional free-text (e.g. "wrong activity", "duplicate").
+ *
+ * Pairing: the chain is append-only, so an UNLINKED event references
+ * its LINKED counterpart by `(activity_id, artefact_kind, artefact_id)`
+ * + temporal ordering — the helper at
+ * `apps/api/src/lib/activity-artefacts.ts` materialises "currently linked
+ * artefacts" by walking events for an activity in `captured_at` order
+ * and toggling each (kind, artefact_id) pair on/off as LINKED/UNLINKED
+ * arrive. Re-link (LINKED → UNLINKED → LINKED) leaves the artefact
+ * visible because the second LINK fires after the UNLINK.
  */
 export const ArtefactUnlinkedPayload = z.object({
   activity_id: Uuid,
@@ -364,6 +373,41 @@ export const ArtefactUnlinkedPayload = z.object({
   reason: z.string().optional(),
 });
 export type ArtefactUnlinkedPayload = z.infer<typeof ArtefactUnlinkedPayload>;
+
+/**
+ * POST /v1/activities/:id/artefact-links body.
+ *
+ * `artefact_kind` mirrors the four artefact target tables (see
+ * {@link artefactKind}). `artefact_id` must reference a row in the
+ * matching table within the caller's tenant — the route does an RLS-
+ * scoped existence check to enforce this. `link_reason` is optional
+ * free-text and is persisted on the ARTEFACT_LINKED event payload.
+ *
+ * `.strict()` rejects unknown keys (defends against typos like
+ * `artefactKind` camelCase or stray `tenant_id`).
+ */
+export const CreateArtefactLinkBody = z
+  .object({
+    artefact_kind: artefactKind,
+    artefact_id: Uuid,
+    link_reason: z.string().min(1).max(2000).optional(),
+  })
+  .strict();
+export type CreateArtefactLinkBody = z.infer<typeof CreateArtefactLinkBody>;
+
+/**
+ * DELETE /v1/activities/:id/artefact-links/:event_id body.
+ *
+ * Optional — the DELETE route accepts either an empty body or a
+ * `{ reason }` rationale. Mirrors the A1 `ArchiveProjectBody` pattern.
+ * `reason` flows onto the ARTEFACT_UNLINKED event payload.
+ */
+export const UnlinkArtefactBody = z
+  .object({
+    reason: z.string().min(1).max(2000).optional(),
+  })
+  .strict();
+export type UnlinkArtefactBody = z.infer<typeof UnlinkArtefactBody>;
 
 /**
  * EXPENDITURE_INGESTED — emitted by the Xero sync worker (or POST
