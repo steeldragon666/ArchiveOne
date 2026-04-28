@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { parseXeroDate, type XeroAccountingClientOptions } from './client.js';
+import type { xeroAccountingGet } from './client.js';
 
 /**
  * Xero Accounting stub client (T-B7).
@@ -26,14 +27,17 @@ import { parseXeroDate, type XeroAccountingClientOptions } from './client.js';
  * unfiltered (defensive — the fixture authors include the field, but
  * a missing one shouldn't drop the row silently).
  *
- * **Pagination**: the stub does NOT paginate. The fixture set is small
- * (<100 rows per resource) and the real client only paginates when a
- * full PAGE_SIZE page is returned. The stub returns every fixture in
- * one response and `< PAGE_SIZE` triggers the sync's loop-termination
- * branch. The page=1, page=2 wire calls are not modelled — every
- * `?page=N` request returns the same fixture content; the sync loop
- * then sees a short page and exits. (For B7 this is fine because the
- * fixtures are deliberately under 100 entries each.)
+ * **Pagination**: the stub does NOT paginate. Real Xero paginates at
+ * PAGE_SIZE=100; the stub returns the full fixture on every `?page=N`
+ * request, relying on the caller's "short page (< PAGE_SIZE) means
+ * we've reached the end" branch to terminate the loop. SAFE only while
+ * fixtures stay under 100 rows. If a fixture grows past that, either:
+ *   (a) implement page-based slicing here (preferred), or
+ *   (b) keep the fixture small and add a separate "many-rows" fixture.
+ * The runtime guard below converts the silent "fixture > 100 rows =
+ * infinite sync loop" failure mode into a loud, actionable error, so
+ * forgetting to do (a) or (b) surfaces the next time the suite runs
+ * rather than wedging a worker process.
  *
  * **No tenant gating**: the stub does NOT validate `xero_tenant_id` or
  * `access_token`. Determinism trumps fidelity here — the stub's job is
@@ -103,6 +107,25 @@ function filterBySince<T extends FixtureRow>(rows: T[], since: Date): T[] {
 }
 
 /**
+ * Real Xero pages at PAGE_SIZE=100; the stub returns the full fixture
+ * on every page=N request and relies on the caller's "short page =
+ * end" branch. If a fixture grows past this limit, that branch never
+ * trips and the sync loops forever. Convert the silent infinite loop
+ * into a loud, actionable error — see header for the two acceptable
+ * mitigations.
+ */
+const STUB_FIXTURE_PAGE_SIZE_LIMIT = 100;
+function assertFixtureUnderPageSize(path: string, rows: readonly unknown[]): void {
+  if (rows.length >= STUB_FIXTURE_PAGE_SIZE_LIMIT) {
+    throw new Error(
+      `xeroAccountingGetStub: fixture for ${path} has ${rows.length} rows, ` +
+        `exceeds the ${STUB_FIXTURE_PAGE_SIZE_LIMIT}-row safe limit. ` +
+        `Implement page-based slicing in stub-client.ts or split the fixture.`,
+    );
+  }
+}
+
+/**
  * Parse the `If-Modified-Since` header into a Date, or return null if
  * the header is absent / unparseable. The header value is RFC 7231
  * IMF-fixdate (matches `Date.toUTCString()`); JS's `new Date(string)`
@@ -151,26 +174,31 @@ export function xeroAccountingGetStub(
   switch (path) {
     case '/Invoices': {
       const fx = loadFixture<InvoicesFixture>('invoices.json');
+      assertFixtureUnderPageSize(path, fx.Invoices);
       const rows = since ? filterBySince(fx.Invoices, since) : fx.Invoices;
       return Promise.resolve({ Invoices: rows });
     }
     case '/BankTransactions': {
       const fx = loadFixture<BankTransactionsFixture>('bank-transactions.json');
+      assertFixtureUnderPageSize(path, fx.BankTransactions);
       const rows = since ? filterBySince(fx.BankTransactions, since) : fx.BankTransactions;
       return Promise.resolve({ BankTransactions: rows });
     }
     case '/Receipts': {
       const fx = loadFixture<ReceiptsFixture>('receipts.json');
+      assertFixtureUnderPageSize(path, fx.Receipts);
       const rows = since ? filterBySince(fx.Receipts, since) : fx.Receipts;
       return Promise.resolve({ Receipts: rows });
     }
     case '/Contacts': {
       const fx = loadFixture<ContactsFixture>('contacts.json');
+      assertFixtureUnderPageSize(path, fx.Contacts);
       const rows = since ? filterBySince(fx.Contacts, since) : fx.Contacts;
       return Promise.resolve({ Contacts: rows });
     }
     case '/Accounts': {
       const fx = loadFixture<AccountsFixture>('accounts.json');
+      assertFixtureUnderPageSize(path, fx.Accounts);
       const rows = since ? filterBySince(fx.Accounts, since) : fx.Accounts;
       return Promise.resolve({ Accounts: rows });
     }
@@ -185,3 +213,11 @@ export function xeroAccountingGetStub(
       );
   }
 }
+
+// Type-level contract: if `xeroAccountingGet`'s signature drifts (a
+// new param, a renamed param type, a different return) this assignment
+// fails to compile and forces an explicit decision about the stub's
+// interface. The variable is never read at runtime; the declaration
+// itself is the guard. The leading underscore satisfies the
+// no-unused-vars rule, which is configured to ignore that prefix.
+const _signatureContract: typeof xeroAccountingGet = xeroAccountingGetStub;

@@ -187,6 +187,14 @@ function queueExistingBankTxRows(stub: SqlStub, expenditureId: string): void {
 }
 
 beforeEach(() => {
+  // Hermetic guard: this suite uses nock at the network layer. Under
+  // XERO_IMPL=stub the factory hands sync code the in-process stub which
+  // bypasses fetch entirely, so nock matchers never fire and every test
+  // fails. Unset the env var before every test so the suite runs
+  // identically regardless of whether the developer has XERO_IMPL=stub
+  // exported in their shell. (`client-factory.test.ts` deliberately
+  // exercises the env var; do NOT add this guard there.)
+  delete process.env.XERO_IMPL;
   nock.cleanAll();
 });
 
