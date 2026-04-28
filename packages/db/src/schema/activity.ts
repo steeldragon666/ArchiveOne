@@ -31,6 +31,16 @@ import { tenant } from './tenant.js';
  *
  * Naming convention: camelCase TS / snake_case SQL (per T5/T6 chain).
  */
+
+/**
+ * Single source of truth for activity kind classification.
+ *
+ * Keep in sync with the `activity_kind_valid` CHECK constraint in
+ * `migrations/0012_hard_titania.sql`. The Drizzle column type uses
+ * `text({ enum: ACTIVITY_KINDS })` to narrow the TS type to this union,
+ * so any divergence between this array and the SQL CHECK would surface
+ * as a runtime constraint violation on insert/update.
+ */
 export const ACTIVITY_KINDS = ['core', 'supporting'] as const;
 export type ActivityKind = (typeof ACTIVITY_KINDS)[number];
 

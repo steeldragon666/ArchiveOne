@@ -34,6 +34,21 @@ import { user } from './user.js';
  *
  * Naming convention: camelCase TS / snake_case SQL (per T5/T6 chain).
  */
+
+/**
+ * Single source of truth for claim pipeline stages.
+ *
+ * Keep in sync with the `claim_stage_valid` CHECK constraint in
+ * `migrations/0012_hard_titania.sql`. The Drizzle column type uses
+ * `text({ enum: CLAIM_STAGES })` to narrow the TS type to this union,
+ * so any divergence between this array and the SQL CHECK would surface
+ * as a runtime constraint violation on insert/update.
+ *
+ * Consumers across the workspace (API routes, web components) should
+ * import from this file rather than redeclare the list — duplicated
+ * literal arrays drift silently and cannot be caught by the type
+ * checker.
+ */
 export const CLAIM_STAGES = [
   'engagement',
   'activity_capture',
