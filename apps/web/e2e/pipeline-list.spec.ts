@@ -52,20 +52,30 @@ test.describe('Pipeline list page', () => {
     await expect(page.getByLabel('Fiscal year', { exact: true })).toBeVisible();
     await expect(page.getByLabel('Sector', { exact: true })).toBeVisible();
 
-    // Stage chips — assert by accessible name on the checkbox role.
-    await expect(page.getByRole('checkbox', { name: 'Engagement', exact: true })).toBeVisible();
+    // Stage chips — toggle-button pattern (aria-pressed). Asserting against
+    // role=button with `pressed: false` proves both that the chip exists
+    // *and* that it starts in the un-pressed state.
     await expect(
-      page.getByRole('checkbox', { name: 'Activity capture', exact: true }),
+      page.getByRole('button', { name: 'Engagement', exact: true, pressed: false }),
     ).toBeVisible();
     await expect(
-      page.getByRole('checkbox', { name: 'Narrative drafting', exact: true }),
+      page.getByRole('button', { name: 'Activity capture', exact: true, pressed: false }),
     ).toBeVisible();
     await expect(
-      page.getByRole('checkbox', { name: 'Expenditure schedule', exact: true }),
+      page.getByRole('button', { name: 'Narrative drafting', exact: true, pressed: false }),
     ).toBeVisible();
-    await expect(page.getByRole('checkbox', { name: 'Review', exact: true })).toBeVisible();
-    await expect(page.getByRole('checkbox', { name: 'Submitted', exact: true })).toBeVisible();
-    await expect(page.getByRole('checkbox', { name: 'Audit defence', exact: true })).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Expenditure schedule', exact: true, pressed: false }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Review', exact: true, pressed: false }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Submitted', exact: true, pressed: false }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Audit defence', exact: true, pressed: false }),
+    ).toBeVisible();
 
     // Default view = table → no ?view= in URL, table tab is selected.
     await expect(page).toHaveURL(/\/pipeline$/);
@@ -112,23 +122,23 @@ test.describe('Pipeline list page', () => {
 
     await page.goto('/pipeline');
 
-    const engagement = page.getByRole('checkbox', { name: 'Engagement', exact: true });
-    await expect(engagement).toHaveAttribute('aria-checked', 'false');
+    const engagement = page.getByRole('button', { name: 'Engagement', exact: true });
+    await expect(engagement).toHaveAttribute('aria-pressed', 'false');
 
     await engagement.click();
-    await expect(engagement).toHaveAttribute('aria-checked', 'true');
+    await expect(engagement).toHaveAttribute('aria-pressed', 'true');
     await expect(page).toHaveURL(/[?&]stage=engagement/);
 
     // Toggle a second stage — URL accumulates both.
-    const review = page.getByRole('checkbox', { name: 'Review', exact: true });
+    const review = page.getByRole('button', { name: 'Review', exact: true });
     await review.click();
-    await expect(review).toHaveAttribute('aria-checked', 'true');
+    await expect(review).toHaveAttribute('aria-pressed', 'true');
     await expect(page).toHaveURL(/stage=engagement/);
     await expect(page).toHaveURL(/stage=review/);
 
     // Toggle engagement off — only review remains.
     await engagement.click();
-    await expect(engagement).toHaveAttribute('aria-checked', 'false');
+    await expect(engagement).toHaveAttribute('aria-pressed', 'false');
     await expect(page).not.toHaveURL(/stage=engagement/);
     await expect(page).toHaveURL(/stage=review/);
   });

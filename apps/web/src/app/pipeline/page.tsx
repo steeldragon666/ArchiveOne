@@ -5,15 +5,14 @@ import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { Claim } from '@cpa/schemas';
 import { AuthGuard } from '@/components/auth-guard';
+import { PipelineFilters, type ConsultantOption } from './_components/pipeline-filters';
 import {
-  PipelineFilters,
+  currentFiscalYear,
+  parseFiscalYear,
   parseStages,
   parseView,
-  parseFiscalYear,
-  currentFiscalYear,
-  type ConsultantOption,
   type PipelineView,
-} from '@/components/pipeline-filters';
+} from './_components/url-params';
 import { useUsers } from '@/hooks/use-users';
 
 /**
@@ -52,13 +51,19 @@ function Inner() {
   // existing /v1/users endpoint already returns the active firm's
   // members). Using the same query key as the /users page to share the
   // tanstack cache across pages.
+  //
+  // Filter to admin + consultant roles only — viewers don't own claims and
+  // shouldn't pollute the "Consultant" filter dropdown. UserRef.role is
+  // exposed by the /v1/users endpoint (see hooks/use-users.ts).
   const usersQuery = useUsers();
   const consultants = useMemo<ConsultantOption[]>(() => {
     if (!usersQuery.data) return [];
-    return usersQuery.data.map((u) => ({
-      id: u.id,
-      label: u.displayName ?? u.email,
-    }));
+    return usersQuery.data
+      .filter((u) => u.role === 'admin' || u.role === 'consultant')
+      .map((u) => ({
+        id: u.id,
+        label: u.displayName ?? u.email,
+      }));
   }, [usersQuery.data]);
 
   // TODO(C2/A2): replace with `listClaims({ stages, consultantId, fiscalYear, sector })`

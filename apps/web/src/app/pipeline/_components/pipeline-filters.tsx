@@ -1,10 +1,11 @@
 'use client';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { CLAIM_STAGES_LITERAL, type ClaimStage } from '@cpa/schemas';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
+import { type PipelineView } from './url-params.js';
 
 /**
  * Filter + view-toggle bar for /pipeline.
@@ -14,49 +15,15 @@ import { cn } from '@/lib/utils';
  * back-button friendly). The page passes the parsed values down so it
  * can do the data fetch with the same query keys.
  *
- * Filters supported (all multi-select via repeated query params except
- * fy which is a single int and sector which is a single string):
+ * Pure parsers (parseView/parseStages/parseFiscalYear/currentFiscalYear)
+ * live in `./url-params.ts` so they're unit-testable in isolation; the
+ * page imports them directly.
  *
- *   ?stage=engagement&stage=review   → ClaimStage[] (multi)
- *   ?consultant=<uuid>               → user UUID (single, "" = all)
- *   ?fy=2026                         → fiscal_year (single int)
- *   ?sector=biotech                  → free-text contains match (single)
- *   ?view=kanban|table               → view toggle (default = table)
- *
- * Stage chips toggle on click; the rest are simple inputs/selects. Empty
- * values are scrubbed from the URL so we don't leave dangling
- * `?consultant=` segments behind.
+ * Stage chips toggle on click; the rest are controlled inputs that debounce
+ * (250ms) before writing to the URL — keeps the URL from churning on every
+ * keystroke. A useEffect re-syncs local state if the URL changes externally
+ * (back button, programmatic mutation by another component).
  */
-
-export type PipelineView = 'kanban' | 'table';
-
-const VIEW_VALUES = new Set<PipelineView>(['kanban', 'table']);
-
-export function parseView(raw: string | null): PipelineView {
-  return raw && VIEW_VALUES.has(raw as PipelineView) ? (raw as PipelineView) : 'table';
-}
-
-export function parseStages(raw: string[] | undefined): ClaimStage[] {
-  if (!raw || raw.length === 0) return [];
-  const valid = new Set<string>(CLAIM_STAGES_LITERAL);
-  return raw.filter((s): s is ClaimStage => valid.has(s));
-}
-
-export function parseFiscalYear(raw: string | null, fallback: number): number {
-  if (!raw) return fallback;
-  const n = Number.parseInt(raw, 10);
-  return Number.isFinite(n) && n >= 1900 && n <= 2200 ? n : fallback;
-}
-
-/**
- * Australian R&DTI fiscal-year convention: FY2026 = 1 July 2025 - 30 June
- * 2026. The "current" FY at any given date is therefore Jun-incremented.
- */
-export function currentFiscalYear(now: Date = new Date()): number {
-  const y = now.getUTCFullYear();
-  // Jul (month 6, 0-indexed) onwards rolls into the next FY.
-  return now.getUTCMonth() >= 6 ? y + 1 : y;
-}
 
 export interface ConsultantOption {
   id: string;
@@ -82,6 +49,22 @@ const STAGE_LABELS: Record<ClaimStage, string> = {
   audit_defence: 'Audit defence',
 };
 
+const DEBOUNCE_MS = 250;
+
+/**
+ * Tiny debounce hook — returns the input value after `delayMs` of stability.
+ * Inlined here rather than added to /hooks because it's only used by this
+ * component. If a second consumer appears, promote it.
+ */
+function useDebounced<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(value), delayMs);
+    return () => clearTimeout(id);
+  }, [value, delayMs]);
+  return debounced;
+}
+
 export function PipelineFilters({
   view,
   stages,
@@ -104,6 +87,42 @@ export function PipelineFilters({
     [pathname, router, searchParams],
   );
 
+  // --- Controlled FY input (Issue 2: was uncontrolled, broke back-button) ---
+  const [fyInput, setFyInput] = useState<string>(String(fiscalYear));
+  // Re-sync local state when URL FY changes externally (back/forward button).
+  useEffect(() => {
+    setFyInput(String(fiscalYear));
+  }, [fiscalYear]);
+  const debouncedFy = useDebounced(fyInput, DEBOUNCE_MS);
+  useEffect(() => {
+    const trimmed = debouncedFy.trim();
+    // No-op if the URL already matches (avoids a redundant router.replace
+    // when the URL→state sync above just fired). We intentionally read
+    // fiscalYear/updateParams without depending on them — this effect should
+    // only fire when the *debounced user input* changes; the early-return
+    // protects against external FY updates landing here.
+    if (trimmed === String(fiscalYear)) return;
+    updateParams((params) => {
+      if (!trimmed) params.delete('fy');
+      else params.set('fy', trimmed);
+    });
+  }, [debouncedFy, fiscalYear, updateParams]);
+
+  // --- Controlled Sector input (same pattern) ---
+  const [sectorInput, setSectorInput] = useState<string>(sector);
+  useEffect(() => {
+    setSectorInput(sector);
+  }, [sector]);
+  const debouncedSector = useDebounced(sectorInput, DEBOUNCE_MS);
+  useEffect(() => {
+    const trimmed = debouncedSector.trim();
+    if (trimmed === sector) return;
+    updateParams((params) => {
+      if (!trimmed) params.delete('sector');
+      else params.set('sector', trimmed);
+    });
+  }, [debouncedSector, sector, updateParams]);
+
   const onToggleStage = useCallback(
     (stage: ClaimStage) => {
       updateParams((params) => {
@@ -123,28 +142,6 @@ export function PipelineFilters({
       updateParams((params) => {
         if (!next) params.delete('consultant');
         else params.set('consultant', next);
-      });
-    },
-    [updateParams],
-  );
-
-  const onFyChange = useCallback(
-    (next: string) => {
-      updateParams((params) => {
-        const trimmed = next.trim();
-        if (!trimmed) params.delete('fy');
-        else params.set('fy', trimmed);
-      });
-    },
-    [updateParams],
-  );
-
-  const onSectorChange = useCallback(
-    (next: string) => {
-      updateParams((params) => {
-        const trimmed = next.trim();
-        if (!trimmed) params.delete('sector');
-        else params.set('sector', trimmed);
       });
     },
     [updateParams],
@@ -190,8 +187,8 @@ export function PipelineFilters({
               inputMode="numeric"
               min={1900}
               max={2200}
-              defaultValue={fiscalYear}
-              onBlur={(e) => onFyChange(e.target.value)}
+              value={fyInput}
+              onChange={(e) => setFyInput(e.target.value)}
               className="w-28"
             />
           </label>
@@ -202,8 +199,8 @@ export function PipelineFilters({
               type="text"
               aria-label="Sector"
               placeholder="e.g. biotech"
-              defaultValue={sector}
-              onBlur={(e) => onSectorChange(e.target.value)}
+              value={sectorInput}
+              onChange={(e) => setSectorInput(e.target.value)}
               className="w-40"
             />
           </label>
@@ -242,12 +239,14 @@ export function PipelineFilters({
         <div className="flex flex-wrap gap-2">
           {CLAIM_STAGES_LITERAL.map((stage) => {
             const isActive = stages.includes(stage);
+            // Toggle-button pattern: aria-pressed gets the right semantics
+            // for screen readers without the keyboard mismatch you get from
+            // role="checkbox" on a bare <button> (Space toggling, etc.).
             return (
               <button
                 key={stage}
                 type="button"
-                role="checkbox"
-                aria-checked={isActive}
+                aria-pressed={isActive}
                 aria-label={STAGE_LABELS[stage]}
                 onClick={() => onToggleStage(stage)}
                 className={cn(
