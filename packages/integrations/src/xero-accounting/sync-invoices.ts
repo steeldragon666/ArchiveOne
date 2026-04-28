@@ -1,5 +1,6 @@
 import { privilegedSql } from '@cpa/db/client';
 import { insertEventWithChain } from '@cpa/db';
+import { ExpenditureIngestedPayload } from '@cpa/schemas';
 import { parseXeroDate, xeroAccountingGet } from './client.js';
 
 /**
@@ -339,16 +340,20 @@ export async function syncInvoices(
         // EXPENDITURE_INGESTED event — only on insert. Match the
         // ExpenditureIngestedPayload schema in @cpa/schemas/event.ts.
         const lineCount = inv.LineItems?.length ?? 0;
+        // Boundary-validate the payload (A1 fix #5 pattern). Programming-error
+        // guard: any drift in ExpenditureIngestedPayload's shape fails here
+        // instead of landing malformed events on the chain.
+        const ingestedPayload = ExpenditureIngestedPayload.parse({
+          expenditure_id: expenditureId,
+          source: 'xero_invoice',
+          vendor_name: vendorName,
+          line_count: lineCount,
+        });
         await chainInsert({
           tenant_id: connection.tenant_id,
           subject_tenant_id: subjectTenant.id,
           kind: 'EXPENDITURE_INGESTED',
-          payload: {
-            expenditure_id: expenditureId,
-            source: 'xero_invoice',
-            vendor_name: vendorName,
-            line_count: lineCount,
-          },
+          payload: ingestedPayload,
           classification: null,
           captured_at: new Date(),
           // Sync worker — no human captured this. The

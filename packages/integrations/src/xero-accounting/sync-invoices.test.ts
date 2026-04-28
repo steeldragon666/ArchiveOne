@@ -52,6 +52,18 @@ const FIXTURE_ACCREC = FIXTURE.Invoices.filter((i) => i.Type === 'ACCREC');
 assert.equal(FIXTURE_ACCPAY.length, 3, 'fixture must have exactly 3 ACCPAY invoices');
 assert.equal(FIXTURE_ACCREC.length, 1, 'fixture must have exactly 1 ACCREC invoice');
 
+/**
+ * Stable, deterministic UUID-v4-shaped ids for test fixtures. The
+ * EXPENDITURE_INGESTED payload is now Zod-parsed at the boundary
+ * (B2 follow-up — A1 fix #5 pattern), and `Uuid` rejects anything
+ * that isn't a v4. The third group must start with `4`, the fourth
+ * with `8|9|a|b`. Pad-from-the-end so `expUuid(0)` and `expUuid(99)`
+ * both yield distinct, valid UUIDs.
+ */
+function expUuid(i: number): string {
+  return `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`;
+}
+
 // -- SQL stub --------------------------------------------------------------
 //
 // Each call to `sql` is captured. The stub is "smart": it returns rows
@@ -219,10 +231,10 @@ test('backfill: paginates until short page; all ACCPAY rows persisted', async ()
   const chainStub = makeChainStub();
   // 100 page-1 + 3 page-2 = 103 ACCPAY rows; all new.
   for (let i = 0; i < 100; i++) {
-    queueNewInvoiceRows(sqlStub, `expenditure-${i}`);
+    queueNewInvoiceRows(sqlStub, expUuid(i));
   }
   for (let i = 0; i < 3; i++) {
-    queueNewInvoiceRows(sqlStub, `expenditure-fixture-${i}`);
+    queueNewInvoiceRows(sqlStub, expUuid(100 + i));
   }
 
   const result = await syncInvoices(conn(), {
@@ -258,7 +270,7 @@ test('incremental: sets If-Modified-Since header and forwards `since` correctly'
 
   const sqlStub = makeSqlStub();
   for (let i = 0; i < FIXTURE_ACCPAY.length; i++) {
-    queueNewInvoiceRows(sqlStub, `exp-${i}`);
+    queueNewInvoiceRows(sqlStub, expUuid(i));
   }
   const chainStub = makeChainStub();
 
@@ -303,7 +315,7 @@ test('ACCREC rows are filtered out (defensive guard) — only ACCPAY persisted',
 
   const sqlStub = makeSqlStub();
   for (let i = 0; i < 3; i++) {
-    queueNewInvoiceRows(sqlStub, `exp-${i}`);
+    queueNewInvoiceRows(sqlStub, expUuid(i));
   }
   const chainStub = makeChainStub();
 
@@ -458,7 +470,8 @@ test('EXPENDITURE_INGESTED payload matches ExpenditureIngestedPayload', async ()
     .reply(200, { Invoices: [inv] });
 
   const sqlStub = makeSqlStub();
-  queueNewInvoiceRows(sqlStub, 'exp-only');
+  const onlyExpId = expUuid(0);
+  queueNewInvoiceRows(sqlStub, onlyExpId);
   const chainStub = makeChainStub();
 
   await syncInvoices(conn(), {
@@ -475,7 +488,7 @@ test('EXPENDITURE_INGESTED payload matches ExpenditureIngestedPayload', async ()
   // Sync worker — no human captured.
   assert.equal(call.captured_by_user_id, null);
   assert.deepEqual(call.payload, {
-    expenditure_id: 'exp-only',
+    expenditure_id: onlyExpId,
     source: 'xero_invoice',
     vendor_name: 'AWS Australia',
     line_count: 2, // EC2 + S3
@@ -556,7 +569,7 @@ test('source_external_id is the Xero InvoiceID (forwarded as-is)', async () => {
     .reply(200, { Invoices: [inv] });
 
   const sqlStub = makeSqlStub();
-  queueNewInvoiceRows(sqlStub, 'exp-ow');
+  queueNewInvoiceRows(sqlStub, expUuid(1));
   const chainStub = makeChainStub();
   await syncInvoices(conn(), {
     mode: 'backfill',
