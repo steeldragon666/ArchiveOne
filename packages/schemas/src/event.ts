@@ -238,13 +238,63 @@ export type ListEventsFilter = z.infer<typeof listEventsFilter>;
  * limit defaults to 50 (max 200) — matches the consultant portal feed
  * default. cursor is opaque base64; clients pass next_cursor verbatim
  * to get the next page.
+ *
+ * Scope: at least one of `subject_tenant_id` or `activity_id` MUST be
+ * supplied — both narrow the visible row set to a specific entity.
+ *   - `subject_tenant_id` is the canonical claimant scope; matches the
+ *     view's FK column directly.
+ *   - `activity_id` filters on `payload->>'activity_id'` and is used by
+ *     the A6 technical uncertainty register. The route resolves the
+ *     activity under RLS (cross-firm → 404) and infers subject_tenant_id
+ *     from it when not supplied.
+ *   - `kind` is a comma-delimited list of evidenceKind values. When
+ *     omitted the route returns all kinds; when supplied each value
+ *     must be a valid evidenceKind. The route widens this to a SQL
+ *     `kind IN (...)` predicate. Used by the A6 register page to scope
+ *     to the seven uncertainty kinds (HYPOTHESIS, UNCERTAINTY, etc.).
+ *
+ * `kind` is parsed as a comma-delimited string at the wire boundary
+ * (URL query params don't have a native list type) and exposed as a
+ * `string[]` to the route handler. Empty list ⇒ no filter.
  */
-export const listEventsQuery = z.object({
-  subject_tenant_id: Uuid,
-  filter: listEventsFilter.default('all'),
-  limit: z.coerce.number().int().min(1).max(200).default(50),
-  cursor: z.string().optional(),
-});
+export const listEventsQuery = z
+  .object({
+    subject_tenant_id: Uuid.optional(),
+    activity_id: Uuid.optional(),
+    filter: listEventsFilter.default('all'),
+    limit: z.coerce.number().int().min(1).max(200).default(50),
+    cursor: z.string().optional(),
+    // Comma-delimited list of evidenceKind values; transformed to an
+    // array of validated kinds. Empty / missing ⇒ undefined (no filter).
+    kind: z
+      .string()
+      .optional()
+      .transform((s, ctx) => {
+        if (s === undefined || s === '') return undefined;
+        const parts = s
+          .split(',')
+          .map((p) => p.trim())
+          .filter((p) => p.length > 0);
+        if (parts.length === 0) return undefined;
+        const result: EvidenceKind[] = [];
+        for (const part of parts) {
+          const parsed = evidenceKind.safeParse(part);
+          if (!parsed.success) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: `Unknown event kind: ${part}`,
+            });
+            return z.NEVER;
+          }
+          result.push(parsed.data);
+        }
+        return result;
+      }),
+  })
+  .refine((q) => q.subject_tenant_id !== undefined || q.activity_id !== undefined, {
+    message: 'Either subject_tenant_id or activity_id is required',
+    path: ['subject_tenant_id'],
+  });
 export type ListEventsQuery = z.infer<typeof listEventsQuery>;
 
 /**

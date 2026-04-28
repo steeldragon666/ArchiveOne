@@ -231,11 +231,12 @@ export function registerEvents(app: FastifyInstance): void {
     if (!parsed.success) {
       return reply.status(400).send({
         error: 'invalid_query',
-        message: 'Query must include subject_tenant_id; optional filter, limit (1..200), cursor',
+        message:
+          'Query must include subject_tenant_id or activity_id; optional kind (CSV), filter, limit (1..200), cursor',
         requestId: req.id,
       });
     }
-    const { subject_tenant_id, filter, limit, cursor } = parsed.data;
+    const { subject_tenant_id, activity_id, filter, limit, cursor, kind } = parsed.data;
     const tenantId = req.user!.tenantId!;
 
     // Decode the opaque cursor. Forward-pagination only (older first → next).
@@ -249,6 +250,36 @@ export function registerEvents(app: FastifyInstance): void {
         message: 'cursor is malformed',
         requestId: req.id,
       });
+    }
+
+    // When the caller supplies activity_id without subject_tenant_id we
+    // resolve the activity → subject_tenant_id under RLS so the
+    // visibility predicate still scopes by claimant. Cross-firm activity
+    // returns 404 (matches A3/A4 conventions). When BOTH are supplied we
+    // trust the caller's subject_tenant_id and use activity_id as an
+    // additional payload filter — the A6 register page passes both for
+    // belt-and-braces narrowing.
+    let scopedSubjectTenantId = subject_tenant_id;
+    if (activity_id !== undefined && scopedSubjectTenantId === undefined) {
+      const resolved = await sql.begin(async (tx) => {
+        await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+        const rows = await tx<{ subject_tenant_id: string }[]>`
+          SELECT c.subject_tenant_id
+            FROM activity a
+            JOIN claim c ON c.id = a.claim_id
+           WHERE a.id = ${activity_id}
+             AND a.tenant_id = ${tenantId}
+        `;
+        return rows[0] ?? null;
+      });
+      if (!resolved) {
+        return reply.status(404).send({
+          error: 'activity_not_found',
+          message: 'No activity with that id in this firm',
+          requestId: req.id,
+        });
+      }
+      scopedSubjectTenantId = resolved.subject_tenant_id;
     }
 
     return await sql.begin(async (tx) => {
@@ -289,11 +320,29 @@ export function registerEvents(app: FastifyInstance): void {
               ? tx`AND kind = 'OVERRIDE'`
               : tx``;
 
+      // Activity-scoped filter: events whose payload carries the
+      // matching activity_id. This catches both the
+      // ARTEFACT_LINKED/ARTEFACT_UNLINKED chain events (A4) and the
+      // ACTIVITY_UPDATED + classified narrative events that the A6
+      // register surfaces. Server-side filter so we don't ship
+      // unrelated rows over the wire.
+      const activityClause =
+        activity_id !== undefined ? tx`AND payload ->> 'activity_id' = ${activity_id}` : tx``;
+
+      // Kind filter: when present, narrow to the explicit list. We
+      // filter on `kind` (the canonical column) rather than
+      // `effective_kind` because the register feed wants chain rows of
+      // the literal kind asked for — overrides surface separately under
+      // filter=overrides. Empty list / undefined ⇒ no narrowing.
+      const kindClause = kind !== undefined && kind.length > 0 ? tx`AND kind IN ${tx(kind)}` : tx``;
+
       const rows = await tx<RawEventViewRow[]>`
         SELECT * FROM event_with_effective_kind
-         WHERE subject_tenant_id = ${subject_tenant_id}
+         WHERE subject_tenant_id = ${scopedSubjectTenantId!}
            ${cursorClause}
            ${filterClause}
+           ${activityClause}
+           ${kindClause}
          ORDER BY captured_at DESC, received_at DESC, id DESC
          LIMIT ${fetchN}
       `;

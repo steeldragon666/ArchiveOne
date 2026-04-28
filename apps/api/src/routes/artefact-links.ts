@@ -8,7 +8,7 @@ import {
   CreateArtefactLinkBody,
   UnlinkArtefactBody,
 } from '@cpa/schemas';
-import { findLinkedEventForActivity } from '../lib/activity-artefacts.js';
+import { findLinkedEventForActivity, getActivityArtefacts } from '../lib/activity-artefacts.js';
 
 // TODO(p4-a-cleanup): post-A1 review-flagged refactors deferred to a separate
 // cross-cutting task after the swimlanes merge — same items affect this file:
@@ -406,6 +406,51 @@ export function registerArtefactLinks(app: FastifyInstance): void {
         artefact_kind: linked.artefact_kind,
         artefact_id: linked.artefact_id,
       });
+    },
+  );
+
+  // ---------------------------------------------------------------------
+  // GET /v1/activities/:activity_id/artefacts (T-A6 follow-up)
+  // Returns the currently-linked artefacts for an activity, materialised
+  // from ARTEFACT_LINKED / ARTEFACT_UNLINKED chain events via the
+  // `getActivityArtefacts` helper (A4). All authenticated roles can read
+  // (admin / consultant / viewer) — same gate as the activity detail
+  // route. The A5 activity detail page reads this for its "Linked
+  // artefacts" panel; the A6 uncertainty register links to it.
+  // ---------------------------------------------------------------------
+  app.get<{ Params: { activity_id: string } }>(
+    '/v1/activities/:activity_id/artefacts',
+    { preHandler: requireSession },
+    async (req, reply) => {
+      const { activity_id } = req.params;
+      const tenantId = req.user!.tenantId!;
+
+      // Verify the activity exists in this firm — same pattern as A4
+      // POST/DELETE: RLS + explicit `AND tenant_id = ${tenantId}` for
+      // defense-in-depth. Cross-firm activity returns 404 (mirroring
+      // A3's GET /v1/activities/:id behaviour).
+      const exists = await sql.begin(async (tx) => {
+        await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+        const rows = await tx<{ id: string }[]>`
+          SELECT id FROM activity
+           WHERE id = ${activity_id}
+             AND tenant_id = ${tenantId}
+        `;
+        return rows[0] != null;
+      });
+      if (!exists) {
+        return reply.status(404).send({
+          error: 'activity_not_found',
+          message: 'No activity with that id in this firm',
+          requestId: req.id,
+        });
+      }
+
+      // Materialise the live link set. The helper's signature returns
+      // ActivityArtefact rows ordered by linked_at ascending (oldest
+      // first) — the consultant portal renders the panel in that order.
+      const artefacts = await getActivityArtefacts(activity_id, { tenantId });
+      return reply.status(200).send({ artefacts });
     },
   );
 }

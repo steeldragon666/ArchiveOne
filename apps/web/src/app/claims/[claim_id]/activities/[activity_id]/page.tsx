@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { use } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AuthGuard } from '@/components/auth-guard';
-import { getActivity } from '../_lib/api';
+import { getActivity, listActivityArtefacts } from '../_lib/api';
 import { ActivityEditor } from './_components/activity-editor';
 
 /**
@@ -19,7 +19,9 @@ import { ActivityEditor } from './_components/activity-editor';
  *   - Read-only metadata block: project_id, claim_id, created_at,
  *     updated_at (these are not editable here per the schema —
  *     UpdateActivityBody intentionally excludes them)
- *   - Linked artefacts panel: stubbed; see TODO below
+ *   - Linked artefacts panel: real list from
+ *     GET /v1/activities/:id/artefacts (T-A6) + a "View register"
+ *     deeplink to the technical-uncertainty register page.
  *
  * Test approach: this is a React component with a hook + useQuery + form
  * state, so it's not amenable to pure-function unit tests in the
@@ -45,6 +47,14 @@ function Inner({ claimId, activityId }: { claimId: string; activityId: string })
   const detail = useQuery({
     queryKey: ['activity', activityId],
     queryFn: () => getActivity(activityId),
+  });
+
+  // A6 wired up — real list from GET /v1/activities/:id/artefacts. Runs
+  // alongside the activity detail query (parallel fetches; the panel
+  // renders independently of the editor's load state).
+  const artefacts = useQuery({
+    queryKey: ['activity-artefacts', activityId],
+    queryFn: () => listActivityArtefacts(activityId),
   });
 
   if (detail.isPending) {
@@ -96,17 +106,48 @@ function Inner({ claimId, activityId }: { claimId: string; activityId: string })
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Linked artefacts</h2>
-        {/*
-         * TODO(p4-a6): the A4 helper `getActivityArtefacts` exists in
-         * @cpa/db but is not yet exposed via an HTTP endpoint — only
-         * POST/DELETE on /v1/activities/:id/artefact-links exist.
-         * A6 (uncertainty register) will need a GET listing endpoint;
-         * surface the linked-artefacts list here once that lands. For
-         * now this panel renders a placeholder so the surface area is
-         * obvious during demo.
-         */}
-        <p className="text-sm text-muted-foreground">Linked artefacts surface coming in A6.</p>
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold">Linked artefacts</h2>
+          <Link
+            href={`/claims/${claimId}/activities/${activityId}/register`}
+            className="text-sm text-primary hover:underline"
+          >
+            View register →
+          </Link>
+        </div>
+        {artefacts.isPending ? (
+          <p className="text-sm text-muted-foreground">Loading linked artefacts…</p>
+        ) : artefacts.error ? (
+          <p className="text-sm text-red-600">
+            Failed to load artefacts:{' '}
+            {artefacts.error instanceof Error ? artefacts.error.message : 'Unknown error'}
+          </p>
+        ) : artefacts.data.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No artefacts linked yet. Link evidence (media, events, expenditures, time entries) from
+            the consultant feed.
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {artefacts.data.map((a) => (
+              <li
+                key={a.linked_event_id}
+                className="border rounded-md px-3 py-2 text-sm bg-card flex flex-wrap items-center gap-2"
+              >
+                <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-medium text-slate-700">
+                  {a.artefact_kind}
+                </span>
+                <span className="font-mono text-xs break-all">{a.artefact_id}</span>
+                {a.link_reason ? (
+                  <span className="text-xs text-muted-foreground italic">— {a.link_reason}</span>
+                ) : null}
+                <span className="ml-auto text-xs text-muted-foreground">
+                  {new Date(a.linked_at).toLocaleDateString()}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       <section className="space-y-3">
