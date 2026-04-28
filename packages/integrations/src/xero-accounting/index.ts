@@ -15,6 +15,12 @@
 export * from './types.js';
 export * from './oauth.js';
 export { parseXeroDate, xeroAccountingGet, type XeroAccountingClientOptions } from './client.js';
+export {
+  syncInvoices,
+  type SyncInvoicesConnection,
+  type SyncInvoicesOptions,
+  type SyncInvoicesResult,
+} from './sync-invoices.js';
 
 // TODO(p4-cleanup): post-swimlane integration follow-ups identified by
 // the B1 code-quality review:
