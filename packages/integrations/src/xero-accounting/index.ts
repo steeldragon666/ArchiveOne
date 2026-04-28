@@ -47,6 +47,7 @@ export {
   type SyncAccountsOptions,
   type SyncAccountsResult,
 } from './sync-accounts.js';
+export * from './mapping-rules/index.js';
 
 // TODO(p4-cleanup): post-swimlane integration follow-ups identified by
 // the B1 code-quality review:
