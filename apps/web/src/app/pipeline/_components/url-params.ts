@@ -1,5 +1,12 @@
 import { CLAIM_STAGES_LITERAL, type Claim, type ClaimStage } from '@cpa/schemas';
+import { STAGE_LABELS } from '@/lib/claim-stage';
 import { daysInStage } from '../_lib/format';
+
+// Re-exported so existing pipeline consumers (`./pipeline-filters`,
+// `./pipeline-kanban`, `./pipeline-table`) can keep importing from this
+// module unchanged. New cross-route consumers should import directly from
+// `@/lib/claim-stage` to avoid pulling in the pipeline module graph.
+export { STAGE_LABELS };
 
 /**
  * Pure URL-param parsers for /pipeline. Extracted from pipeline-filters.tsx
@@ -21,21 +28,6 @@ import { daysInStage } from '../_lib/format';
 export type PipelineView = 'kanban' | 'table';
 
 const VIEW_VALUES = new Set<PipelineView>(['kanban', 'table']);
-
-/**
- * Human-readable labels for each `ClaimStage`. Single source of truth for
- * pipeline UI surfaces (filter chips, kanban column headers, table cells)
- * so we don't fork the mapping per component.
- */
-export const STAGE_LABELS: Record<ClaimStage, string> = {
-  engagement: 'Engagement',
-  activity_capture: 'Activity capture',
-  narrative_drafting: 'Narrative drafting',
-  expenditure_schedule: 'Expenditure schedule',
-  review: 'Review',
-  submitted: 'Submitted',
-  audit_defence: 'Audit defence',
-};
 
 export function parseView(raw: string | null): PipelineView {
   return raw && VIEW_VALUES.has(raw as PipelineView) ? (raw as PipelineView) : 'table';

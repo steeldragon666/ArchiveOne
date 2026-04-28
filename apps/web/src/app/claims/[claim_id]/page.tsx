@@ -4,7 +4,7 @@ import { useSearchParams } from 'next/navigation';
 import { use } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AuthGuard } from '@/components/auth-guard';
-import { STAGE_LABELS } from '@/app/pipeline/_components/url-params';
+import { STAGE_LABELS } from '@/lib/claim-stage';
 import { ClaimTabs } from './_components/claim-tabs';
 import { getClaim } from './_lib/api';
 import { parseTab } from './_lib/url-params';

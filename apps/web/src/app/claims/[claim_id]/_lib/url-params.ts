@@ -50,3 +50,47 @@ export const TAB_LABELS: Record<ClaimTab, string> = {
   documents: 'Documents',
   timeline: 'Timeline',
 };
+
+/**
+ * Maps a keyboard event `key` to the next active tab, given the current
+ * tab. Returns `null` for keys we don't handle so the caller can preserve
+ * native browser behaviour (Tab/Shift-Tab focus traversal etc).
+ *
+ * Implements the WAI-ARIA APG tabs pattern (horizontal orientation):
+ *   - ArrowRight / ArrowDown → next tab, wraps last → first
+ *   - ArrowLeft  / ArrowUp   → previous tab, wraps first → last
+ *   - Home → first tab
+ *   - End  → last tab
+ *
+ * Up/Down are accepted alongside Left/Right because some screen readers
+ * suggest the vertical pair when the user can't tell the orientation;
+ * accepting both keeps the tablist usable either way.
+ *
+ * Pure helper so it's unit-testable without a DOM (matches the
+ * `node:test` + pure-function pattern used elsewhere in apps/web).
+ */
+export function nextTabFromKey(key: string, current: ClaimTab): ClaimTab | null {
+  const idx = CLAIM_TAB_VALUES.indexOf(current);
+  if (idx === -1) return null;
+  const len = CLAIM_TAB_VALUES.length;
+  // Indexes are always in-bounds (modulo arithmetic + clamped Home/End),
+  // but the project uses `noUncheckedIndexedAccess` so the array read is
+  // typed `ClaimTab | undefined`. Assertions narrow that back to `ClaimTab`
+  // — safe given the bounds reasoning above. The literal-index Home case
+  // is folded by TS to the tuple-element literal type without undefined,
+  // so it doesn't need an assertion.
+  switch (key) {
+    case 'ArrowRight':
+    case 'ArrowDown':
+      return CLAIM_TAB_VALUES[(idx + 1) % len] as ClaimTab;
+    case 'ArrowLeft':
+    case 'ArrowUp':
+      return CLAIM_TAB_VALUES[(idx - 1 + len) % len] as ClaimTab;
+    case 'Home':
+      return CLAIM_TAB_VALUES[0];
+    case 'End':
+      return CLAIM_TAB_VALUES[len - 1] as ClaimTab;
+    default:
+      return null;
+  }
+}
