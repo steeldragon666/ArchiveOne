@@ -9,8 +9,10 @@
  * friendly).
  *
  *   ?tab=activities|evidence|expenditure|documents|timeline
+ *   ?expenditure_filter=all|unmapped|mapped (only meaningful on the
+ *      expenditure tab; ignored elsewhere)
  *
- * Default = 'activities' (the working surface for stage 1-2 of the
+ * Default tab = 'activities' (the working surface for stage 1-2 of the
  * pipeline; everything downstream is wired in C5+).
  */
 
@@ -94,3 +96,42 @@ export function nextTabFromKey(key: string, current: ClaimTab): ClaimTab | null 
       return null;
   }
 }
+
+// --- Expenditure tab filter (?expenditure_filter=...) --------------------
+//
+// C5 ships the expenditure-mapping UI. The filter chip strip ("All" /
+// "Unmapped" / "Mapped") is URL-driven for the same shareable-link
+// reason as `?tab` above. Default = 'unmapped' because the most common
+// consultant workflow on this tab is "what's left to map?" — landing
+// on the full list is rarely useful.
+
+export const EXPENDITURE_FILTER_VALUES = ['all', 'unmapped', 'mapped'] as const;
+export type ExpenditureFilter = (typeof EXPENDITURE_FILTER_VALUES)[number];
+
+/** Default applied when `?expenditure_filter` is absent or invalid. */
+export const DEFAULT_EXPENDITURE_FILTER: ExpenditureFilter = 'unmapped';
+
+const EXPENDITURE_FILTER_SET = new Set<ExpenditureFilter>(EXPENDITURE_FILTER_VALUES);
+
+/**
+ * Parse `?expenditure_filter=...`. Mirrors the `parseTab` shape: unknown
+ * values fall back to the default rather than throwing — a stale link
+ * shouldn't 404, just land the user on the most-useful default view.
+ */
+export function parseExpenditureFilter(raw: string | null | undefined): ExpenditureFilter {
+  if (!raw) return DEFAULT_EXPENDITURE_FILTER;
+  return EXPENDITURE_FILTER_SET.has(raw as ExpenditureFilter)
+    ? (raw as ExpenditureFilter)
+    : DEFAULT_EXPENDITURE_FILTER;
+}
+
+/**
+ * Human-readable labels for each expenditure filter. Single source of
+ * truth for the chip strip and any future surface that needs to render
+ * a filter name.
+ */
+export const EXPENDITURE_FILTER_LABELS: Record<ExpenditureFilter, string> = {
+  all: 'All',
+  unmapped: 'Unmapped',
+  mapped: 'Mapped',
+};

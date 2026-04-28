@@ -3,7 +3,11 @@ import assert from 'node:assert/strict';
 import {
   CLAIM_TAB_VALUES,
   DEFAULT_CLAIM_TAB,
+  DEFAULT_EXPENDITURE_FILTER,
+  EXPENDITURE_FILTER_LABELS,
+  EXPENDITURE_FILTER_VALUES,
   nextTabFromKey,
+  parseExpenditureFilter,
   parseTab,
   TAB_LABELS,
 } from './url-params.js';
@@ -116,4 +120,43 @@ test('nextTabFromKey: full ArrowRight cycle visits every tab and wraps', () => {
   }
   // Visited each tab in CLAIM_TAB_VALUES order, then wrapped back to the start.
   assert.deepEqual(visited, [...CLAIM_TAB_VALUES, 'activities']);
+});
+
+// parseExpenditureFilter --------------------------------------------------
+//
+// C5: the expenditure tab's filter chip strip is URL-driven via
+// `?expenditure_filter=...`. Default is 'unmapped' (the most common
+// workflow is "what's left to map?"). Same graceful-fallback shape as
+// parseTab: unknown / missing input → default, never throws.
+
+test('parseExpenditureFilter: each known value round-trips', () => {
+  for (const v of EXPENDITURE_FILTER_VALUES) {
+    assert.equal(parseExpenditureFilter(v), v);
+  }
+});
+
+test('parseExpenditureFilter: null returns default ("unmapped")', () => {
+  assert.equal(parseExpenditureFilter(null), DEFAULT_EXPENDITURE_FILTER);
+  assert.equal(parseExpenditureFilter(null), 'unmapped');
+});
+
+test('parseExpenditureFilter: undefined returns default', () => {
+  assert.equal(parseExpenditureFilter(undefined), DEFAULT_EXPENDITURE_FILTER);
+});
+
+test('parseExpenditureFilter: empty string returns default (treated as missing)', () => {
+  assert.equal(parseExpenditureFilter(''), DEFAULT_EXPENDITURE_FILTER);
+});
+
+test('parseExpenditureFilter: unknown value returns default (graceful fallback)', () => {
+  assert.equal(parseExpenditureFilter('foo'), DEFAULT_EXPENDITURE_FILTER);
+  assert.equal(parseExpenditureFilter('Unmapped'), DEFAULT_EXPENDITURE_FILTER); // case-sensitive
+  assert.equal(parseExpenditureFilter('UNMAPPED'), DEFAULT_EXPENDITURE_FILTER);
+});
+
+test('EXPENDITURE_FILTER_LABELS: defines a label for every value', () => {
+  for (const v of EXPENDITURE_FILTER_VALUES) {
+    assert.equal(typeof EXPENDITURE_FILTER_LABELS[v], 'string');
+    assert.ok(EXPENDITURE_FILTER_LABELS[v].length > 0, `label for ${v} should be non-empty`);
+  }
 });
