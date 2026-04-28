@@ -4,14 +4,19 @@ import type { Event as ApiEvent } from '@cpa/schemas';
 import { summariseEvent } from './summarise-event.js';
 
 /**
- * Pure-function tests for the register feed's payload summariser
- * (T-A6).
+ * Pure-function tests for the shared payload summariser (promoted from
+ * register/_components/summarise-event.test.ts in T-A7).
  *
- * apps/web has no jsdom in its node:test runner, so the React feed
- * component itself is exercised end-to-end via Playwright in T-A10.
- * The summary logic is the part worth unit-testing here:
+ * apps/web has no jsdom in its node:test runner, so any React-rendered
+ * consumers (the register feed, the project-detail timeline tab) are
+ * exercised end-to-end via Playwright in a later swimlane.
+ *
+ * Coverage:
  *   - Each of the six classifier kinds renders the truncated raw_text.
  *   - ACTIVITY_UPDATED renders the changed-field list.
+ *   - PROJECT_CREATED renders the project name.
+ *   - PROJECT_UPDATED renders the changed-field list.
+ *   - PROJECT_ARCHIVED renders the optional reason or static label.
  *   - Unknown kinds fall back to the kind label.
  *   - Truncation kicks in at the cap.
  *   - Defensive paths (missing payload, hypothesis-prompt mobile
@@ -120,6 +125,77 @@ test('summariseEvent: ACTIVITY_UPDATED with no fields_changed falls back', () =>
   assert.equal(out, 'Activity updated');
 });
 
+test('summariseEvent: PROJECT_CREATED — uses project name', () => {
+  const evt = baseEvent({
+    kind: 'PROJECT_CREATED',
+    payload: {
+      project_id: '00000000-0000-4000-8000-000000a70030',
+      name: 'Catalyst Stability Study',
+      started_at: '2026-04-01T00:00:00.000Z',
+    },
+  });
+  const out = summariseEvent(evt);
+  assert.equal(out, 'Project created: Catalyst Stability Study');
+});
+
+test('summariseEvent: PROJECT_CREATED missing name falls back to label', () => {
+  const evt = baseEvent({
+    kind: 'PROJECT_CREATED',
+    payload: { project_id: '00000000-0000-4000-8000-000000a70030' },
+  });
+  const out = summariseEvent(evt);
+  assert.equal(out, 'Project created');
+});
+
+test('summariseEvent: PROJECT_UPDATED — names the changed fields', () => {
+  const evt = baseEvent({
+    kind: 'PROJECT_UPDATED',
+    payload: {
+      project_id: '00000000-0000-4000-8000-000000a70030',
+      fields_changed: {
+        name: { from: 'old', to: 'new' },
+        started_at: { from: '2026-04-01T00:00:00.000Z', to: '2026-04-15T00:00:00.000Z' },
+      },
+    },
+  });
+  const out = summariseEvent(evt);
+  assert.equal(out, 'Updated: name, started_at');
+});
+
+test('summariseEvent: PROJECT_UPDATED with no fields_changed falls back', () => {
+  const evt = baseEvent({
+    kind: 'PROJECT_UPDATED',
+    payload: { project_id: '00000000-0000-4000-8000-000000a70030' },
+  });
+  const out = summariseEvent(evt);
+  assert.equal(out, 'Project updated');
+});
+
+test('summariseEvent: PROJECT_ARCHIVED — uses reason when present', () => {
+  const evt = baseEvent({
+    kind: 'PROJECT_ARCHIVED',
+    payload: {
+      project_id: '00000000-0000-4000-8000-000000a70030',
+      archived_by_user_id: '00000000-0000-4000-8000-000000a70010',
+      reason: 'Project superseded by 2027 follow-up engagement.',
+    },
+  });
+  const out = summariseEvent(evt);
+  assert.equal(out, 'Project archived: Project superseded by 2027 follow-up engagement.');
+});
+
+test('summariseEvent: PROJECT_ARCHIVED without reason falls back to label', () => {
+  const evt = baseEvent({
+    kind: 'PROJECT_ARCHIVED',
+    payload: {
+      project_id: '00000000-0000-4000-8000-000000a70030',
+      archived_by_user_id: '00000000-0000-4000-8000-000000a70010',
+    },
+  });
+  const out = summariseEvent(evt);
+  assert.equal(out, 'Project archived');
+});
+
 test('summariseEvent: unknown kind falls back to the kind label', () => {
   const evt = baseEvent({
     kind: 'ARTEFACT_LINKED',
@@ -128,7 +204,7 @@ test('summariseEvent: unknown kind falls back to the kind label', () => {
   });
   const out = summariseEvent(evt);
   // Falls through to the `default` branch — kind label is the safe
-  // fallback for anything outside the seven register kinds.
+  // fallback for anything outside the supported set.
   assert.equal(out, 'ARTEFACT_LINKED');
 });
 

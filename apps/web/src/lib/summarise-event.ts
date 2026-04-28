@@ -1,13 +1,15 @@
 import type { Event as ApiEvent } from '@cpa/schemas';
 
 /**
- * Pure-function payload summariser for the technical-uncertainty
- * register feed (T-A6).
+ * Pure-function payload summariser shared between the technical-uncertainty
+ * register feed (T-A6) and the project-detail timeline tab (T-A7).
  *
- * The register surfaces seven event kinds — the six classifier-emitted
- * R&D narrative kinds plus ACTIVITY_UPDATED for chain-of-custody on
- * narrative edits. Each kind carries a different payload shape, so we
- * dispatch on `kind` and pull a short human-readable summary out:
+ * History: introduced in A6 under
+ * `apps/web/src/app/claims/[claim_id]/activities/[activity_id]/register/_components/summarise-event.ts`
+ * and promoted here in A7 once a second consumer (the project-timeline
+ * tab) appeared. Two route folders importing it ⇒ shared lib.
+ *
+ * Coverage:
  *
  *   - HYPOTHESIS / UNCERTAINTY / EXPERIMENT / OBSERVATION /
  *     ITERATION / NEW_KNOWLEDGE: classifier-emitted narrative events.
@@ -16,19 +18,24 @@ import type { Event as ApiEvent } from '@cpa/schemas';
  *     raw_text, with the classifier rationale falling back as a
  *     secondary signal if raw_text is somehow absent.
  *
- *   - ACTIVITY_UPDATED: state-transition event from PATCH /v1/activities.
- *     Its payload is `ActivityUpdatedPayload` — `{ activity_id,
- *     fields_changed }` keyed by column name. The summary names the
- *     changed fields so the register reads as "Updated:
- *     hypothesis, technical_uncertainty" rather than dumping a JSON
- *     diff.
+ *   - ACTIVITY_UPDATED / PROJECT_UPDATED: state-transition events from
+ *     PATCH /v1/activities and PATCH /v1/projects. Payload is
+ *     `{ activity_id|project_id, fields_changed }` keyed by column name.
+ *     The summary names the changed fields so consumers read as
+ *     "Updated: name, started_at" rather than dumping a JSON diff.
+ *
+ *   - PROJECT_CREATED: payload is `{ project_id, name, started_at }`.
+ *     The summary is the project name.
+ *
+ *   - PROJECT_ARCHIVED: payload is `{ project_id, archived_by_user_id,
+ *     reason? }`. The summary is the optional reason or a static label.
  *
  *   - Any other kind (defensive, including the chain-only ARTEFACT_*
  *     and CLAIM_*): falls back to the kind label. Out of scope for the
  *     register but rendered safely if a future event widens the kind
  *     set without updating this helper.
  *
- * Truncation cap is 200 chars — the register card keeps the snippet
+ * Truncation cap is 200 chars — the consumer card keeps the snippet
  * compact; readers click through to the original event for the full
  * text.
  *
@@ -60,6 +67,23 @@ interface ActivityUpdatedPayloadShape {
   fields_changed?: Record<string, { from: unknown; to: unknown }>;
 }
 
+interface ProjectCreatedPayloadShape {
+  project_id?: string;
+  name?: string;
+  started_at?: string;
+}
+
+interface ProjectUpdatedPayloadShape {
+  project_id?: string;
+  fields_changed?: Record<string, { from: unknown; to: unknown }>;
+}
+
+interface ProjectArchivedPayloadShape {
+  project_id?: string;
+  archived_by_user_id?: string;
+  reason?: string;
+}
+
 const isObject = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null;
 
 const asPastePayload = (p: unknown): PastePayloadShape | null => {
@@ -83,9 +107,27 @@ const asActivityUpdatedPayload = (p: unknown): ActivityUpdatedPayloadShape | nul
   return p as ActivityUpdatedPayloadShape;
 };
 
+const asProjectCreatedPayload = (p: unknown): ProjectCreatedPayloadShape | null => {
+  if (!isObject(p)) return null;
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+  return p as ProjectCreatedPayloadShape;
+};
+
+const asProjectUpdatedPayload = (p: unknown): ProjectUpdatedPayloadShape | null => {
+  if (!isObject(p)) return null;
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+  return p as ProjectUpdatedPayloadShape;
+};
+
+const asProjectArchivedPayload = (p: unknown): ProjectArchivedPayloadShape | null => {
+  if (!isObject(p)) return null;
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+  return p as ProjectArchivedPayloadShape;
+};
+
 /**
- * Summarise a single event for the register feed. Returns a short
- * human-readable string; never null, never throws.
+ * Summarise a single event. Returns a short human-readable string;
+ * never null, never throws.
  */
 export function summariseEvent(event: ApiEvent): string {
   switch (event.kind) {
@@ -125,6 +167,31 @@ export function summariseEvent(event: ApiEvent): string {
       }
       return 'Activity updated';
     }
+    case 'PROJECT_CREATED': {
+      const payload = asProjectCreatedPayload(event.payload);
+      if (payload?.name && payload.name.length > 0) {
+        return `Project created: ${truncate(payload.name)}`;
+      }
+      return 'Project created';
+    }
+    case 'PROJECT_UPDATED': {
+      const payload = asProjectUpdatedPayload(event.payload);
+      const fields = payload?.fields_changed;
+      if (fields && typeof fields === 'object') {
+        const keys = Object.keys(fields);
+        if (keys.length > 0) {
+          return `Updated: ${keys.join(', ')}`;
+        }
+      }
+      return 'Project updated';
+    }
+    case 'PROJECT_ARCHIVED': {
+      const payload = asProjectArchivedPayload(event.payload);
+      if (payload?.reason && payload.reason.length > 0) {
+        return `Project archived: ${truncate(payload.reason)}`;
+      }
+      return 'Project archived';
+    }
     default:
       // Defensive fallback for any other kind that slips through. The
       // register page filters server-side to the seven supported kinds,
@@ -137,7 +204,8 @@ export function summariseEvent(event: ApiEvent): string {
 
 /**
  * The seven kinds the technical-uncertainty register surfaces. Exported
- * so the page can pass them as the `kind=` filter to GET /v1/events.
+ * so the register page can pass them as the `kind=` filter to
+ * GET /v1/events.
  */
 export const REGISTER_KINDS = [
   'HYPOTHESIS',
@@ -149,3 +217,27 @@ export const REGISTER_KINDS = [
   'ACTIVITY_UPDATED',
 ] as const satisfies ReadonlyArray<ApiEvent['kind']>;
 export type RegisterKind = (typeof REGISTER_KINDS)[number];
+
+/**
+ * Kinds the project-detail Timeline tab surfaces (T-A7). Broader than
+ * `REGISTER_KINDS` — adds the three PROJECT_* state-transition kinds
+ * plus CLAIM_STAGE_ADVANCED / CLAIM_SUBMITTED / ACTIVITY_CREATED so
+ * the timeline shows the project + its claims' lifecycle alongside
+ * the narrative events.
+ */
+export const PROJECT_TIMELINE_KINDS = [
+  'PROJECT_CREATED',
+  'PROJECT_UPDATED',
+  'PROJECT_ARCHIVED',
+  'ACTIVITY_CREATED',
+  'ACTIVITY_UPDATED',
+  'CLAIM_STAGE_ADVANCED',
+  'CLAIM_SUBMITTED',
+  'HYPOTHESIS',
+  'UNCERTAINTY',
+  'EXPERIMENT',
+  'OBSERVATION',
+  'ITERATION',
+  'NEW_KNOWLEDGE',
+] as const satisfies ReadonlyArray<ApiEvent['kind']>;
+export type ProjectTimelineKind = (typeof PROJECT_TIMELINE_KINDS)[number];

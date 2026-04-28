@@ -1,7 +1,7 @@
 'use client';
 import type { Event as ApiEvent } from '@cpa/schemas';
 import { KindChip } from '@/app/subject-tenants/[id]/_components/kind-chip';
-import { summariseEvent } from './summarise-event';
+import { summariseEvent } from '@/lib/summarise-event';
 
 /**
  * Technical-uncertainty register feed (T-A6).

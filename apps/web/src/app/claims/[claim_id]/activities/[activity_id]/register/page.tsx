@@ -3,8 +3,8 @@ import Link from 'next/link';
 import { use } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AuthGuard } from '@/components/auth-guard';
+import { REGISTER_KINDS } from '@/lib/summarise-event';
 import { getActivity, listActivityEvents } from '../../_lib/api';
-import { REGISTER_KINDS } from './_components/summarise-event';
 import { UncertaintyFeed } from './_components/uncertainty-feed';
 
 /**
