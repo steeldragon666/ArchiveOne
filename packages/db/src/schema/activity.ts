@@ -31,6 +31,9 @@ import { tenant } from './tenant.js';
  *
  * Naming convention: camelCase TS / snake_case SQL (per T5/T6 chain).
  */
+export const ACTIVITY_KINDS = ['core', 'supporting'] as const;
+export type ActivityKind = (typeof ACTIVITY_KINDS)[number];
+
 export const activity = pgTable(
   'activity',
   {
@@ -46,10 +49,10 @@ export const activity = pgTable(
     claimId: uuid('claim_id')
       .notNull()
       .references(() => claim.id),
-    // CA-NN or SA-NN; CHECK constraint hand-authored in F2.
+    // CA-NN or SA-NN; CHECK constraint hand-authored in 0012.
     code: text('code').notNull(),
-    // 'core' | 'supporting'; CHECK constraint hand-authored in F2.
-    kind: text('kind').notNull(),
+    // 'core' | 'supporting'; CHECK constraint hand-authored in 0012.
+    kind: text('kind', { enum: ACTIVITY_KINDS }).notNull(),
     title: text('title').notNull(),
     description: text('description'),
     hypothesis: text('hypothesis'),

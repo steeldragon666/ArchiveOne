@@ -34,6 +34,17 @@ import { user } from './user.js';
  *
  * Naming convention: camelCase TS / snake_case SQL (per T5/T6 chain).
  */
+export const CLAIM_STAGES = [
+  'engagement',
+  'activity_capture',
+  'narrative_drafting',
+  'expenditure_schedule',
+  'review',
+  'submitted',
+  'audit_defence',
+] as const;
+export type ClaimStage = (typeof CLAIM_STAGES)[number];
+
 export const claim = pgTable(
   'claim',
   {
@@ -49,8 +60,8 @@ export const claim = pgTable(
     // Australian fiscal year: 2025 = FY ending June 2025.
     fiscalYear: integer('fiscal_year').notNull(),
     // 7-stage pipeline; CHECK constraint enumerating valid values is
-    // hand-authored in F2 (see DO-NOT-REGENERATE header in 0012).
-    stage: text('stage').notNull().default('engagement'),
+    // hand-authored in 0012 (see DO-NOT-REGENERATE header in the .sql file).
+    stage: text('stage', { enum: CLAIM_STAGES }).notNull().default('engagement'),
     ausindustryReference: text('ausindustry_reference'),
     submittedAt: timestamp('submitted_at', { withTimezone: true }),
     submittedByUserId: uuid('submitted_by_user_id').references(() => user.id),

@@ -1,3 +1,9 @@
+-- DO NOT REGENERATE THIS MIGRATION VIA `pnpm --filter @cpa/db generate`.
+-- The block at the bottom is hand-authored: 4 CHECK constraints, 3 RLS
+-- policies, and GRANTs to cpa_app. drizzle-kit will silently regenerate
+-- this file and clobber them. If you need to change a P4 table's shape,
+-- write a new migration.
+--
 -- Three new tables: project, claim, activity (P4 F1).
 --
 -- Note on event-table changes: drizzle-kit also emitted ALTER TABLE "event"
@@ -10,10 +16,6 @@
 -- pre-existing 0011 hand-authored migration remains the canonical source
 -- of those event-table changes; meta/0012_snapshot.json captures the new
 -- post-state correctly so future generates compute deltas against it.
---
--- F2 will append the FORCE RLS block + tenant_isolation policies + GRANTs
--- for these three tables, plus the activity.kind/code CHECK constraints
--- and claim.stage/fiscal_year CHECK. Do not regenerate this file.
 
 CREATE TABLE "activity" (
 	"id" uuid PRIMARY KEY NOT NULL,
@@ -76,3 +78,47 @@ CREATE INDEX "claim_subject_tenant_idx" ON "claim" USING btree ("subject_tenant_
 CREATE UNIQUE INDEX "claim_subject_tenant_fiscal_year_unique" ON "claim" USING btree ("subject_tenant_id","fiscal_year");--> statement-breakpoint
 CREATE INDEX "project_tenant_idx" ON "project" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "project_subject_tenant_idx" ON "project" USING btree ("subject_tenant_id");
+--> statement-breakpoint
+-- ============================================================
+-- DB-level CHECK constraints
+-- ============================================================
+
+ALTER TABLE "activity" ADD CONSTRAINT activity_kind_valid
+  CHECK (kind IN ('core', 'supporting'));
+
+ALTER TABLE "activity" ADD CONSTRAINT activity_code_format
+  CHECK (code ~ '^(CA|SA)-[0-9]{2,3}$');
+
+ALTER TABLE "claim" ADD CONSTRAINT claim_stage_valid
+  CHECK (stage IN ('engagement', 'activity_capture', 'narrative_drafting',
+                   'expenditure_schedule', 'review', 'submitted', 'audit_defence'));
+
+ALTER TABLE "claim" ADD CONSTRAINT claim_fiscal_year_range
+  CHECK (fiscal_year BETWEEN 2010 AND 2050);
+
+--> statement-breakpoint
+-- ============================================================
+-- RLS — same FORCE + USING + WITH CHECK pattern as 0002 / 0006 / 0008 / 0009 / 0010
+-- ============================================================
+
+ALTER TABLE "project" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "project" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "project_tenant_isolation" ON "project"
+  USING (tenant_id = current_setting('app.current_tenant_id', true)::uuid)
+  WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true)::uuid);
+
+ALTER TABLE "claim" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "claim" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "claim_tenant_isolation" ON "claim"
+  USING (tenant_id = current_setting('app.current_tenant_id', true)::uuid)
+  WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true)::uuid);
+
+ALTER TABLE "activity" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "activity" FORCE ROW LEVEL SECURITY;
+CREATE POLICY "activity_tenant_isolation" ON "activity"
+  USING (tenant_id = current_setting('app.current_tenant_id', true)::uuid)
+  WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true)::uuid);
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON "project" TO cpa_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON "claim" TO cpa_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON "activity" TO cpa_app;
