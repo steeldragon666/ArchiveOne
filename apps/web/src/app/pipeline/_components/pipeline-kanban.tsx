@@ -11,9 +11,37 @@ import {
 } from 'react';
 import { CLAIM_STAGES_LITERAL, type Claim, type ClaimStage } from '@cpa/schemas';
 import { Button } from '@/components/ui/button';
+import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { patchClaimStage } from '../_lib/api';
 import { STAGE_LABELS } from './url-params';
+
+// TODO(p4-c-cleanup): post-C2 review-flagged refactors deferred to a separate
+// cross-cutting task after the swimlanes merge:
+//
+//   1. F10 mirror drift test — `validateClientStageTransition` here mirrors
+//      `validateStageTransition` in `apps/api/src/lib/claim-stage.ts` but no
+//      test asserts the two functions agree on every (from, to, role) input.
+//      Risk: silent stale UX (drop targets that look valid but always 403).
+//      Better long-term fix: lift `validateStageTransition` into `@cpa/schemas`
+//      (or a shared package) so both call sites share one impl.
+//
+//   2. Keyboard / a11y for drag-drop. HTML5 native draggable is invisible
+//      to screen readers and keyboard users. Plan: roving-tabindex column
+//      focus, Space toggles selection, M+ArrowRight moves card right one
+//      stage. Critical for accessibility audit; introduce in C3 with table
+//      view as the natural keyboard surface.
+//
+//   3. Context-menu off-screen clipping. `position: 'fixed', left: x, top: y`
+//      can clip near the right/bottom edge. Fix: measure menu rect after
+//      mount and clamp to viewport, or replace with Radix DropdownMenu
+//      (already in package.json) which handles flip/clamp automatically.
+//
+//   4. `subjectTenantNames` prop is unused (page.tsx never populates it)
+//      and will be replaced when A2's GET /v1/claims includes claimant_name.
+//      Remove this prop in the C3 lift-state refactor.
+//
+// See: C2 quality review 2026-04-28.
 
 /**
  * Swimlane C2: 7-column kanban for `/pipeline?view=kanban`.
@@ -161,6 +189,46 @@ export function formatRelativeTime(iso: string, now: Date = new Date()): string 
   return '30+ days ago';
 }
 
+/**
+ * Run a batch of stage-PATCHes concurrently using `Promise.allSettled` so a
+ * single failure doesn't silently throw away the rest of the responses.
+ * Counts successes vs failures and surfaces a toast for partial / total
+ * failure (success-only is silent — toast noise is its own UX cost).
+ *
+ * Returned `{ ok, failed }` lets the caller decide whether to keep the
+ * optimistic UI or revert.
+ *
+ * Exported for testability — the kanban component delegates to this so the
+ * mutation logic is exercisable without a DOM.
+ */
+export async function runStageMutationsBatch(
+  ids: string[],
+  toStage: ClaimStage,
+  patchStage: typeof patchClaimStage,
+  toast: ReturnType<typeof useToast>['toast'],
+): Promise<{ ok: number; failed: number }> {
+  const results = await Promise.allSettled(ids.map((id) => patchStage({ id, toStage })));
+  const ok = results.filter((r) => r.status === 'fulfilled').length;
+  const failed = results.length - ok;
+  if (failed > 0) {
+    results.forEach((r, i) => {
+      if (r.status === 'rejected') {
+        // Diagnostic for failed PATCHes; toast is the user-facing surface.
+        console.error(`patchClaimStage failed for ${ids[i]}:`, r.reason);
+      }
+    });
+    const allFailed = failed === results.length;
+    toast({
+      title: allFailed ? 'Stage advance failed' : 'Partial success',
+      description: allFailed
+        ? `All ${results.length} attempts failed`
+        : `${ok} of ${results.length} advanced; ${failed} failed`,
+      variant: allFailed ? 'destructive' : 'default',
+    });
+  }
+  return { ok, failed };
+}
+
 // --- Component -------------------------------------------------------------
 
 export interface PipelineKanbanProps {
@@ -193,7 +261,19 @@ export function PipelineKanban({
   subjectTenantNames,
   patchStage = patchClaimStage,
 }: PipelineKanbanProps) {
-  const grouped = useMemo(() => groupClaimsByStage(claims), [claims]);
+  const { toast } = useToast();
+
+  // --- Optimistic state ---
+  // Mirror the `claims` prop locally so drag-drop can move cards visually
+  // before the PATCH resolves. When the parent's `claimsQuery` invalidates
+  // and re-renders this component with fresh data, the useEffect re-syncs.
+  // On PATCH failure we revert to the pre-drop snapshot.
+  const [optimisticClaims, setOptimisticClaims] = useState<Claim[]>(claims);
+  useEffect(() => {
+    setOptimisticClaims(claims);
+  }, [claims]);
+
+  const grouped = useMemo(() => groupClaimsByStage(optimisticClaims), [optimisticClaims]);
   const orderedIds = useMemo(() => {
     // Visual order across columns: stage-major, then claim order within stage.
     const ids: string[] = [];
@@ -204,9 +284,9 @@ export function PipelineKanban({
   }, [grouped]);
   const claimById = useMemo(() => {
     const m = new Map<string, Claim>();
-    for (const c of claims) m.set(c.id, c);
+    for (const c of optimisticClaims) m.set(c.id, c);
     return m;
-  }, [claims]);
+  }, [optimisticClaims]);
 
   // --- Selection state ---
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -264,30 +344,6 @@ export function PipelineKanban({
     setDragOverStage((prev) => (prev === to ? null : prev));
   }, []);
 
-  const runStageMutation = useCallback(
-    async (ids: string[], to: ClaimStage): Promise<void> => {
-      setBusy(true);
-      try {
-        // Issue PATCH per id in parallel. Server-side validation is
-        // authoritative; failures here surface in console for now (a
-        // proper toast lands when A2 wires real errors back).
-        await Promise.all(
-          ids
-            .map((id) => claimById.get(id))
-            .filter((c): c is Claim => Boolean(c))
-            .map(async (c) => {
-              const result = validateClientStageTransition({ from: c.stage, to, role });
-              if (!result.ok) return;
-              await patchStage({ id: c.id, toStage: to });
-            }),
-        );
-      } finally {
-        setBusy(false);
-      }
-    },
-    [claimById, patchStage, role],
-  );
-
   const onColumnDrop = useCallback(
     (e: ReactDragEvent<HTMLElement>, to: ClaimStage) => {
       e.preventDefault();
@@ -299,14 +355,54 @@ export function PipelineKanban({
       if (!result.ok) return;
       // If the dragged card is in the selection, move the whole selection;
       // otherwise just the dragged card.
-      const ids = selected.has(src.id) ? Array.from(selected) : [src.id];
-      void runStageMutation(ids, to);
+      const draggedIds = selected.has(src.id) ? Array.from(selected) : [src.id];
+
+      // Optimistic update: snapshot current state, then mutate the dragged
+      // ids to the new stage. If any PATCH fails we revert to the snapshot.
+      const snapshot = optimisticClaims;
+      const nowIso = new Date().toISOString();
+      setOptimisticClaims((prev) =>
+        prev.map((c) => (draggedIds.includes(c.id) ? { ...c, stage: to, updated_at: nowIso } : c)),
+      );
+
       // Clear selection on drop — the cards are now in their new column;
       // keeping them selected would confuse subsequent shift-click ranges.
       setSelected(new Set());
       setAnchor(null);
+
+      void (async () => {
+        try {
+          // Filter to ids that pass client-side validation (matches the
+          // claimById lookup against the *snapshot*, since optimistic state
+          // already reflects the move).
+          const claimsAtDrop = new Map(snapshot.map((c) => [c.id, c]));
+          const eligible = draggedIds
+            .map((id) => claimsAtDrop.get(id))
+            .filter((c): c is Claim => Boolean(c))
+            .filter((c) => validateClientStageTransition({ from: c.stage, to, role }).ok)
+            .map((c) => c.id);
+          if (eligible.length === 0) {
+            setOptimisticClaims(snapshot);
+            return;
+          }
+          setBusy(true);
+          const { failed } = await runStageMutationsBatch(eligible, to, patchStage, toast);
+          if (failed > 0) {
+            // Full revert if anything failed and let the user retry — we
+            // don't surgically revert per-id since allSettled-by-index is
+            // brittle once eligibility filtering reorders things.
+            setOptimisticClaims(snapshot);
+          }
+        } catch (err) {
+          // Defensive; runStageMutationsBatch should not throw, but log if it does.
+          console.error('Stage advance error:', err);
+          setOptimisticClaims(snapshot);
+        } finally {
+          setBusy(false);
+        }
+      })();
     },
-    [role, runStageMutation, selected],
+    [optimisticClaims, patchStage, role, selected, toast],
   );
 
   // --- Card click → select / navigate ---
@@ -380,49 +476,125 @@ export function PipelineKanban({
       if (idx <= 0) return;
       const prev = CLAIM_STAGES_LITERAL[idx - 1];
       if (!prev) return;
-      void runStageMutation([id], prev);
       setContextMenu(null);
+
+      // Optimistic update + revert on failure (mirrors onColumnDrop).
+      const snapshot = optimisticClaims;
+      const nowIso = new Date().toISOString();
+      setOptimisticClaims((cur) =>
+        cur.map((c) => (c.id === id ? { ...c, stage: prev, updated_at: nowIso } : c)),
+      );
+
+      void (async () => {
+        setBusy(true);
+        try {
+          const { failed } = await runStageMutationsBatch([id], prev, patchStage, toast);
+          if (failed > 0) setOptimisticClaims(snapshot);
+        } catch (err) {
+          // Defensive; runStageMutationsBatch should not throw.
+          console.error('Revert error:', err);
+          setOptimisticClaims(snapshot);
+        } finally {
+          setBusy(false);
+        }
+      })();
     },
-    [runStageMutation],
+    [optimisticClaims, patchStage, toast],
   );
 
   // --- Bulk actions ---
   const selectedIds = useMemo(() => Array.from(selected), [selected]);
-  const onBulkAdvance = useCallback((): void => {
-    // Advance each selected card by exactly one stage (per-card target).
-    void Promise.all(
-      selectedIds.map(async (id) => {
-        const c = claimById.get(id);
-        if (!c) return;
-        const idx = CLAIM_STAGES_LITERAL.indexOf(c.stage);
-        if (idx === -1 || idx >= CLAIM_STAGES_LITERAL.length - 1) return;
-        const next = CLAIM_STAGES_LITERAL[idx + 1];
-        if (!next) return;
-        await patchStage({ id: c.id, toStage: next });
-      }),
-    ).then(() => {
+
+  /**
+   * Run a per-card stage transition (each card moves to its OWN target
+   * stage, computed by `targetFor`). Uses optimistic state + revert on any
+   * failure, and emits a single aggregated toast for partial / full
+   * failure across the whole batch.
+   */
+  const runBulkPerCard = useCallback(
+    (targetFor: (c: Claim) => ClaimStage | null): void => {
+      const moves = selectedIds
+        .map((id) => {
+          const c = claimById.get(id);
+          if (!c) return null;
+          const next = targetFor(c);
+          if (!next) return null;
+          if (!validateClientStageTransition({ from: c.stage, to: next, role }).ok) return null;
+          return { id: c.id, toStage: next };
+        })
+        .filter((m): m is { id: string; toStage: ClaimStage } => m !== null);
+      if (moves.length === 0) {
+        setSelected(new Set());
+        setAnchor(null);
+        return;
+      }
+
+      const snapshot = optimisticClaims;
+      const nowIso = new Date().toISOString();
+      const movesById = new Map(moves.map((m) => [m.id, m.toStage]));
+      setOptimisticClaims((prev) =>
+        prev.map((c) => {
+          const to = movesById.get(c.id);
+          return to ? { ...c, stage: to, updated_at: nowIso } : c;
+        }),
+      );
       setSelected(new Set());
       setAnchor(null);
+
+      void (async () => {
+        setBusy(true);
+        try {
+          const results = await Promise.allSettled(
+            moves.map((m) => patchStage({ id: m.id, toStage: m.toStage })),
+          );
+          const ok = results.filter((r) => r.status === 'fulfilled').length;
+          const failed = results.length - ok;
+          if (failed > 0) {
+            results.forEach((r, i) => {
+              if (r.status === 'rejected') {
+                // Diagnostic for failed PATCHes; toast is the user-facing surface.
+                console.error(`patchClaimStage failed for ${moves[i]?.id}:`, r.reason);
+              }
+            });
+            const allFailed = failed === results.length;
+            toast({
+              title: allFailed ? 'Stage advance failed' : 'Partial success',
+              description: allFailed
+                ? `All ${results.length} attempts failed`
+                : `${ok} of ${results.length} advanced; ${failed} failed`,
+              variant: allFailed ? 'destructive' : 'default',
+            });
+            setOptimisticClaims(snapshot);
+          }
+        } catch (err) {
+          // Defensive; Promise.allSettled should not throw, but log if it does.
+          console.error('Bulk stage mutation error:', err);
+          setOptimisticClaims(snapshot);
+        } finally {
+          setBusy(false);
+        }
+      })();
+    },
+    [claimById, optimisticClaims, patchStage, role, selectedIds, toast],
+  );
+
+  const onBulkAdvance = useCallback((): void => {
+    // Advance each selected card by exactly one stage (per-card target).
+    runBulkPerCard((c) => {
+      const idx = CLAIM_STAGES_LITERAL.indexOf(c.stage);
+      if (idx === -1 || idx >= CLAIM_STAGES_LITERAL.length - 1) return null;
+      return CLAIM_STAGES_LITERAL[idx + 1] ?? null;
     });
-  }, [claimById, patchStage, selectedIds]);
+  }, [runBulkPerCard]);
 
   const onBulkRevert = useCallback((): void => {
     if (role !== 'admin') return;
-    void Promise.all(
-      selectedIds.map(async (id) => {
-        const c = claimById.get(id);
-        if (!c) return;
-        const idx = CLAIM_STAGES_LITERAL.indexOf(c.stage);
-        if (idx <= 0) return;
-        const prev = CLAIM_STAGES_LITERAL[idx - 1];
-        if (!prev) return;
-        await patchStage({ id: c.id, toStage: prev });
-      }),
-    ).then(() => {
-      setSelected(new Set());
-      setAnchor(null);
+    runBulkPerCard((c) => {
+      const idx = CLAIM_STAGES_LITERAL.indexOf(c.stage);
+      if (idx <= 0) return null;
+      return CLAIM_STAGES_LITERAL[idx - 1] ?? null;
     });
-  }, [claimById, patchStage, role, selectedIds]);
+  }, [role, runBulkPerCard]);
 
   const onBulkClear = useCallback((): void => {
     setSelected(new Set());

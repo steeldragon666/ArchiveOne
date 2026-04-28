@@ -5,6 +5,7 @@ import {
   formatRelativeTime,
   groupClaimsByStage,
   nextSelection,
+  runStageMutationsBatch,
   validateClientStageTransition,
 } from './pipeline-kanban.js';
 
@@ -390,3 +391,210 @@ test('bulk advance: card already at audit_defence (terminal) emits no PATCH', ()
   void stub; // referenced to silence unused-var
   assert.equal(calls.length, 0);
 });
+
+// --- runStageMutationsBatch (allSettled + toast) ------------------------
+
+interface ToastCall {
+  title?: unknown;
+  description?: unknown;
+  variant?: unknown;
+}
+
+// The real `toast` returns { id, dismiss, update } — for the spy we don't
+// care about the return shape, just that the runtime signature accepts the
+// same argument. Cast at the call-site to match the helper's parameter type.
+function makeToastSpy(): {
+  toast: (t: ToastCall) => { id: string; dismiss: () => void; update: () => void };
+  calls: ToastCall[];
+} {
+  const calls: ToastCall[] = [];
+  return {
+    toast: (t: ToastCall) => {
+      calls.push(t);
+      return { id: 'spy', dismiss: (): void => undefined, update: (): void => undefined };
+    },
+    calls,
+  };
+}
+
+test('runStageMutationsBatch: all-success emits no toast', async () => {
+  const patches: Array<{ id: string; toStage: ClaimStage }> = [];
+  const patchStage = async (input: { id: string; toStage: ClaimStage }): Promise<void> => {
+    patches.push(input);
+    return Promise.resolve();
+  };
+  const spy = makeToastSpy();
+
+  const result = await runStageMutationsBatch(['c1', 'c2', 'c3'], 'review', patchStage, spy.toast);
+
+  assert.equal(result.ok, 3);
+  assert.equal(result.failed, 0);
+  assert.equal(spy.calls.length, 0); // success-only is silent
+  assert.equal(patches.length, 3);
+});
+
+test('runStageMutationsBatch: partial failure emits "Partial success" toast and counts ok/failed', async () => {
+  let n = 0;
+  const patchStage = async (_input: { id: string; toStage: ClaimStage }): Promise<void> => {
+    n += 1;
+    if (n === 2) throw new Error('simulated network 500');
+    return Promise.resolve();
+  };
+  const spy = makeToastSpy();
+
+  // Silence the helper's intentional console.error for the failed PATCH.
+  const origErr = console.error;
+  console.error = (): void => undefined;
+  try {
+    const result = await runStageMutationsBatch(
+      ['c1', 'c2', 'c3'],
+      'review',
+      patchStage,
+      spy.toast,
+    );
+
+    assert.equal(result.ok, 2);
+    assert.equal(result.failed, 1);
+    assert.equal(spy.calls.length, 1);
+    assert.equal(spy.calls[0]?.title, 'Partial success');
+    assert.equal(spy.calls[0]?.description, '2 of 3 advanced; 1 failed');
+    assert.equal(spy.calls[0]?.variant, 'default');
+  } finally {
+    console.error = origErr;
+  }
+});
+
+test('runStageMutationsBatch: all-fail emits "Stage advance failed" toast with destructive variant', async () => {
+  const patchStage = (_input: { id: string; toStage: ClaimStage }): Promise<void> => {
+    return Promise.reject(new Error('simulated 500'));
+  };
+  const spy = makeToastSpy();
+
+  const origErr = console.error;
+  console.error = (): void => undefined;
+  try {
+    const result = await runStageMutationsBatch(['c1', 'c2'], 'review', patchStage, spy.toast);
+
+    assert.equal(result.ok, 0);
+    assert.equal(result.failed, 2);
+    assert.equal(spy.calls.length, 1);
+    assert.equal(spy.calls[0]?.title, 'Stage advance failed');
+    assert.equal(spy.calls[0]?.description, 'All 2 attempts failed');
+    assert.equal(spy.calls[0]?.variant, 'destructive');
+  } finally {
+    console.error = origErr;
+  }
+});
+
+test('runStageMutationsBatch: empty id list resolves without toast or PATCH', async () => {
+  let calls = 0;
+  const patchStage = async (): Promise<void> => {
+    calls += 1;
+    return Promise.resolve();
+  };
+  const spy = makeToastSpy();
+
+  const result = await runStageMutationsBatch([], 'review', patchStage, spy.toast);
+
+  assert.equal(result.ok, 0);
+  assert.equal(result.failed, 0);
+  assert.equal(calls, 0);
+  assert.equal(spy.calls.length, 0);
+});
+
+test('runStageMutationsBatch: one rejection does NOT throw away the other resolves', async () => {
+  // Locks in the Promise.allSettled invariant — Promise.all would reject
+  // and abandon the in-flight successes; allSettled lets us count them.
+  let succeeded = 0;
+  const patchStage = async (input: { id: string; toStage: ClaimStage }): Promise<void> => {
+    if (input.id === 'bad') throw new Error('boom');
+    succeeded += 1;
+    return Promise.resolve();
+  };
+  const spy = makeToastSpy();
+
+  const origErr = console.error;
+  console.error = (): void => undefined;
+  try {
+    const result = await runStageMutationsBatch(
+      ['ok1', 'bad', 'ok2', 'ok3'],
+      'review',
+      patchStage,
+      spy.toast,
+    );
+    assert.equal(succeeded, 3);
+    assert.equal(result.ok, 3);
+    assert.equal(result.failed, 1);
+  } finally {
+    console.error = origErr;
+  }
+});
+
+// --- Optimistic-state mutation logic (manual-QA scenario in comment) -----
+// The component lifts these into useState; without a DOM we can't render
+// it, but we can verify the *pure* drop-mutation transform that the
+// component applies inside `setOptimisticClaims((prev) => prev.map(...))`.
+
+function applyOptimisticMove(
+  claims: Claim[],
+  draggedIds: string[],
+  to: ClaimStage,
+  nowIso: string,
+): Claim[] {
+  return claims.map((c) =>
+    draggedIds.includes(c.id) ? { ...c, stage: to, updated_at: nowIso } : c,
+  );
+}
+
+test('optimistic move: dragged ids reflect new stage; others unchanged', () => {
+  const claims = [
+    makeClaim({ id: 'c1', stage: 'engagement' }),
+    makeClaim({ id: 'c2', stage: 'engagement' }),
+    makeClaim({ id: 'c3', stage: 'review' }),
+  ];
+  const next = applyOptimisticMove(claims, ['c1'], 'review', '2026-04-29T12:00:00.000Z');
+  assert.equal(next.find((c) => c.id === 'c1')?.stage, 'review');
+  assert.equal(next.find((c) => c.id === 'c2')?.stage, 'engagement'); // untouched
+  assert.equal(next.find((c) => c.id === 'c3')?.stage, 'review'); // untouched
+  assert.equal(next.find((c) => c.id === 'c1')?.updated_at, '2026-04-29T12:00:00.000Z');
+});
+
+test('optimistic move: revert by re-using the snapshot restores prior stages', () => {
+  const snapshot = [
+    makeClaim({ id: 'c1', stage: 'engagement' }),
+    makeClaim({ id: 'c2', stage: 'review' }),
+  ];
+  const optimistic = applyOptimisticMove(snapshot, ['c1'], 'review', '2026-04-29T12:00:00.000Z');
+  assert.equal(optimistic.find((c) => c.id === 'c1')?.stage, 'review');
+  // On failure, the component does `setOptimisticClaims(snapshot)` which is
+  // identity-equal to the pre-drop array; no mutation needed to revert.
+  const reverted = snapshot;
+  assert.equal(reverted.find((c) => c.id === 'c1')?.stage, 'engagement');
+});
+
+test('optimistic move: bulk move sets the same target stage for every dragged id', () => {
+  const claims = [
+    makeClaim({ id: 'c1', stage: 'engagement' }),
+    makeClaim({ id: 'c2', stage: 'activity_capture' }),
+    makeClaim({ id: 'c3', stage: 'narrative_drafting' }),
+  ];
+  const next = applyOptimisticMove(
+    claims,
+    ['c1', 'c2', 'c3'],
+    'review',
+    '2026-04-29T12:00:00.000Z',
+  );
+  for (const id of ['c1', 'c2', 'c3']) {
+    assert.equal(next.find((c) => c.id === id)?.stage, 'review');
+  }
+});
+
+// MANUAL-QA NOTE (jsdom not available in this workspace): the following
+// scenarios rely on React's useState/useEffect lifecycle and are exercised
+// by the Playwright e2e suite (Swimlane A's A10 spec) rather than here:
+//   - Optimistic state mirrors the `claims` prop on first render
+//     (verified by useState(claims) initial value).
+//   - When `claims` prop changes (parent invalidates query), the
+//     useEffect hook re-syncs optimistic state to the new prop.
+//   - During a drop, optimistic state reflects the new stage *before* the
+//     PATCH resolves; on failure, setOptimisticClaims(snapshot) reverts.
