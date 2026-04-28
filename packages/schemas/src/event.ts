@@ -2,12 +2,28 @@ import { z } from 'zod';
 import { Iso8601, Sha256Hash, Uuid } from './primitives.js';
 
 /**
- * Evidence-kind taxonomy. Mirrors the DB CHECK constraint
- * (migration 0006) and EVIDENCE_KINDS in @cpa/db/schema/event.ts.
+ * Evidence-kind taxonomy — the wire-format mirror of the DB column
+ * `event.kind`. This is the value `/v1/events` returns for both
+ * `kind` and `effective_kind`, so it must accept every kind the DB
+ * column accepts.
  *
- * Includes 'OVERRIDE' — the synthetic kind emitted by the override endpoint.
- * The classifier never produces OVERRIDE; for the model output, see
- * {@link classifiableKind}.
+ * Dual SOT pattern: `@cpa/schemas` (Zod, wire format) and `@cpa/db`
+ * (Drizzle, storage) are intentionally independent SOTs — schemas
+ * describes the API surface and must not import from db (that would
+ * invert the layering and pull storage internals into the wire
+ * contract). The two lists must therefore be kept in sync by hand.
+ *
+ * KEEP IN SYNC WITH:
+ *   1. `EVIDENCE_KINDS` in `@cpa/db/schema/event.ts`
+ *   2. The `event_kind_valid` CHECK in `migrations/0006_fair_network.sql`
+ *      and `migrations/0014_p4_evidence_kinds.sql`
+ *
+ * Order matches `@cpa/db` byte-for-byte: the first 13 entries
+ * (HYPOTHESIS through OVERRIDE) are R&D evidence classifications;
+ * the 14 P4 entries are state-transition events (entity created,
+ * claim advanced, etc.) and cannot be re-classified via OVERRIDE
+ * (see {@link classifiableKind}, which is the override-eligible
+ * subset and is unchanged from P0–P3).
  */
 export const evidenceKind = z.enum([
   'HYPOTHESIS',
@@ -23,6 +39,22 @@ export const evidenceKind = z.enum([
   'SUPPORTING',
   'INELIGIBLE',
   'OVERRIDE',
+  // P4 state-transition events (must match `EVIDENCE_KINDS` in
+  // @cpa/db/schema/event.ts and the CHECK in 0014_p4_evidence_kinds.sql)
+  'ACTIVITY_CREATED',
+  'ACTIVITY_UPDATED',
+  'ACTIVITY_LOCKED',
+  'ARTEFACT_LINKED',
+  'ARTEFACT_UNLINKED',
+  'EXPENDITURE_INGESTED',
+  'EXPENDITURE_LINE_MAPPED',
+  'EXPENDITURE_LINE_UNMAPPED',
+  'EXPENDITURE_VOIDED',
+  'CLAIM_STAGE_ADVANCED',
+  'CLAIM_SUBMITTED',
+  'PROJECT_CREATED',
+  'PROJECT_ARCHIVED',
+  'DOCUMENT_GENERATED',
 ]);
 export type EvidenceKind = z.infer<typeof evidenceKind>;
 

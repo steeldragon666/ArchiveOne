@@ -10,12 +10,17 @@ import { cn } from '@/lib/utils';
  *   - amber: TIME_LOG, ASSOCIATE_FLAG, EXPENDITURE_NOTE, SUPPORTING (financial/admin)
  *   - red: INELIGIBLE
  *   - violet: OVERRIDE (consultant decision)
- *   - slate: any unrecognised kind (defensive)
+ *   - slate: any unrecognised kind (defensive) — including the 14 P4
+ *     state-transition kinds (ACTIVITY_CREATED, CLAIM_SUBMITTED, etc.)
+ *     which this consultant-portal feed does not yet style; F6+ may add
+ *     dedicated styling for them.
  *
  * Tailwind needs the literal class names at build time, so we use a static
- * map rather than computing class strings.
+ * map rather than computing class strings. The map is `Partial<Record<...>>`
+ * — unmapped kinds fall through to the slate default at the lookup site
+ * via the `??` fallback below.
  */
-const KIND_STYLES: Record<ApiEvent['kind'], string> = {
+const KIND_STYLES: Partial<Record<ApiEvent['kind'], string>> = {
   HYPOTHESIS: 'bg-blue-50 text-blue-700 border-blue-200',
   DESIGN: 'bg-blue-50 text-blue-700 border-blue-200',
   UNCERTAINTY: 'bg-blue-50 text-blue-700 border-blue-200',
