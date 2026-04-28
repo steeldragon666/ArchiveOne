@@ -178,6 +178,26 @@ test('EVIDENCE_KINDS parity: @cpa/db and @cpa/schemas stay in sync', async () =>
   );
 });
 
+test('CLAIM_STAGES parity: @cpa/db and @cpa/schemas stay in sync', async () => {
+  const { CLAIM_STAGES } = await import('./schema/claim.js');
+  const { CLAIM_STAGES_LITERAL } = await import('@cpa/schemas');
+  assert.deepEqual(
+    [...CLAIM_STAGES_LITERAL],
+    [...CLAIM_STAGES],
+    'CLAIM_STAGES_LITERAL must match CLAIM_STAGES exactly (same order, same content) — see JSDoc on each declaration',
+  );
+});
+
+test('EXPENDITURE_SOURCES parity: @cpa/db and @cpa/schemas stay in sync', async () => {
+  const { EXPENDITURE_SOURCES } = await import('./schema/expenditure.js');
+  const { EXPENDITURE_SOURCES_LITERAL } = await import('@cpa/schemas');
+  assert.deepEqual(
+    [...EXPENDITURE_SOURCES_LITERAL],
+    [...EXPENDITURE_SOURCES],
+    'EXPENDITURE_SOURCES_LITERAL must match EXPENDITURE_SOURCES exactly (same order, same content)',
+  );
+});
+
 test('insertEventWithChain: first event has prev_hash=null', async () => {
   const e = await insertEventWithChain({
     tenant_id: TENANT_ID,

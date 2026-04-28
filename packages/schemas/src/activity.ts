@@ -14,12 +14,11 @@ export const ActivityKind = z.enum(['core', 'supporting']);
 export type ActivityKind = z.infer<typeof ActivityKind>;
 
 /**
- * CA-NN / SA-NN code regex. Allows 2- or 3-digit suffixes (CA-99 to
- * CA-999) — large multi-year programs can exceed two digits.
- *
- * Mirrors the F2 hand-authored CHECK constraint regex on
- * `activity.code` (`^(CA|SA)-\d+$` DB-side; we narrow the digit count
- * to 2-3 here as the realistic surface for a single fiscal year).
+ * Activity code regex — byte-identical to the `activity_code_format`
+ * CHECK constraint in migration 0012_hard_titania.sql. Two-letter prefix
+ * (CA = core, SA = supporting) + dash + 2-3 digits. Auto-generated
+ * server-side via the `nextActivityCode` helper (F9), so this is a
+ * read-side validator on response bodies, not a client-supplied regex.
  */
 export const ActivityCodeRegex = /^(CA|SA)-\d{2,3}$/;
 
