@@ -767,11 +767,74 @@ test('reimbursee cross-tenant safety: tenant_user JOIN keeps lookup firm-scoped'
   // Confirm the SQL text includes the tenant_id WHERE clause (defence in
   // depth — the params alone don't prove the SQL applies them).
   assert.ok(reimburseeQ.sql.includes('tu.tenant_id ='));
-  assert.ok(reimburseeQ.sql.includes('u.email ='));
+  // Email comparison is case-insensitive on both sides — assert LOWER()
+  // is applied to both `u.email` and the bound parameter.
+  assert.ok(reimburseeQ.sql.includes('LOWER(u.email)'), 'reimbursee SQL must lower-case u.email');
+  assert.ok(
+    reimburseeQ.sql.includes('LOWER(?)'),
+    'reimbursee SQL must lower-case the bound email parameter',
+  );
 
   const insertQ = sqlStub.queries.find((q) => q.sql.includes('INSERT INTO expenditure'));
   assert.ok(insertQ);
   assert.equal(insertQ.params[8], null);
+});
+
+// -------------------------------------------------------------------------
+// 14b. Reimbursee case-insensitive email match.
+//      Xero captures `User.Email` as the user typed it; our DB stores
+//      whatever was supplied at signup. A case-only difference must
+//      still resolve to the same user thanks to LOWER() on both sides.
+// -------------------------------------------------------------------------
+
+test('reimbursee match is case-insensitive: Xero "Foo@Example.COM" matches DB "foo@example.com"', async () => {
+  // Synthesise a receipt whose submitter email is mixed-case. The
+  // canonical fixture user[0] is `consultant@firm-a.example.com`; we
+  // mutate the submitter email to mix the case so the test exercises
+  // the LOWER()-on-both-sides comparison rather than a strict match.
+  const base = FIXTURE_AUTHORISED[0]!;
+  const mixedCaseReceipt = {
+    ...base,
+    User: { ...base.User, Email: 'Foo@Example.COM' },
+  };
+
+  nock(XERO_API_HOST)
+    .get(`${XERO_API_PATH}/Receipts`)
+    .query({ where: 'Status=="AUTHORISED"', page: '1', pageSize: '100' })
+    .reply(200, { Receipts: [mixedCaseReceipt] });
+
+  const sqlStub = makeSqlStub();
+  // The DB stores the canonical lowercase form. Stub returns a match
+  // — the production query relies on Postgres `LOWER()` doing the
+  // case-folding. Here we just confirm that the stub passed the email
+  // through verbatim and the SQL applies LOWER() on both sides.
+  const matchedUserId = '00000000-0000-4000-8000-fedcba000099';
+  queueNewReceiptRowsWithReimbursee(sqlStub, expUuid(99), matchedUserId);
+  const chainStub = makeChainStub();
+
+  const result = await syncReceipts(conn(), {
+    mode: 'backfill',
+    sql_client: sqlStub.sql,
+    chain_insert: chainStub.insert,
+  });
+
+  assert.equal(result.inserted, 1);
+  assert.equal(result.reimbursee_matched, 1);
+
+  const reimburseeQ = sqlStub.queries.find((q) => q.sql.includes('JOIN tenant_user'));
+  assert.ok(reimburseeQ, 'reimbursee SELECT must run');
+  // Email parameter must be passed through verbatim — case-folding
+  // happens in SQL via LOWER(), NOT by mutating the input.
+  assert.equal(reimburseeQ.params[0], 'Foo@Example.COM');
+  assert.equal(reimburseeQ.params[1], TENANT_ID);
+  // Both sides of the comparison must be LOWER()-wrapped.
+  assert.ok(reimburseeQ.sql.includes('LOWER(u.email)'));
+  assert.ok(reimburseeQ.sql.includes('LOWER(?)'));
+
+  // The matched user id is propagated to the INSERT.
+  const insertQ = sqlStub.queries.find((q) => q.sql.includes('INSERT INTO expenditure'));
+  assert.ok(insertQ);
+  assert.equal(insertQ.params[8], matchedUserId);
 });
 
 // -------------------------------------------------------------------------

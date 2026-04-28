@@ -215,6 +215,15 @@ function toAmountString(v: string | number | undefined): string {
  * against accidentally tagging an expense to a user who happens to
  * share the email but isn't part of the tenant.
  *
+ * Email comparison is case-insensitive on both sides via `LOWER()`.
+ * Xero captures `User.Email` as the user typed it (e.g. `Foo@Bar.com`)
+ * while our `user.email` is whatever was stored at signup, so a strict
+ * TEXT-equality match would silently miss legitimate users. Note that
+ * `LOWER()` prevents the planner from using a regular index on
+ * `u.email` — acceptable for firm-sized tenants (typically <1000
+ * users); revisit with a `LOWER(email)` functional index if a tenant
+ * grows past that threshold.
+ *
  * Returns `null` for a missing/empty email or no match.
  */
 async function resolveReimbursedUserId(
@@ -227,7 +236,7 @@ async function resolveReimbursedUserId(
     SELECT u.id
       FROM "user" u
       JOIN tenant_user tu ON tu.user_id = u.id
-     WHERE u.email = ${email}
+     WHERE LOWER(u.email) = LOWER(${email})
        AND tu.tenant_id = ${tenantId}
        AND u.deleted_at IS NULL
        AND tu.deleted_at IS NULL
