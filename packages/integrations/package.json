@@ -45,6 +45,10 @@
     "./payroll/xero-payroll": {
       "types": "./dist/payroll/xero-payroll/index.d.ts",
       "import": "./dist/payroll/xero-payroll/index.js"
+    },
+    "./xero-accounting": {
+      "types": "./dist/xero-accounting/index.d.ts",
+      "import": "./dist/xero-accounting/index.js"
     }
   },
   "scripts": {
