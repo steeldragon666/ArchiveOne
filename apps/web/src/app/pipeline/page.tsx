@@ -8,9 +8,12 @@ import { AuthGuard } from '@/components/auth-guard';
 import { PipelineBulkToolbar } from './_components/pipeline-bulk-toolbar';
 import { PipelineFilters, type ConsultantOption } from './_components/pipeline-filters';
 import { PipelineKanban } from './_components/pipeline-kanban';
+import { PipelineTable } from './_components/pipeline-table';
 import {
   currentFiscalYear,
+  DEFAULT_SORT,
   parseFiscalYear,
+  parseSort,
   parseStages,
   parseView,
   type PipelineView,
@@ -23,9 +26,9 @@ import { useWhoami } from '@/hooks/use-whoami';
 /**
  * /pipeline — Swimlane C entry point. Renders a filter bar + (kanban or
  * table) view + a shared bulk-action toolbar. C1 established URL-driven
- * filter state; C2 added the kanban; C3 lifts state (claims + selection)
- * into hooks so a selection in one view persists across the view toggle
- * (and adds the table view in a follow-up commit).
+ * filter state; C2 added the kanban; C3 added the table and lifted state
+ * (claims + selection) into hooks so a selection in one view persists
+ * across the view toggle.
  *
  * Following the P1 dynamic-route pattern (see subject-tenants/[id]/page.tsx):
  * `'use client'` + AuthGuard wraps the page; URL state is read via
@@ -52,6 +55,7 @@ function Inner() {
   const consultantId = searchParams.get('consultant');
   const fiscalYear = parseFiscalYear(searchParams.get('fy'), currentFiscalYear());
   const sector = searchParams.get('sector') ?? '';
+  const sort = parseSort(searchParams.get('sort'), searchParams.get('dir')) ?? DEFAULT_SORT;
 
   // Consultants for the dropdown come from the firm-members list (the
   // existing /v1/users endpoint already returns the active firm's
@@ -89,8 +93,8 @@ function Inner() {
   const whoami = useWhoami();
   const role = whoami.data?.user.role ?? 'viewer';
 
-  // Hooks lifted from the kanban so selection persists across the view
-  // toggle and a single mutation flow drives both views (C3 refactor).
+  // Hooks lifted from the kanban / table so selection persists across the
+  // view toggle and a single mutation flow drives both views (C3 refactor).
   const claimsHook = usePipelineClaims({ claims: claimsQuery.data ?? [] });
   const selection = usePipelineSelection();
 
@@ -127,7 +131,7 @@ function Inner() {
         claimsHook={claimsHook}
         selection={selection}
         role={role}
-        claimCount={claimsQuery.data?.length ?? 0}
+        sort={sort}
       />
     </main>
   );
@@ -140,18 +144,10 @@ interface ViewBodyProps {
   claimsHook: ReturnType<typeof usePipelineClaims>;
   selection: ReturnType<typeof usePipelineSelection>;
   role: 'admin' | 'consultant' | 'viewer';
-  claimCount: number;
+  sort: ReturnType<typeof parseSort> extends infer R ? NonNullable<R> : never;
 }
 
-function ViewBody({
-  view,
-  isPending,
-  error,
-  claimsHook,
-  selection,
-  role,
-  claimCount,
-}: ViewBodyProps) {
+function ViewBody({ view, isPending, error, claimsHook, selection, role, sort }: ViewBodyProps) {
   if (isPending) {
     return <p className="text-sm text-muted-foreground">Loading claims…</p>;
   }
@@ -165,20 +161,5 @@ function ViewBody({
   if (view === 'kanban') {
     return <PipelineKanban claims={claimsHook} selection={selection} role={role} />;
   }
-  // C3 (table view) lands the tabular view. Until then, the dashed
-  // placeholder communicates the wait.
-  return (
-    <section
-      role="region"
-      aria-label="Table view"
-      className="rounded-md border border-dashed p-12 text-center"
-    >
-      <p className="font-medium">Table view coming in C3</p>
-      <p className="mt-1 text-sm text-muted-foreground">
-        {claimCount === 0
-          ? 'No claims match the current filters.'
-          : `${claimCount} claim${claimCount === 1 ? '' : 's'} ready to render.`}
-      </p>
-    </section>
-  );
+  return <PipelineTable claims={claimsHook} selection={selection} role={role} sort={sort} />;
 }

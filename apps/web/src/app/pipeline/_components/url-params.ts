@@ -1,4 +1,5 @@
-import { CLAIM_STAGES_LITERAL, type ClaimStage } from '@cpa/schemas';
+import { CLAIM_STAGES_LITERAL, type Claim, type ClaimStage } from '@cpa/schemas';
+import { daysInStage } from '../_lib/format';
 
 /**
  * Pure URL-param parsers for /pipeline. Extracted from pipeline-filters.tsx
@@ -14,6 +15,7 @@ import { CLAIM_STAGES_LITERAL, type ClaimStage } from '@cpa/schemas';
  *   ?fy=2026                         → fiscal_year (single int)
  *   ?sector=biotech                  → free-text contains match (single)
  *   ?view=kanban|table               → view toggle (default = table)
+ *   ?sort=col&dir=asc|desc           → table sort (default = last_updated desc)
  */
 
 export type PipelineView = 'kanban' | 'table';
@@ -67,4 +69,101 @@ export function parseFiscalYear(raw: string | null, fallback: number): number {
 export function currentFiscalYear(now: Date = new Date()): number {
   // Months are 0-indexed: 0 = January, 6 = July.
   return now.getMonth() >= 6 ? now.getFullYear() + 1 : now.getFullYear();
+}
+
+// --- Table sort URL params -------------------------------------------------
+
+/**
+ * Sortable columns in the table view. Kept as a literal so changes here
+ * fail typecheck on the consuming `applySorting` switch.
+ */
+export const SORT_COLUMNS = [
+  'claimant',
+  'fy',
+  'stage',
+  'activities',
+  'days_in_stage',
+  'last_updated',
+] as const;
+export type SortColumn = (typeof SORT_COLUMNS)[number];
+export type SortDir = 'asc' | 'desc';
+
+export interface PipelineSort {
+  column: SortColumn;
+  dir: SortDir;
+}
+
+/** Default sort applied when `?sort` is absent or invalid. */
+export const DEFAULT_SORT: PipelineSort = { column: 'last_updated', dir: 'desc' };
+
+const SORT_COLUMN_SET = new Set<string>(SORT_COLUMNS);
+
+/**
+ * Parse `?sort=col&dir=asc|desc`. Invalid combinations return null so the
+ * caller can substitute the default. Both params must be valid for a
+ * non-null result; a partial pair is treated as missing.
+ */
+export function parseSort(rawCol: string | null, rawDir: string | null): PipelineSort | null {
+  if (!rawCol || !SORT_COLUMN_SET.has(rawCol)) return null;
+  if (rawDir !== 'asc' && rawDir !== 'desc') return null;
+  return { column: rawCol as SortColumn, dir: rawDir };
+}
+
+/**
+ * Sort claims by the given column + direction. Pure: returns a new array
+ * (does not mutate input). Numeric/string compares only — no locale
+ * collation since the values are either ids/enums or numbers.
+ *
+ * `subjectTenantNames` lets the caller provide a `subject_tenant_id → name`
+ * lookup for the `claimant` column. When omitted, falls back to
+ * `subject_tenant_id` so the sort is still deterministic before names are
+ * available (matches A2's empty-name stub during pre-A2 development).
+ *
+ * `now` allows tests to lock the wall clock for `days_in_stage`.
+ */
+export function applySorting(
+  claims: readonly Claim[],
+  sort: PipelineSort,
+  opts: { subjectTenantNames?: Record<string, string>; now?: Date } = {},
+): Claim[] {
+  const sign = sort.dir === 'asc' ? 1 : -1;
+  const names = opts.subjectTenantNames ?? {};
+  const now = opts.now ?? new Date();
+  const result = [...claims];
+  result.sort((a, b) => {
+    let av: number | string;
+    let bv: number | string;
+    switch (sort.column) {
+      case 'claimant':
+        av = (names[a.subject_tenant_id] ?? a.subject_tenant_id).toLowerCase();
+        bv = (names[b.subject_tenant_id] ?? b.subject_tenant_id).toLowerCase();
+        break;
+      case 'fy':
+        av = a.fiscal_year;
+        bv = b.fiscal_year;
+        break;
+      case 'stage':
+        // Sort by canonical stage order, not alphabetical.
+        av = CLAIM_STAGES_LITERAL.indexOf(a.stage);
+        bv = CLAIM_STAGES_LITERAL.indexOf(b.stage);
+        break;
+      case 'activities':
+        // TODO(A2): use real activity count once GET /v1/claims returns it.
+        av = 0;
+        bv = 0;
+        break;
+      case 'days_in_stage':
+        av = daysInStage(a.updated_at, now);
+        bv = daysInStage(b.updated_at, now);
+        break;
+      case 'last_updated':
+        av = new Date(a.updated_at).getTime();
+        bv = new Date(b.updated_at).getTime();
+        break;
+    }
+    if (av < bv) return -1 * sign;
+    if (av > bv) return 1 * sign;
+    return 0;
+  });
+  return result;
 }
