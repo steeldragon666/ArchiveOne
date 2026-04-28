@@ -33,7 +33,7 @@ CREATE TABLE "expenditure" (
 	"total_amount" numeric(12, 2) NOT NULL,
 	"currency" text NOT NULL,
 	"reimbursed_to_user_id" uuid,
-	"raw_payload" jsonb NOT NULL,
+	"raw_payload" jsonb DEFAULT '{}'::jsonb NOT NULL,
 	"ingested_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"voided_at" timestamp with time zone
 );
@@ -49,4 +49,5 @@ CREATE INDEX "expenditure_mapping_rule_tenant_idx" ON "expenditure_mapping_rule"
 CREATE INDEX "expenditure_mapping_rule_activity_idx" ON "expenditure_mapping_rule" USING btree ("activity_id");--> statement-breakpoint
 CREATE INDEX "expenditure_tenant_idx" ON "expenditure" USING btree ("tenant_id");--> statement-breakpoint
 CREATE INDEX "expenditure_subject_tenant_idx" ON "expenditure" USING btree ("subject_tenant_id");--> statement-breakpoint
-CREATE INDEX "expenditure_source_idx" ON "expenditure" USING btree ("source");
+CREATE INDEX "expenditure_source_idx" ON "expenditure" USING btree ("source");--> statement-breakpoint
+CREATE UNIQUE INDEX "expenditure_source_external_unique" ON "expenditure" USING btree ("tenant_id","source","source_external_id") WHERE "expenditure"."source_external_id" IS NOT NULL;

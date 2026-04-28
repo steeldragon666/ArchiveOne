@@ -1,5 +1,5 @@
 {
-  "id": "5ec8c092-afe4-47c4-8bec-3bf1520d049f",
+  "id": "651d3033-a7bb-4d8e-9424-40ea708c01e3",
   "prevId": "5837a64b-e8b6-4562-8ba9-f66c9288ee4e",
   "version": "7",
   "dialect": "postgresql",
@@ -1277,7 +1277,8 @@
           "name": "raw_payload",
           "type": "jsonb",
           "primaryKey": false,
-          "notNull": true
+          "notNull": true,
+          "default": "'{}'::jsonb"
         },
         "ingested_at": {
           "name": "ingested_at",
@@ -1335,6 +1336,34 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "expenditure_source_external_unique": {
+          "name": "expenditure_source_external_unique",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "source",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "source_external_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"expenditure\".\"source_external_id\" IS NOT NULL",
           "concurrently": false,
           "method": "btree",
           "with": {}

@@ -15,13 +15,20 @@ import { tenant } from './tenant.js';
  * `vendor_pattern` set matches purely on vendor; a rule with all
  * four predicates set requires every match to fire.
  *
- * Predicate columns:
- *   - `source` — '*' (any) OR one of the EXPENDITURE_SOURCES values.
- *     Plain `text` here so '*' is representable; F4 may add a CHECK
- *     accepting `EXPENDITURE_SOURCES ∪ {'*'}`.
- *   - `vendor_pattern` — POSIX regex against `expenditure.vendor_name`.
- *   - `account_code` — exact match against `expenditure_line.account_code`.
- *   - `description_pattern` — POSIX regex against `expenditure_line.description`.
+ * Predicate columns (each independently nullable; NULL means "any"):
+ *   - `source` — match by Xero source. Must be one of the
+ *     `EXPENDITURE_SOURCES` values for an exact match, or NULL for
+ *     "any source" (wildcard). The `'*'` magic string is NOT used; NULL
+ *     is the wildcard, consistent with the other predicate fields below.
+ *     F4 will hand-author a CHECK constraint
+ *     `CHECK (source IS NULL OR source IN ('xero_invoice', 'xero_bank_tx',
+ *     'xero_receipt', 'manual'))`.
+ *   - `vendor_pattern` — POSIX regex against `expenditure.vendor_name`;
+ *     NULL means "any vendor".
+ *   - `account_code` — exact match against `expenditure_line.account_code`;
+ *     NULL means "any code".
+ *   - `description_pattern` — POSIX regex against `expenditure_line.description`;
+ *     NULL means "any description".
  *
  * Action columns:
  *   - `activity_id` — FK to the `activity` row whose narrative this
@@ -47,7 +54,8 @@ export const expenditureMappingRule = pgTable(
     tenantId: uuid('tenant_id')
       .notNull()
       .references(() => tenant.id),
-    // Per-source filter or '*' (any). CHECK constraint may be hand-authored in F4.
+    // Per-source filter; NULL = wildcard ("any source"). F4 hand-authors
+    // CHECK (source IS NULL OR source IN (...EXPENDITURE_SOURCES)).
     source: text('source'),
     // POSIX regex against expenditure.vendor_name.
     vendorPattern: text('vendor_pattern'),

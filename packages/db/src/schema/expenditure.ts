@@ -1,4 +1,15 @@
-import { date, index, jsonb, numeric, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import {
+  date,
+  index,
+  jsonb,
+  numeric,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { subjectTenant } from './subject_tenant.js';
 import { tenant } from './tenant.js';
 import { user } from './user.js';
@@ -12,16 +23,17 @@ import { user } from './user.js';
  *
  * `source` discriminates origin. Xero-sourced rows carry the upstream
  * identifier in `source_external_id`; manual entries leave it null.
- * The design calls for a partial unique index
+ * The partial unique index
  * `(tenant_id, source, source_external_id) WHERE source_external_id IS
- * NOT NULL` so re-running a Xero sync upserts cleanly without forcing
- * uniqueness on manual entries. drizzle-kit doesn't emit the partial
- * `WHERE` clause cleanly, so the unique index is intentionally omitted
- * from this schema and hand-authored in F4 alongside the CHECK / RLS
- * block.
+ * NOT NULL` is declared in this schema and emitted by drizzle-kit (same
+ * pattern as `event.idempotencyUnique` and `time_entry.payrollSourceDedupeUnique`).
+ * It enforces dedupe so re-running a Xero sync upserts cleanly without
+ * forcing uniqueness on manual entries.
  *
  * `raw_payload` carries the full upstream response (Xero JSON) for
  * audit reconstruction; jsonb (not json) for indexing flexibility.
+ * Defaults to empty `{}` so manual route handlers can simply omit the
+ * field; sync paths must populate with the full upstream payload.
  *
  * `expenditure_date` is a calendar date (the date the expense was
  * incurred — e.g. invoice date), distinct from `ingested_at` which is
@@ -85,7 +97,7 @@ export const expenditure = pgTable(
     source: text('source', { enum: EXPENDITURE_SOURCES }).notNull(),
     // Upstream Xero ID; null for manual entries. Partial unique index
     // (tenant_id, source, source_external_id) WHERE source_external_id IS NOT NULL
-    // is hand-authored in F4 — drizzle-kit can't emit the WHERE clause cleanly.
+    // is declared in the table options below.
     sourceExternalId: text('source_external_id'),
     vendorName: text('vendor_name').notNull(),
     // Invoice #, bank reference, receipt # — free-form upstream identifier.
@@ -98,7 +110,11 @@ export const expenditure = pgTable(
     // Non-null for employee expense claims (firm reimburses the user).
     reimbursedToUserId: uuid('reimbursed_to_user_id').references(() => user.id),
     // Full upstream response (Xero JSON) for audit reconstruction.
-    rawPayload: jsonb('raw_payload').notNull(),
+    // Defaults to `{}` so manual entries can omit the field; sync paths
+    // must populate with the full upstream payload.
+    rawPayload: jsonb('raw_payload')
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     ingestedAt: timestamp('ingested_at', { withTimezone: true }).notNull().defaultNow(),
     // Soft-void marker; voided rows stay queryable but are filtered from apportionment.
     voidedAt: timestamp('voided_at', { withTimezone: true }),
@@ -107,5 +123,8 @@ export const expenditure = pgTable(
     tenantIdx: index('expenditure_tenant_idx').on(t.tenantId),
     subjectTenantIdx: index('expenditure_subject_tenant_idx').on(t.subjectTenantId),
     sourceIdx: index('expenditure_source_idx').on(t.source),
+    sourceExternalUnique: uniqueIndex('expenditure_source_external_unique')
+      .on(t.tenantId, t.source, t.sourceExternalId)
+      .where(sql`${t.sourceExternalId} IS NOT NULL`),
   }),
 );

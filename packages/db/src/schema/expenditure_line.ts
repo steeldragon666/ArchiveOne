@@ -24,11 +24,27 @@ import { expenditure } from './expenditure.js';
  * consultant review). Once mapped, it sits in [0, 100] — the 0-100
  * CHECK constraint is hand-authored in F4.
  *
- * No tenant_id column on this table: tenancy is inherited transitively
- * via `expenditure_id → expenditure.tenant_id`. RLS on the parent is
- * therefore sufficient — F4 will not add RLS to this table directly,
- * matching the F1 pattern where children of an RLS-protected parent
- * inherit isolation through the FK chain.
+ * No tenant_id column on this table — and this is an intentional
+ * deviation from the F1 convention. F1 child tables that carry tenant
+ * data (see `subject_tenant_employee.ts`, `media_artefact.ts`,
+ * `time_entry.ts`) denormalise `tenant_id` and get their own direct
+ * RLS policy in 0008. Here, we deliberately do NOT denormalise:
+ * isolation is by access path, not by RLS. Routes that read/write
+ * `expenditure_line` always join through `expenditure` (which IS
+ * RLS-protected on `tenant_id`), so the parent's policy gates the
+ * data the route can see. Inserts/deletes go via the same routes,
+ * which establish tenant context via the parent before touching the
+ * children. The FK constraint guarantees no orphan lines exist.
+ *
+ * IMPORTANT: Postgres RLS does NOT walk FKs automatically. A raw
+ * `SELECT * FROM expenditure_line` as `cpa_app` would NOT be filtered
+ * by `expenditure`'s tenant policy. Protection here is enforced by
+ * code path (route handlers / views that always join `expenditure`)
+ * plus GRANT scoping, not by row-level security on this table.
+ *
+ * F4 directive: F4 will NOT enable RLS on `expenditure_line` and will
+ * NOT add a tenant-isolation policy. F4 will GRANT to `cpa_app` and
+ * rely on the route layer / parent join for isolation.
  *
  * No created_at / updated_at: lines are immutable from the
  * sync/ingestion layer's perspective (re-syncing replaces the parent
