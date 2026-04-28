@@ -7,13 +7,26 @@ const E2 = '00000000-0000-0000-0000-0000000000e2';
 const A1 = '00000000-0000-0000-0000-00000000ca01';
 const A2 = '00000000-0000-0000-0000-00000000ca02';
 
+// Counter for synthesising distinct event ids inside `make`. Tests that
+// care about the tie-breaker pass an explicit id — see the two
+// "identical captured_at" tests at the bottom of the file.
+let __eventIdCounter = 0;
+const nextEventId = (): string => {
+  __eventIdCounter += 1;
+  // 12-char trailing segment, hex-only, deterministic across runs.
+  const hex = __eventIdCounter.toString(16).padStart(12, '0');
+  return `00000000-0000-0000-0000-${hex}`;
+};
+
 const make = (
   expenditure_id: string,
   activity_id: string,
   activity_code: string,
   activity_title: string,
   captured_at: string,
+  id: string = nextEventId(),
 ): ProjectableEvent => ({
+  id,
   kind: 'EXPENDITURE_MAPPED',
   captured_at,
   payload: {
@@ -77,6 +90,7 @@ test('projectMappingFromEvents: ignores events whose kind is not EXPENDITURE_MAP
   // narrows. Robust against future readers that don't pre-filter.
   const events: ProjectableEvent[] = [
     {
+      id: nextEventId(),
       kind: 'EXPENDITURE_INGESTED',
       captured_at: '2026-04-25T10:00:00.000Z',
       payload: {
@@ -91,6 +105,36 @@ test('projectMappingFromEvents: ignores events whose kind is not EXPENDITURE_MAP
   ];
   const out = projectMappingFromEvents(events);
   assert.equal(out[E1]?.activity_id, A2);
+});
+
+test('projectMappingFromEvents: two events with identical captured_at — higher id wins', () => {
+  // The chain assigns distinct captured_ats in practice, but tests and
+  // backfills can produce ties. The projection breaks the tie on
+  // lexicographic event id so the result is deterministic.
+  const t = '2026-04-29T10:00:00.000Z';
+  const events: ProjectableEvent[] = [
+    make(E1, A1, 'CA-001', 'Lower id', t, '00000000-0000-0000-0000-0000000e0001'),
+    make(E1, A2, 'CA-002', 'Higher id', t, '00000000-0000-0000-0000-0000000e0002'),
+  ];
+  const out = projectMappingFromEvents(events);
+  // Higher id (e0002) wins, so A2 / CA-002 is the projected mapping.
+  assert.equal(out[E1]?.activity_id, A2);
+  assert.equal(out[E1]?.activity_code, 'CA-002');
+});
+
+test('projectMappingFromEvents: tie-breaker is order-INSENSITIVE — reversed input gives same answer', () => {
+  // Same events as the previous test, reversed. Without the id
+  // tie-breaker the projection would flip; with it, the answer is
+  // stable regardless of input order.
+  const t = '2026-04-29T10:00:00.000Z';
+  const events: ProjectableEvent[] = [
+    make(E1, A1, 'CA-001', 'Lower id', t, '00000000-0000-0000-0000-0000000e0001'),
+    make(E1, A2, 'CA-002', 'Higher id', t, '00000000-0000-0000-0000-0000000e0002'),
+  ].reverse();
+  const out = projectMappingFromEvents(events);
+  // Still A2 — id-based tie-break is order-insensitive.
+  assert.equal(out[E1]?.activity_id, A2);
+  assert.equal(out[E1]?.activity_code, 'CA-002');
 });
 
 test('projectMappingFromEvents: does not mutate input array', () => {

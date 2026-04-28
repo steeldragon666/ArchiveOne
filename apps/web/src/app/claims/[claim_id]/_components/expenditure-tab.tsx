@@ -100,15 +100,21 @@ export function ExpenditureTab({ claimId }: { claimId: string }) {
         return;
       }
 
-      // Snapshot for revert; build the optimistic mapping payload.
-      const snapshot = optimisticRows;
+      // Snapshot for revert. Captured INSIDE the functional updater so a
+      // rapid double-click (second mapping fired before the first
+      // resolves) can't roll back to a stale state — `prev` here is
+      // always the freshest React-tracked value.
+      let snapshot: ExpenditureRow[] = [];
       const mapping = {
         activity_id: activity.id,
         activity_code: activity.code,
         activity_title: activity.title,
         mapped_at: new Date().toISOString(),
       };
-      setOptimisticRows((prev) => applyMappingOptimistic(prev, expenditureId, mapping));
+      setOptimisticRows((prev) => {
+        snapshot = prev;
+        return applyMappingOptimistic(prev, expenditureId, mapping);
+      });
       setPendingIds((prev) => {
         const next = new Set(prev);
         next.add(expenditureId);
@@ -154,7 +160,11 @@ export function ExpenditureTab({ claimId }: { claimId: string }) {
         description: activity.title,
       });
     },
-    [activitiesById, optimisticRows, toast],
+    // `optimisticRows` is intentionally NOT a dep — the snapshot is
+    // captured inside `setOptimisticRows((prev) => ...)`, which always
+    // sees React's freshest value. Including it here would re-create
+    // the callback on every state change without affecting correctness.
+    [activitiesById, toast],
   );
 
   if (expendituresQuery.isPending || activitiesQuery.isPending) {
