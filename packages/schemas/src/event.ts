@@ -1,5 +1,8 @@
 import { z } from 'zod';
 import { Iso8601, Sha256Hash, Uuid } from './primitives.js';
+import { ActivityKind } from './activity.js';
+import { CLAIM_STAGES_LITERAL } from './claim.js';
+import { EXPENDITURE_SOURCES_LITERAL } from './expenditure.js';
 
 /**
  * Evidence-kind taxonomy — the wire-format mirror of the DB column
@@ -251,3 +254,218 @@ export const overrideEventBody = z.object({
   reason: z.string().min(1).max(2000),
 });
 export type OverrideEventBody = z.infer<typeof overrideEventBody>;
+
+// ---------------------------------------------------------------------------
+// P4 state-transition event payload schemas (per design doc §"Event ledger,
+// payload shapes by kind"). Each schema describes the `payload` JSON for the
+// corresponding `evidenceKind` value above.
+//
+// These schemas are NOT joined into the main `event` shape (which keeps
+// `payload: z.unknown()` so the discriminator can stay at the route layer).
+// Routes that emit a P4 state-transition event validate against the matching
+// payload schema before insert; readers that filter by kind narrow against
+// the schema for that kind.
+// ---------------------------------------------------------------------------
+
+/**
+ * Artefact kinds that can be linked to / unlinked from an activity. Mirrors
+ * the artefact tables that exist in the system: `media_artefact` (mobile
+ * upload), `event` (a captured note), `expenditure` (an invoice/bank tx),
+ * `time_entry` (an apportioned time block).
+ *
+ * Distinct from `evidenceKind` above — `artefactKind` is the table-level
+ * discriminator for the link target, not the classifier output.
+ */
+export const artefactKind = z.enum(['media', 'event', 'expenditure', 'time_entry']);
+export type ArtefactKind = z.infer<typeof artefactKind>;
+
+/**
+ * Document kinds emitted by the P4 generator pipeline. R&DTI application
+ * is the AusIndustry Module 4 PDF; reasonable-basis record is the internal
+ * audit memo; KPMG letter is the consultant-facing reasonable-basis letter
+ * (see C-swimlane plan).
+ */
+export const docKind = z.enum(['rdti_application', 'reasonable_basis_record', 'kpmg_letter']);
+export type DocKind = z.infer<typeof docKind>;
+
+/**
+ * `mapped_via` discriminator on EXPENDITURE_LINE_MAPPED. `'rule'` =
+ * applied automatically by the rule engine (F5); `'manual'` = consultant
+ * manually attached the line to an activity.
+ */
+export const expenditureMappingChannel = z.enum(['rule', 'manual']);
+export type ExpenditureMappingChannel = z.infer<typeof expenditureMappingChannel>;
+
+/**
+ * ACTIVITY_CREATED — emitted by POST /v1/activities once the row is
+ * inserted. Carries enough denormalised context for downstream readers
+ * (assurance report, auditor inbox) to render without re-joining.
+ */
+export const ActivityCreatedPayload = z.object({
+  activity_id: Uuid,
+  code: z.string(),
+  kind: ActivityKind,
+  title: z.string(),
+  project_id: Uuid,
+  claim_id: Uuid,
+});
+export type ActivityCreatedPayload = z.infer<typeof ActivityCreatedPayload>;
+
+/**
+ * ACTIVITY_UPDATED — emitted by PATCH /v1/activities/:id. `fields_changed`
+ * is a heterogeneous record keyed by column name, with `{from, to}` pairs
+ * carrying the previous and new values. The values are `unknown` because
+ * the columns vary in type (string, nullable string, etc.); the route
+ * layer is responsible for serialising sensibly.
+ */
+export const ActivityUpdatedPayload = z.object({
+  activity_id: Uuid,
+  fields_changed: z.record(z.string(), z.object({ from: z.unknown(), to: z.unknown() })),
+});
+export type ActivityUpdatedPayload = z.infer<typeof ActivityUpdatedPayload>;
+
+/**
+ * ACTIVITY_LOCKED — emitted when a consultant locks an activity to
+ * prevent further edits (typically once narrative review is complete).
+ */
+export const ActivityLockedPayload = z.object({
+  activity_id: Uuid,
+  locked_by_user_id: Uuid,
+  lock_reason: z.string(),
+});
+export type ActivityLockedPayload = z.infer<typeof ActivityLockedPayload>;
+
+/**
+ * ARTEFACT_LINKED — emitted when a media upload, event, expenditure, or
+ * time entry is attached to an activity as supporting evidence.
+ * `link_reason` is optional free-text rationale.
+ */
+export const ArtefactLinkedPayload = z.object({
+  activity_id: Uuid,
+  artefact_kind: artefactKind,
+  artefact_id: Uuid,
+  link_reason: z.string().optional(),
+});
+export type ArtefactLinkedPayload = z.infer<typeof ArtefactLinkedPayload>;
+
+/**
+ * ARTEFACT_UNLINKED — the inverse of ARTEFACT_LINKED. `reason` is
+ * optional free-text (e.g. "wrong activity", "duplicate").
+ */
+export const ArtefactUnlinkedPayload = z.object({
+  activity_id: Uuid,
+  artefact_kind: artefactKind,
+  artefact_id: Uuid,
+  reason: z.string().optional(),
+});
+export type ArtefactUnlinkedPayload = z.infer<typeof ArtefactUnlinkedPayload>;
+
+/**
+ * EXPENDITURE_INGESTED — emitted by the Xero sync worker (or POST
+ * /v1/expenditures for manual entries) once the parent expenditure row
+ * and its line items are persisted. `line_count` is the number of
+ * `expenditure_line` rows created in the same transaction.
+ */
+export const ExpenditureIngestedPayload = z.object({
+  expenditure_id: Uuid,
+  source: z.enum(EXPENDITURE_SOURCES_LITERAL),
+  vendor_name: z.string(),
+  line_count: z.number().int().nonnegative(),
+});
+export type ExpenditureIngestedPayload = z.infer<typeof ExpenditureIngestedPayload>;
+
+/**
+ * EXPENDITURE_LINE_MAPPED — emitted by the rule engine (F5) on auto-map,
+ * or by the manual mapping route on consultant action. `mapped_via`
+ * disambiguates the two paths; `rule_id` is set only for `'rule'`.
+ */
+export const ExpenditureLineMappedPayload = z.object({
+  expenditure_line_id: Uuid,
+  activity_id: Uuid,
+  rd_percent: z.number().int().min(0).max(100),
+  mapped_via: expenditureMappingChannel,
+  rule_id: Uuid.optional(),
+});
+export type ExpenditureLineMappedPayload = z.infer<typeof ExpenditureLineMappedPayload>;
+
+/**
+ * EXPENDITURE_LINE_UNMAPPED — emitted when a previously-mapped line is
+ * detached from its activity. `prior_activity_id` carries the value that
+ * was just cleared.
+ */
+export const ExpenditureLineUnmappedPayload = z.object({
+  expenditure_line_id: Uuid,
+  prior_activity_id: Uuid,
+  reason: z.string().optional(),
+});
+export type ExpenditureLineUnmappedPayload = z.infer<typeof ExpenditureLineUnmappedPayload>;
+
+/**
+ * EXPENDITURE_VOIDED — emitted when an expenditure is soft-voided
+ * (filtered from apportionment but kept queryable for audit).
+ */
+export const ExpenditureVoidedPayload = z.object({
+  expenditure_id: Uuid,
+  voided_at: Iso8601,
+  reason: z.string().optional(),
+});
+export type ExpenditureVoidedPayload = z.infer<typeof ExpenditureVoidedPayload>;
+
+/**
+ * CLAIM_STAGE_ADVANCED — emitted by PATCH /v1/claims/:id/stage. Carries
+ * both stages so downstream readers can render the transition without
+ * re-fetching prior state.
+ */
+export const ClaimStageAdvancedPayload = z.object({
+  claim_id: Uuid,
+  from_stage: z.enum(CLAIM_STAGES_LITERAL),
+  to_stage: z.enum(CLAIM_STAGES_LITERAL),
+  advanced_by_user_id: Uuid,
+});
+export type ClaimStageAdvancedPayload = z.infer<typeof ClaimStageAdvancedPayload>;
+
+/**
+ * CLAIM_SUBMITTED — emitted once the AusIndustry submission has been
+ * accepted and the regulator-issued `ausindustry_reference` is back.
+ */
+export const ClaimSubmittedPayload = z.object({
+  claim_id: Uuid,
+  ausindustry_reference: z.string(),
+  submitted_by_user_id: Uuid,
+});
+export type ClaimSubmittedPayload = z.infer<typeof ClaimSubmittedPayload>;
+
+/**
+ * PROJECT_CREATED — emitted by POST /v1/projects. `started_at` is
+ * denormalised onto the payload so the timeline view doesn't re-join.
+ */
+export const ProjectCreatedPayload = z.object({
+  project_id: Uuid,
+  name: z.string(),
+  started_at: Iso8601,
+});
+export type ProjectCreatedPayload = z.infer<typeof ProjectCreatedPayload>;
+
+/**
+ * PROJECT_ARCHIVED — emitted when a project is soft-archived. `reason`
+ * is optional free-text (e.g. "merged into project X", "wound up").
+ */
+export const ProjectArchivedPayload = z.object({
+  project_id: Uuid,
+  archived_by_user_id: Uuid,
+  reason: z.string().optional(),
+});
+export type ProjectArchivedPayload = z.infer<typeof ProjectArchivedPayload>;
+
+/**
+ * DOCUMENT_GENERATED — emitted by the document generator pipeline once
+ * a PDF/DOCX has been rendered and stored. `content_sha256` content-
+ * addresses the artefact for tamper-evidence in the audit chain.
+ */
+export const DocumentGeneratedPayload = z.object({
+  doc_kind: docKind,
+  claim_id: Uuid,
+  generated_for_user_id: Uuid,
+  content_sha256: Sha256Hash,
+});
+export type DocumentGeneratedPayload = z.infer<typeof DocumentGeneratedPayload>;
