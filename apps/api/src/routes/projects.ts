@@ -149,23 +149,40 @@ export function registerProjects(app: FastifyInstance): void {
     // started_at/ended_at parameters mirrors the chain.ts pattern —
     // postgres-js v3.4.9 + Node 22 doesn't round-trip Date params on
     // the prepared-statement bind path.
+    //
+    // Pattern: INSERT (no RETURNING) → SELECT to fetch back. The PATCH
+    // handler in this file relies on a SELECT-before-UPDATE ordering
+    // that "warms up" the RLS GUC for the subsequent RETURNING; POST
+    // had no such prior SELECT and was hitting a RETURNING-returns-0-rows
+    // bug under RLS USING when the GUC propagation through the bind
+    // path was incomplete (test #337 in PR #4 CI). Splitting INSERT
+    // from RETURNING into two statements removes that dependency: we
+    // generate the id client-side, INSERT it, then SELECT WHERE id=...
+    // and rely on the SELECT (a normal, non-RETURNING read) to return
+    // the row under the policy that we've already proved works for
+    // SELECT (the subjectVisible check above passes the same way).
+    const newProjectId = crypto.randomUUID();
     let inserted: RawProjectRow | null;
     try {
       inserted = await sql.begin(async (tx) => {
         await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
-        const rows = await tx<RawProjectRow[]>`
+        await tx`
           INSERT INTO project (
             id, tenant_id, subject_tenant_id, name, description,
             started_at, ended_at
           )
           VALUES (
-            ${crypto.randomUUID()}, ${tenantId}, ${subject_tenant_id}, ${name},
+            ${newProjectId}, ${tenantId}, ${subject_tenant_id}, ${name},
             ${description ?? null},
             ${started_at}::timestamptz,
             ${ended_at ?? null}::timestamptz
           )
-          RETURNING id, tenant_id, subject_tenant_id, name, description,
-                    started_at, ended_at, archived_at, created_at, updated_at
+        `;
+        const rows = await tx<RawProjectRow[]>`
+          SELECT id, tenant_id, subject_tenant_id, name, description,
+                 started_at, ended_at, archived_at, created_at, updated_at
+            FROM project
+           WHERE id = ${newProjectId}
         `;
         return rows[0] ?? null;
       });
@@ -183,19 +200,9 @@ export function registerProjects(app: FastifyInstance): void {
       throw e;
     }
     if (!inserted) {
-      // Diagnostic: this branch fires when RETURNING returns 0 rows even
-      // though INSERT succeeded — typically because the RLS USING policy
-      // can't see the just-inserted row (e.g. GUC unset, NULLIF-resolved
-      // to NULL on the comparison side). The new-row IS in the table; the
-      // route just can't read it back. Surfacing in CI.
-      console.error('[POST /v1/projects RETURNING returned 0 rows]', {
-        tenantId,
-        subject_tenant_id,
-        started_at,
-        ended_at: ended_at ?? null,
-        note: 'INSERT likely succeeded; RLS USING policy filtered RETURNING — verify GUC is propagated within the sql.begin transaction',
-      });
-      throw new Error('POST /v1/projects: INSERT returned no row');
+      throw new Error(
+        'POST /v1/projects: INSERT succeeded but follow-up SELECT returned 0 rows — RLS USING policy must be filtering even the post-INSERT SELECT, which would be a deeper bug than RETURNING-only',
+      );
     }
 
     // Extend the chain with PROJECT_CREATED. captured_at = now() so
