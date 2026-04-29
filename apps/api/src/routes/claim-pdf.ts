@@ -2,7 +2,10 @@ import type { FastifyInstance } from 'fastify';
 import { requireSession } from '@cpa/auth';
 import { sql } from '@cpa/db/client';
 import {
+  renderApportionmentReportPdf,
   renderClaimSummaryPdf,
+  type ApportionmentExpenditure,
+  type ApportionmentReportInput,
   type ClaimSummaryActivity,
   type ClaimSummaryInput,
 } from '@cpa/documents';
@@ -311,4 +314,304 @@ export function registerClaimPdf(app: FastifyInstance): void {
       return reply.send(Buffer.from(bytes));
     },
   );
+
+  /**
+   * GET /v1/claims/:id/apportionment.pdf — apportionment report (C9).
+   *
+   * Same auth + cross-firm + streaming model as `summary.pdf` above:
+   *   - admin/consultant/viewer can download
+   *   - claim lookup runs inside `sql.begin` with `set_config` of
+   *     `app.current_tenant_id` so RLS scopes the row; explicit
+   *     `AND tenant_id = ${tenantId}` is defense-in-depth
+   *   - cross-firm or nonexistent => 404 (identical messages, no leakage)
+   *   - Content-Type: application/pdf
+   *   - Content-Disposition: attachment; filename="..."
+   *   - Cache-Control: private, no-store
+   *
+   * Filename: `apportionment-${fiscal_year}-${firm_short}.pdf` (per spec).
+   *
+   * Mapping/apportionment projection (today's reality):
+   *   Neither EXPENDITURE_MAPPED nor EXPENDITURE_APPORTIONED event
+   *   kinds exist yet (deferred to A-swimlane per C5/C6 docs). Without
+   *   those events the projection sees no inputs and EVERY expenditure
+   *   resolves to `{ type: 'unmapped' }`. The activity rollup is
+   *   therefore empty and the totals reflect 100% unmapped.
+   *
+   *   The PDF still renders — that's the point of the document. It
+   *   shows the pre-A-swimlane baseline so a later implementer can
+   *   diff "before vs after events land". When EXPENDITURE_MAPPED /
+   *   EXPENDITURE_APPORTIONED events do arrive, the projection
+   *   replaces the zero-state branch below and the activity_rollup
+   *   gains real entries — without API surface change.
+   *
+   *   The activity rollup CTE in step 6 is therefore a simple "no
+   *   activities, no expenditures contribute" placeholder today; once
+   *   events land, it grows into the GROUP BY documented in summary's
+   *   step 7 comment.
+   */
+  app.get<{ Params: { id: string } }>(
+    '/v1/claims/:id/apportionment.pdf',
+    { preHandler: requireSession },
+    async (req, reply) => {
+      const role = req.user!.role;
+      if (role !== 'admin' && role !== 'consultant' && role !== 'viewer') {
+        return reply.status(403).send({
+          error: 'forbidden',
+          message: 'Admin, consultant, or viewer role required',
+          requestId: req.id,
+        });
+      }
+
+      const claimId = req.params.id;
+      const tenantId = req.user!.tenantId!;
+
+      const fetched = await sql.begin(async (tx) => {
+        await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+
+        // 1. Claim row, scoped to the firm (RLS + defense-in-depth).
+        //    Cross-firm or nonexistent → empty array → 404 in the caller.
+        const claimRows = await tx<ClaimRow[]>`
+          SELECT id, tenant_id, subject_tenant_id, fiscal_year, stage
+            FROM claim
+           WHERE id = ${claimId}
+             AND tenant_id = ${tenantId}
+        `;
+        const claim = claimRows[0];
+        if (!claim) return null;
+
+        // 2. Firm (tenant) — global table; fetch by id directly.
+        const firmRows = await tx<FirmRow[]>`
+          SELECT id, name FROM tenant WHERE id = ${claim.tenant_id}
+        `;
+        const firm = firmRows[0];
+        if (!firm) return null;
+
+        // 3. Subject tenant (claimant). RLS-scoped, deleted_at null.
+        const subjectRows = await tx<SubjectTenantRow[]>`
+          SELECT id, name FROM subject_tenant
+           WHERE id = ${claim.subject_tenant_id} AND deleted_at IS NULL
+        `;
+        const subject = subjectRows[0];
+        if (!subject) return null;
+
+        // 4. Project — same most-recent-by-started_at simplification as
+        //    summary.pdf. Claims today have no project_id FK.
+        const projectRows = await tx<ProjectRow[]>`
+          SELECT id, name, description, started_at, ended_at
+            FROM project
+           WHERE subject_tenant_id = ${claim.subject_tenant_id}
+             AND archived_at IS NULL
+           ORDER BY started_at DESC
+           LIMIT 1
+        `;
+        const project = projectRows[0];
+
+        // 5. Expenditures — every row scoped to the claim's subject
+        //    tenant, voided rows excluded. Sorted by date ASC then id
+        //    so the rendered detail table is deterministic across runs
+        //    (the secondary id sort breaks ties when several
+        //    expenditures share the same date — a common case in
+        //    practice e.g. all rows from one Xero sync batch).
+        const expenditureRows = await tx<ExpenditureRow[]>`
+          SELECT id, source, source_external_id, vendor_name, reference,
+                 expenditure_date, total_amount, currency
+            FROM expenditure
+           WHERE subject_tenant_id = ${claim.subject_tenant_id}
+             AND voided_at IS NULL
+           ORDER BY expenditure_date ASC, id ASC
+        `;
+
+        return { claim, firm, subject, project, expenditureRows };
+      });
+
+      if (fetched == null) {
+        return reply.status(404).send({
+          error: 'claim_not_found',
+          message: 'No claim with that id in this firm',
+          requestId: req.id,
+        });
+      }
+
+      // Transform DB rows into the @cpa/documents input shape.
+      //
+      // Source classification: the four DB sources collapse to three
+      // PDF kinds — `xero_invoice`/`manual` → INVOICE, `xero_bank_tx`
+      // → BANK_TX, `xero_receipt` → RECEIPT. Manual entries pass as
+      // INVOICE because that's the closest functional analogue (a
+      // single document, payee, reference) — the regulator-facing PDF
+      // doesn't distinguish "manual vs Xero", just the underlying
+      // document type.
+      const expenditures: ApportionmentExpenditure[] = fetched.expenditureRows.map((r) => ({
+        id: r.id,
+        kind: classifyKind(r.source),
+        date:
+          r.expenditure_date instanceof Date
+            ? r.expenditure_date.toISOString()
+            : r.expenditure_date,
+        payee: r.vendor_name,
+        reference: r.reference,
+        amount: Number(r.total_amount),
+        currency: r.currency,
+        // TODO(A-swimlane): replace with a real projection over
+        // EXPENDITURE_MAPPED / EXPENDITURE_APPORTIONED events. Today
+        // those event kinds don't exist; everything is unmapped. Once
+        // they land, this becomes:
+        //
+        //   const apportioned = apportionedById.get(r.id);
+        //   if (apportioned) return { type: 'apportioned', allocations };
+        //   const mapped = mappedById.get(r.id);
+        //   if (mapped) return { type: 'mapped', activity_code, activity_title };
+        //   return { type: 'unmapped' };
+        //
+        // (Mirrors the projection rules in
+        // `apps/web/src/app/claims/[claim_id]/_lib/expenditure-projection.ts`
+        // and the row-UI composition order: line > apportionment >
+        // parent > unmapped.)
+        mapping_state: { type: 'unmapped' as const },
+      }));
+
+      // Totals roll up directly from the projected expenditures. With
+      // every row unmapped today: total_apportioned === 0, total_unmapped
+      // === total_expenditure, and total_unmapped_count === expenditures.
+      // length. Once mappings land the same arithmetic produces real
+      // numbers without code changes — the projection above is the only
+      // place that needs to flip from stubbed-zero to real data.
+      const totalExpenditure = expenditures.reduce((acc, e) => acc + e.amount, 0);
+      const totalApportioned = expenditures.reduce((acc, e) => {
+        if (e.mapping_state.type === 'unmapped') return acc;
+        if (e.mapping_state.type === 'mapped') return acc + e.amount;
+        return acc + e.mapping_state.allocations.reduce((s, a) => s + a.amount, 0);
+      }, 0);
+      const totalUnmappedCount = expenditures.filter(
+        (e) => e.mapping_state.type === 'unmapped',
+      ).length;
+      const totalUnmapped = expenditures.reduce(
+        (acc, e) => (e.mapping_state.type === 'unmapped' ? acc + e.amount : acc),
+        0,
+      );
+
+      // Activity rollup — derived from the mapping_state aggregation.
+      // Today every expenditure is unmapped so the rollup is empty.
+      // When events land, walk the expenditures and accumulate per-
+      // activity counts + amounts (one entry per distinct activity
+      // code, even if multiple expenditures map there).
+      const rollupMap = new Map<
+        string,
+        { code: string; title: string; kind: 'CORE' | 'SUPPORTING'; count: number; amount: number }
+      >();
+      // The TODO above will populate this map; today the loop is a
+      // no-op because every mapping_state.type === 'unmapped'.
+      for (const e of expenditures) {
+        if (e.mapping_state.type === 'mapped') {
+          const key = e.mapping_state.activity_code;
+          const existing = rollupMap.get(key);
+          if (existing) {
+            existing.count += 1;
+            existing.amount += e.amount;
+          } else {
+            rollupMap.set(key, {
+              code: e.mapping_state.activity_code,
+              title: e.mapping_state.activity_title,
+              kind: 'CORE',
+              count: 1,
+              amount: e.amount,
+            });
+          }
+        } else if (e.mapping_state.type === 'apportioned') {
+          for (const alloc of e.mapping_state.allocations) {
+            const existing = rollupMap.get(alloc.activity_code);
+            if (existing) {
+              existing.count += 1;
+              existing.amount += alloc.amount;
+            } else {
+              rollupMap.set(alloc.activity_code, {
+                code: alloc.activity_code,
+                title: alloc.activity_title,
+                kind: 'CORE',
+                count: 1,
+                amount: alloc.amount,
+              });
+            }
+          }
+        }
+      }
+      const activityRollup = Array.from(rollupMap.values())
+        .map((r) => ({
+          code: r.code,
+          title: r.title,
+          kind: r.kind,
+          expenditure_count: r.count,
+          total_amount: r.amount,
+        }))
+        .sort((a, b) => a.code.localeCompare(b.code));
+
+      const input: ApportionmentReportInput = {
+        firm: { name: fetched.firm.name, abn: null },
+        subject_tenant: { name: fetched.subject.name, abn: null },
+        project: {
+          name: fetched.project?.name ?? '(no project)',
+          description: fetched.project?.description ?? null,
+        },
+        claim: {
+          fiscal_year: fetched.claim.fiscal_year,
+          stage: fetched.claim.stage,
+        },
+        expenditures,
+        activity_rollup: activityRollup,
+        totals: {
+          total_expenditure: totalExpenditure,
+          total_apportioned: totalApportioned,
+          total_unmapped: totalUnmapped,
+          total_unmapped_count: totalUnmappedCount,
+          // AUD-only in P4 (CHECK constraint in F4); the column type is
+          // open and we surface whatever the row says — but every row in
+          // this tenant will be AUD.
+          currency: 'AUD',
+        },
+        generated_at: new Date().toISOString(),
+      };
+
+      const bytes = await renderApportionmentReportPdf(input);
+
+      const firmShort = sanitiseFilenamePart(fetched.firm.name);
+      const fyShort = sanitiseFilenamePart(String(fetched.claim.fiscal_year), 8);
+      const filename = `apportionment-${fyShort}-${firmShort}.pdf`;
+
+      void reply
+        .header('Content-Type', 'application/pdf')
+        .header('Content-Disposition', `attachment; filename="${filename}"`)
+        .header('Cache-Control', 'private, no-store');
+      return reply.send(Buffer.from(bytes));
+    },
+  );
+}
+
+/**
+ * Map the DB-level `source` enum to the PDF's `kind` discriminator.
+ *
+ * Four DB values collapse to three PDF kinds:
+ *   - xero_invoice / manual → INVOICE (manual entries are functionally
+ *     invoice-shaped: vendor, reference, single document)
+ *   - xero_bank_tx          → BANK_TX
+ *   - xero_receipt          → RECEIPT
+ *
+ * The regulator-facing document doesn't distinguish "manual vs Xero"
+ * origin — that's an audit-trail concern carried by `source` itself,
+ * not the document kind. The collapse keeps the PDF column terse.
+ */
+function classifyKind(source: string): 'INVOICE' | 'BANK_TX' | 'RECEIPT' {
+  if (source === 'xero_bank_tx') return 'BANK_TX';
+  if (source === 'xero_receipt') return 'RECEIPT';
+  return 'INVOICE';
+}
+
+interface ExpenditureRow {
+  id: string;
+  source: string;
+  source_external_id: string | null;
+  vendor_name: string;
+  reference: string | null;
+  expenditure_date: Date | string;
+  total_amount: string | number;
+  currency: string;
 }
