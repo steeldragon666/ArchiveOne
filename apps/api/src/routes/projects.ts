@@ -116,14 +116,27 @@ export function registerProjects(app: FastifyInstance): void {
     // Confirm the subject_tenant is visible under RLS — guards against
     // cross-firm subject_tenant_id (404) or being asked to create under
     // a soft-deleted claimant.
-    const subjectVisible = await sql.begin(async (tx) => {
-      await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
-      const rows = await tx<{ id: string }[]>`
-        SELECT id FROM subject_tenant
-         WHERE id = ${subject_tenant_id} AND deleted_at IS NULL
-      `;
-      return rows[0] != null;
-    });
+    let subjectVisible: boolean;
+    try {
+      subjectVisible = await sql.begin(async (tx) => {
+        await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+        const rows = await tx<{ id: string }[]>`
+          SELECT id FROM subject_tenant
+           WHERE id = ${subject_tenant_id} AND deleted_at IS NULL
+        `;
+        return rows[0] != null;
+      });
+    } catch (e) {
+      const err = e as Error;
+      console.error('[POST /v1/projects subjectVisible FAILED]', {
+        name: err.name,
+        message: err.message,
+        stack: err.stack?.split('\n').slice(0, 8).join('\n'),
+        tenantId,
+        subject_tenant_id,
+      });
+      throw e;
+    }
     if (!subjectVisible) {
       return reply.status(404).send({
         error: 'subject_tenant_not_found',
@@ -136,24 +149,39 @@ export function registerProjects(app: FastifyInstance): void {
     // started_at/ended_at parameters mirrors the chain.ts pattern —
     // postgres-js v3.4.9 + Node 22 doesn't round-trip Date params on
     // the prepared-statement bind path.
-    const inserted = await sql.begin(async (tx) => {
-      await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
-      const rows = await tx<RawProjectRow[]>`
-        INSERT INTO project (
-          id, tenant_id, subject_tenant_id, name, description,
-          started_at, ended_at
-        )
-        VALUES (
-          ${crypto.randomUUID()}, ${tenantId}, ${subject_tenant_id}, ${name},
-          ${description ?? null},
-          ${started_at}::timestamptz,
-          ${ended_at ?? null}::timestamptz
-        )
-        RETURNING id, tenant_id, subject_tenant_id, name, description,
-                  started_at, ended_at, archived_at, created_at, updated_at
-      `;
-      return rows[0] ?? null;
-    });
+    let inserted: RawProjectRow | null;
+    try {
+      inserted = await sql.begin(async (tx) => {
+        await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+        const rows = await tx<RawProjectRow[]>`
+          INSERT INTO project (
+            id, tenant_id, subject_tenant_id, name, description,
+            started_at, ended_at
+          )
+          VALUES (
+            ${crypto.randomUUID()}, ${tenantId}, ${subject_tenant_id}, ${name},
+            ${description ?? null},
+            ${started_at}::timestamptz,
+            ${ended_at ?? null}::timestamptz
+          )
+          RETURNING id, tenant_id, subject_tenant_id, name, description,
+                    started_at, ended_at, archived_at, created_at, updated_at
+        `;
+        return rows[0] ?? null;
+      });
+    } catch (e) {
+      const err = e as Error;
+      console.error('[POST /v1/projects projectInsert FAILED]', {
+        name: err.name,
+        message: err.message,
+        stack: err.stack?.split('\n').slice(0, 10).join('\n'),
+        tenantId,
+        subject_tenant_id,
+        started_at,
+        ended_at: ended_at ?? null,
+      });
+      throw e;
+    }
     if (!inserted) {
       throw new Error('POST /v1/projects: INSERT returned no row');
     }
