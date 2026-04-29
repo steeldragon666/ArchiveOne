@@ -13,6 +13,7 @@
     { "path": "../../packages/auth" },
     { "path": "../../packages/agents" },
     { "path": "../../packages/audit-score" },
+    { "path": "../../packages/documents" },
     { "path": "../../packages/integrations" }
   ],
   "include": ["src/**/*"],

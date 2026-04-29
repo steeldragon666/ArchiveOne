@@ -26,6 +26,7 @@ import { registerAuditScore } from './routes/audit-score.js';
 import { registerBrandConfig } from './routes/brand-config.js';
 import { registerClaimantMagicLinkRedeem } from './routes/claimant-magic-link.js';
 import { registerClaimantStatus } from './routes/claimant-status.js';
+import { registerClaimPdf } from './routes/claim-pdf.js';
 import { registerClaims } from './routes/claims.js';
 import { registerEmployees } from './routes/employees.js';
 import { registerMagicLinkRedeem } from './routes/magic-link.js';
@@ -206,6 +207,10 @@ export function buildApp(): App {
   });
   app.register((instance, _opts, done) => {
     registerAuditScore(instance);
+    done();
+  });
+  app.register((instance, _opts, done) => {
+    registerClaimPdf(instance);
     done();
   });
   app.register((instance, _opts, done) => {
