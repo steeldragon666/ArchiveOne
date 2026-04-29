@@ -51,18 +51,16 @@ before(async () => {
       tenant_id, id, name, priority, enabled, conditions, action, created_by_user_id
     ) VALUES
       (${TENANT_A}, ${RULE_A1}, 'Rule A1 (high priority)', 10, true,
-       ${'[]'}::jsonb,
-       ${JSON.stringify({ type: 'flag_for_review', reason: 'pre-seeded A1' })}::jsonb,
+       ${[]},
+       ${{ type: 'flag_for_review', reason: 'pre-seeded A1' }},
        ${ADMIN_USER}),
       (${TENANT_A}, ${RULE_A2}, 'Rule A2 (low priority)', 20, true,
-       ${JSON.stringify([
-         { field: 'contact_name', op: 'contains', value: 'Acme', case_insensitive: true },
-       ])}::jsonb,
-       ${JSON.stringify({ type: 'map_to_activity', activity_id: ACTIVITY_X })}::jsonb,
+       ${[{ field: 'contact_name', op: 'contains', value: 'Acme', case_insensitive: true }]},
+       ${{ type: 'map_to_activity', activity_id: ACTIVITY_X }},
        ${ADMIN_USER}),
       (${TENANT_B}, ${RULE_B1}, 'Rule B1 (cross-firm)', 5, true,
-       ${'[]'}::jsonb,
-       ${JSON.stringify({ type: 'flag_for_review', reason: 'firm-B rule' })}::jsonb,
+       ${[]},
+       ${{ type: 'flag_for_review', reason: 'firm-B rule' }},
        ${ADMIN_USER})
   `;
 });
@@ -538,8 +536,8 @@ test('PATCH /v1/mapping-rules/:id: 200 happy + preserves unspecified fields', as
       tenant_id, id, name, priority, enabled, conditions, action, created_by_user_id
     ) VALUES (
       ${TENANT_A}, ${RULE_TMP}, 'Patch Target', 100, true,
-      ${JSON.stringify([{ field: 'currency', op: 'eq', value: 'AUD' }])}::jsonb,
-      ${JSON.stringify({ type: 'flag_for_review', reason: 'orig' })}::jsonb,
+      ${[{ field: 'currency', op: 'eq', value: 'AUD' }]},
+      ${{ type: 'flag_for_review', reason: 'orig' }},
       ${ADMIN_USER}
     )
   `;
@@ -629,8 +627,8 @@ test('PATCH /v1/mapping-rules/:id: 200 lets admin update conditions + action tog
       tenant_id, id, name, priority, enabled, conditions, action, created_by_user_id
     ) VALUES (
       ${TENANT_A}, ${RULE_TMP}, 'Combo Patch', 100, true,
-      ${'[]'}::jsonb,
-      ${JSON.stringify({ type: 'flag_for_review', reason: 'orig' })}::jsonb,
+      ${[]},
+      ${{ type: 'flag_for_review', reason: 'orig' }},
       ${ADMIN_USER}
     )
   `;
@@ -702,8 +700,8 @@ test('DELETE /v1/mapping-rules/:id: 204 admin happy + soft-archives the row', as
       tenant_id, id, name, priority, enabled, conditions, action, created_by_user_id
     ) VALUES (
       ${TENANT_A}, ${RULE_TMP}, 'Delete Target', 100, true,
-      ${'[]'}::jsonb,
-      ${JSON.stringify({ type: 'flag_for_review', reason: 'will be deleted' })}::jsonb,
+      ${[]},
+      ${{ type: 'flag_for_review', reason: 'will be deleted' }},
       ${ADMIN_USER}
     )
   `;

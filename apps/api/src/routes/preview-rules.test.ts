@@ -112,13 +112,18 @@ before(async () => {
   // Lines: each expenditure gets a single line so account_code +
   // description are deterministic. Acme invoice uses '400'
   // (consulting), Officeworks uses '404' (office supplies).
+  // expenditure_line.id has no DB-level default (the Drizzle schema uses
+  // $defaultFn at the ORM layer, which raw SQL bypasses). Generate uuids
+  // explicitly here. TODO(P5): add DB-level DEFAULT gen_random_uuid()
+  // so raw + ORM inserts converge — currently both must remember to
+  // supply an id.
   await privilegedSql`
-    INSERT INTO expenditure_line (expenditure_id, description, account_code, amount)
+    INSERT INTO expenditure_line (id, expenditure_id, description, account_code, amount)
     VALUES
-    (${EXP_ACME_INVOICE}, 'R&D consulting Q1', '400', '1500.00'),
-    (${EXP_OTHER_BANK}, 'Stationery', '404', '250.00'),
-    (${EXP_VOIDED}, 'Coffee meetings', '404', '15.50'),
-    (${EXP_FIRM_B}, 'Firm B work', '400', '500.00')
+    (gen_random_uuid(), ${EXP_ACME_INVOICE}, 'R&D consulting Q1', '400', '1500.00'),
+    (gen_random_uuid(), ${EXP_OTHER_BANK}, 'Stationery', '404', '250.00'),
+    (gen_random_uuid(), ${EXP_VOIDED}, 'Coffee meetings', '404', '15.50'),
+    (gen_random_uuid(), ${EXP_FIRM_B}, 'Firm B work', '400', '500.00')
   `;
 
   await privilegedSql`
@@ -141,24 +146,20 @@ before(async () => {
       tenant_id, id, name, priority, enabled, conditions, action, created_by_user_id
     ) VALUES
     (${TENANT_A}, ${RULE_ACME}, 'Acme R&D consulting', 10, true,
-     ${JSON.stringify([
-       { field: 'contact_name', op: 'contains', value: 'Acme', case_insensitive: true },
-     ])}::jsonb,
-     ${JSON.stringify({ type: 'map_to_activity', activity_id: ACTIVITY_X })}::jsonb,
+     ${[{ field: 'contact_name', op: 'contains', value: 'Acme', case_insensitive: true }]},
+     ${{ type: 'map_to_activity', activity_id: ACTIVITY_X }},
      ${ADMIN_USER}),
     (${TENANT_A}, ${RULE_CATCH_ALL}, 'Catch-all', 100, true,
-     ${'[]'}::jsonb,
-     ${JSON.stringify({ type: 'flag_for_review', reason: 'unmatched' })}::jsonb,
+     ${[]},
+     ${{ type: 'flag_for_review', reason: 'unmatched' }},
      ${ADMIN_USER}),
     (${TENANT_A}, ${RULE_DISABLED}, 'Disabled Acme rule', 5, false,
-     ${JSON.stringify([
-       { field: 'contact_name', op: 'contains', value: 'Acme', case_insensitive: true },
-     ])}::jsonb,
-     ${JSON.stringify({ type: 'map_to_activity', activity_id: ACTIVITY_Y })}::jsonb,
+     ${[{ field: 'contact_name', op: 'contains', value: 'Acme', case_insensitive: true }]},
+     ${{ type: 'map_to_activity', activity_id: ACTIVITY_Y }},
      ${ADMIN_USER}),
     (${TENANT_B}, ${RULE_FIRM_B}, 'Firm B rule', 10, true,
-     ${'[]'}::jsonb,
-     ${JSON.stringify({ type: 'flag_for_review', reason: 'firm B' })}::jsonb,
+     ${[]},
+     ${{ type: 'flag_for_review', reason: 'firm B' }},
      ${ADMIN_USER})
   `;
 });
@@ -568,14 +569,14 @@ test('POST /v1/expenditures/:id/preview-rules: InvalidRuleError from engine surf
       tenant_id, id, name, priority, enabled, conditions, action, created_by_user_id
     ) VALUES (
       ${TENANT_A}, ${RULE_BAD_APPORTION}, 'Bad apportion (sum 50)', 1, true,
-      ${'[]'}::jsonb,
-      ${JSON.stringify({
+      ${[]},
+      ${{
         type: 'apportion',
         allocations: [
           { activity_id: ACTIVITY_X, percentage: 30 },
           { activity_id: ACTIVITY_Y, percentage: 20 }, // sum = 50, invalid
         ],
-      })}::jsonb,
+      }},
       ${ADMIN_USER}
     )
   `;
