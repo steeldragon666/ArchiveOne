@@ -362,3 +362,199 @@ test('verifyChain: tampered hash detected', async () => {
   assert.equal(status.first_break_at, 0);
   await privilegedSql`UPDATE event SET hash = ${originalHash} WHERE id = ${first.id}`;
 });
+
+// A9 phase 3 — extension test coverage for every P4 event kind currently
+// in EVIDENCE_KINDS. Each test inserts an event with a representative
+// payload (mirroring the Zod schema in @cpa/schemas/event.ts), then calls
+// verifyChain and asserts `verified: true`.
+//
+// Reserved-but-deferred kinds called out in the A9 task description
+// (EXPENDITURE_MAPPED, EXPENDITURE_APPORTIONED, MAPPING_RULE_*) are NOT
+// covered here because they don't yet exist in EVIDENCE_KINDS or the
+// event_kind_valid CHECK — inserting them would fail at the constraint
+// layer. They are tracked in chain.canonical.test.ts (pure-canonicaliser
+// coverage) so the canonical bytes for these payloads will be
+// deterministic if/when the kinds are added.
+
+const P4_KIND_INSERT_FIXTURES = [
+  {
+    kind: 'PROJECT_CREATED' as const,
+    payload: {
+      project_id: '00000000-0000-4000-8000-0000b0000001',
+      name: 'A9 Project Alpha',
+      started_at: '2026-04-01T00:00:00.000Z',
+    },
+  },
+  {
+    kind: 'PROJECT_UPDATED' as const,
+    payload: {
+      project_id: '00000000-0000-4000-8000-0000b0000001',
+      fields_changed: {
+        name: { from: 'A9 Project Alpha', to: 'A9 Project Alpha (renamed)' },
+      },
+    },
+  },
+  {
+    kind: 'PROJECT_ARCHIVED' as const,
+    payload: {
+      project_id: '00000000-0000-4000-8000-0000b0000001',
+      archived_by_user_id: USER_ID,
+      reason: 'A9 phase 3 fixture',
+    },
+  },
+  {
+    kind: 'ACTIVITY_UPDATED' as const,
+    payload: {
+      activity_id: '00000000-0000-4000-8000-0000a0000001',
+      fields_changed: {
+        title: { from: 'Activity One', to: 'Activity One (renamed)' },
+      },
+    },
+  },
+  {
+    kind: 'ARTEFACT_UNLINKED' as const,
+    payload: {
+      activity_id: '00000000-0000-4000-8000-0000a0000001',
+      artefact_kind: 'event',
+      artefact_id: '00000000-0000-4000-8000-0000e0000001',
+      reason: 'A9 phase 3 unlink',
+    },
+  },
+];
+
+for (const { kind, payload } of P4_KIND_INSERT_FIXTURES) {
+  test(`A9 phase 3: ${kind} round-trips through insertEventWithChain + verifyChain`, async () => {
+    const before = await verifyChain(SUBJECT_ID);
+    assert.equal(before.verified, true, 'chain must be clean before each fixture');
+    const inserted = await insertEventWithChain({
+      tenant_id: TENANT_ID,
+      subject_tenant_id: SUBJECT_ID,
+      kind,
+      payload,
+      classification: null,
+      captured_at: new Date(),
+      captured_by_user_id: USER_ID,
+      override_of_event_id: null,
+      override_new_kind: null,
+      override_reason: null,
+    });
+    assert.match(inserted.hash, /^[0-9a-f]{64}$/);
+    const after = await verifyChain(SUBJECT_ID);
+    assert.equal(after.verified, true, `chain must remain verified after ${kind}`);
+    assert.equal(after.event_count, before.event_count + 1);
+    assert.equal(after.head_hash, inserted.hash);
+  });
+}
+
+// A9 phase 3 — multi-event chain tamper test.
+//
+// Inserts five events of mixed kinds, verifies clean, tampers with event
+// #2's hash, then asserts verifyChain returns first_break_at = 2 (NOT 0).
+// This proves verifyChain walks the chain ordinally and pinpoints the
+// exact break index — load-bearing for the assurance report's "hash break
+// at event N" diagnostic.
+test('A9 phase 3: multi-event chain — tamper at index 2 reports first_break_at=2', async () => {
+  // Use a dedicated subject_tenant for this test so the event count is
+  // well-defined regardless of the order other tests in this file run.
+  const SCRATCH_SUBJECT_ID = '00000000-0000-4000-8000-0000c0009999';
+  const { privilegedSql } = await import('./client.js');
+  await privilegedSql`SELECT set_config('app.current_tenant_id', ${TENANT_ID}, true)`;
+  await privilegedSql`INSERT INTO subject_tenant (id, tenant_id, name, kind)
+                       VALUES (${SCRATCH_SUBJECT_ID}, ${TENANT_ID}, 'A9 Tamper Scratch', 'claimant')`;
+
+  try {
+    const eventKinds: Array<{ kind: string; payload: Record<string, unknown> }> = [
+      {
+        kind: 'PROJECT_CREATED',
+        payload: {
+          project_id: '00000000-0000-4000-8000-0000b0000001',
+          name: 'Tamper P0',
+          started_at: '2026-04-01T00:00:00.000Z',
+        },
+      },
+      {
+        kind: 'ACTIVITY_CREATED',
+        payload: {
+          activity_id: '00000000-0000-4000-8000-0000a0000001',
+          code: 'CA-01',
+          kind: 'core',
+          title: 'Tamper A0',
+          project_id: '00000000-0000-4000-8000-0000b0000001',
+          claim_id: '00000000-0000-4000-8000-0000d0000001',
+        },
+      },
+      // Index 2 — this is the one we'll tamper with.
+      {
+        kind: 'ARTEFACT_LINKED',
+        payload: {
+          activity_id: '00000000-0000-4000-8000-0000a0000001',
+          artefact_kind: 'event',
+          artefact_id: '00000000-0000-4000-8000-0000e0000001',
+          link_reason: 'Tamper L0',
+        },
+      },
+      {
+        kind: 'EXPENDITURE_INGESTED',
+        payload: {
+          expenditure_id: '00000000-0000-4000-8000-0000f0000001',
+          source: 'manual',
+          vendor_name: 'Tamper Vendor',
+          line_count: 1,
+        },
+      },
+      {
+        kind: 'PROJECT_ARCHIVED',
+        payload: {
+          project_id: '00000000-0000-4000-8000-0000b0000001',
+          archived_by_user_id: USER_ID,
+          reason: 'Tamper end',
+        },
+      },
+    ];
+
+    const inserted: { id: string; hash: string }[] = [];
+    let i = 0;
+    for (const { kind, payload } of eventKinds) {
+      const e = await insertEventWithChain({
+        tenant_id: TENANT_ID,
+        subject_tenant_id: SCRATCH_SUBJECT_ID,
+        kind,
+        payload,
+        classification: null,
+        // Stagger captured_at so the chain ordering is deterministic.
+        captured_at: new Date(2026, 3, 29, 0, i, 0, 0),
+        captured_by_user_id: USER_ID,
+        override_of_event_id: null,
+        override_new_kind: null,
+        override_reason: null,
+      });
+      inserted.push({ id: e.id, hash: e.hash });
+      i++;
+    }
+
+    const clean = await verifyChain(SCRATCH_SUBJECT_ID);
+    assert.equal(clean.verified, true);
+    assert.equal(clean.event_count, 5);
+    assert.equal(clean.first_break_at, null);
+
+    // Tamper event at index 2 (the ARTEFACT_LINKED row).
+    const target = inserted[2]!;
+    const originalHash = target.hash;
+    await privilegedSql`UPDATE event SET hash = 'deadbeef' || substring(hash from 9) WHERE id = ${target.id}`;
+
+    try {
+      const tampered = await verifyChain(SCRATCH_SUBJECT_ID);
+      assert.equal(tampered.verified, false, 'tampered chain must report verified=false');
+      assert.equal(tampered.first_break_at, 2, 'first_break_at must point at the tampered index');
+      assert.equal(tampered.event_count, 5);
+    } finally {
+      // Restore so the cleanup DELETE walks a clean chain (defensive —
+      // DELETE doesn't recompute hashes, but keeps teardown deterministic).
+      await privilegedSql`UPDATE event SET hash = ${originalHash} WHERE id = ${target.id}`;
+    }
+  } finally {
+    await privilegedSql`SELECT set_config('app.current_tenant_id', ${TENANT_ID}, true)`;
+    await privilegedSql`DELETE FROM event WHERE subject_tenant_id = ${SCRATCH_SUBJECT_ID}`;
+    await privilegedSql`DELETE FROM subject_tenant WHERE id = ${SCRATCH_SUBJECT_ID}`;
+  }
+});

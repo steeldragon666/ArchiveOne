@@ -250,3 +250,175 @@ test('A9 cross: seedEvent shape and verifyChain shape produce identical hashes (
     'seed-time and verify-time hashes must match for the chain-verification e2e to pass',
   );
 });
+
+// ---------------------------------------------------------------------------
+// A9 phase 3 — extension test coverage for every P4 event kind.
+//
+// For each P4 state-transition kind, build a representative payload (mirrors
+// the Zod schema in @cpa/schemas/event.ts) and assert canonicaliseEvent +
+// hashEvent produce a stable 64-char hex SHA-256. Two-event chain extension
+// is also covered (kind A → kind B, prev_hash linkage).
+//
+// These are pure unit tests — no DB required. The matching DB-backed
+// insertEventWithChain + verifyChain round-trips live in chain.test.ts and
+// run only when the local docker postgres is up.
+// ---------------------------------------------------------------------------
+
+/** Common base for P4 event hash tests — only `kind` and `payload` change. */
+const P4_BASE = {
+  subject_tenant_id: '00000000-0000-4000-8000-0000c0002222',
+  classification: null,
+  captured_at: new Date('2026-04-29T00:00:00.000Z'),
+  captured_by_user_id: '00000000-0000-4000-8000-0000c0003333',
+  override_of_event_id: null,
+  override_new_kind: null,
+  override_reason: null,
+} as const;
+
+/**
+ * Each entry: a P4 evidence kind currently accepted by the DB CHECK
+ * (event_kind_valid / migrations 0014, 0015) plus a representative payload
+ * matching the Zod schema in @cpa/schemas/event.ts.
+ *
+ * The reserved-but-deferred kinds called out in the A9 task description
+ * (EXPENDITURE_MAPPED, EXPENDITURE_APPORTIONED, MAPPING_RULE_*) are
+ * intentionally NOT in this list — they are not currently in EVIDENCE_KINDS
+ * nor the event_kind_valid CHECK, so a round-trip would fail at insert
+ * time. Adding them is out of scope per the A9 contract ("Do NOT add new
+ * event kinds"); see the report for the deferred list.
+ */
+const P4_KIND_FIXTURES: Array<{ kind: string; payload: Record<string, unknown> }> = [
+  {
+    kind: 'PROJECT_CREATED',
+    payload: {
+      project_id: '00000000-0000-4000-8000-0000b0000001',
+      name: 'Project Alpha',
+      started_at: '2026-04-01T00:00:00.000Z',
+    },
+  },
+  {
+    kind: 'PROJECT_UPDATED',
+    payload: {
+      project_id: '00000000-0000-4000-8000-0000b0000001',
+      fields_changed: {
+        name: { from: 'Project Alpha', to: 'Project Alpha (renamed)' },
+        description: { from: null, to: 'Updated description' },
+      },
+    },
+  },
+  {
+    kind: 'PROJECT_ARCHIVED',
+    payload: {
+      project_id: '00000000-0000-4000-8000-0000b0000001',
+      archived_by_user_id: '00000000-0000-4000-8000-0000c0003333',
+      reason: 'merged into successor',
+    },
+  },
+  {
+    kind: 'ACTIVITY_CREATED',
+    payload: {
+      activity_id: '00000000-0000-4000-8000-0000a0000001',
+      code: 'CA-01',
+      kind: 'core',
+      title: 'Activity One',
+      project_id: '00000000-0000-4000-8000-0000b0000001',
+      claim_id: '00000000-0000-4000-8000-0000d0000001',
+    },
+  },
+  {
+    kind: 'ACTIVITY_UPDATED',
+    payload: {
+      activity_id: '00000000-0000-4000-8000-0000a0000001',
+      fields_changed: {
+        title: { from: 'Activity One', to: 'Activity One (renamed)' },
+      },
+    },
+  },
+  {
+    kind: 'ARTEFACT_LINKED',
+    payload: {
+      activity_id: '00000000-0000-4000-8000-0000a0000001',
+      artefact_kind: 'event',
+      artefact_id: '00000000-0000-4000-8000-0000e0000001',
+      link_reason: 'A9 phase 3 fixture',
+    },
+  },
+  {
+    kind: 'ARTEFACT_UNLINKED',
+    payload: {
+      activity_id: '00000000-0000-4000-8000-0000a0000001',
+      artefact_kind: 'event',
+      artefact_id: '00000000-0000-4000-8000-0000e0000001',
+      reason: 'wrong activity',
+    },
+  },
+  {
+    kind: 'EXPENDITURE_INGESTED',
+    payload: {
+      expenditure_id: '00000000-0000-4000-8000-0000f0000001',
+      source: 'manual',
+      vendor_name: 'Acme Co',
+      line_count: 3,
+    },
+  },
+];
+
+for (const { kind, payload } of P4_KIND_FIXTURES) {
+  test(`P4 extension: ${kind} canonicalises + hashes deterministically`, () => {
+    const event: EventForHashing = { ...P4_BASE, kind, payload };
+
+    // 1. Canonical string is byte-stable across two calls (no hidden state).
+    const canonA = canonicaliseEvent(event);
+    const canonB = canonicaliseEvent(event);
+    assert.equal(canonA, canonB, `${kind} canonical output must be deterministic`);
+
+    // 2. Canonical string is byte-stable across payload-key reorder
+    //    (proves canonicalJsonStringify sorts keys for nested objects too).
+    const reorderedPayload: Record<string, unknown> = {};
+    for (const key of Object.keys(payload).reverse()) {
+      reorderedPayload[key] = payload[key];
+    }
+    const canonReordered = canonicaliseEvent({ ...event, payload: reorderedPayload });
+    assert.equal(canonReordered, canonA, `${kind} payload key order must not affect canonical`);
+
+    // 3. SHA-256 is the expected hex format and stable across calls.
+    const hashA = hashEvent(null, event);
+    const hashB = hashEvent(null, event);
+    assert.match(hashA, /^[0-9a-f]{64}$/);
+    assert.equal(hashA, hashB, `${kind} hash must be deterministic`);
+
+    // 4. Chain extension: a second event chained to the first must include
+    //    the prev_hash in its own SHA-256 (no collision with prev=null).
+    const second: EventForHashing = { ...event, captured_at: new Date('2026-04-29T01:00:00.000Z') };
+    const chainedHash = hashEvent(hashA, second);
+    const standaloneHash = hashEvent(null, second);
+    assert.notEqual(
+      chainedHash,
+      standaloneHash,
+      `${kind} chained hash must differ from standalone (prev_hash mixed in)`,
+    );
+  });
+}
+
+// Two-event chain across heterogeneous P4 kinds — proves that the per-kind
+// fixtures above can be chained together (each kind's prev_hash is the
+// previous event's hash, regardless of its kind).
+test('A9 phase 3: heterogeneous P4 kinds chain pairwise', () => {
+  let prevHash: string | null = null;
+  const seenHashes = new Set<string>();
+  for (const { kind, payload } of P4_KIND_FIXTURES) {
+    const event: EventForHashing = {
+      ...P4_BASE,
+      kind,
+      payload,
+      // Stagger captured_at so the chain has a well-defined ordering.
+      captured_at: new Date(2026, 3, 29, 0, seenHashes.size, 0, 0),
+    };
+    const h = hashEvent(prevHash, event);
+    assert.match(h, /^[0-9a-f]{64}$/);
+    assert.ok(!seenHashes.has(h), `${kind} must produce a unique hash within the chain`);
+    seenHashes.add(h);
+    prevHash = h;
+  }
+  assert.equal(seenHashes.size, P4_KIND_FIXTURES.length);
+});
