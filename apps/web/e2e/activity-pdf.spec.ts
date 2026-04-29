@@ -14,6 +14,13 @@ import {
   seedUser,
 } from './fixtures/test-data';
 
+// Direct API origin for the cross-firm 404 test, which talks to the API
+// host without the Next rewrite. Mirrors the env var read in
+// `apps/web/src/app/claimant/[claimant_id]/_lib/api.ts` so CI environments
+// that pin the API to a non-default port/host can override one variable
+// and have both production code and e2e specs follow.
+const INTERNAL_API_URL = process.env['INTERNAL_API_URL'] ?? 'http://localhost:3000';
+
 /**
  * T-A10 — activity-application PDF download (covers T-A8).
  *
@@ -190,7 +197,7 @@ test.describe('Activity application PDF', () => {
     // the rewrite is HTTP→HTTP so it would 404 the same way, but going
     // direct gives a tighter error envelope to assert against.
     const res = await context.request.get(
-      `http://localhost:3000/v1/activities/${activityB}/application.pdf`,
+      `${INTERNAL_API_URL}/v1/activities/${activityB}/application.pdf`,
     );
     expect(res.status()).toBe(404);
     const body = (await res.json()) as { error: string };

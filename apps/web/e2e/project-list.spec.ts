@@ -101,7 +101,13 @@ test.describe('Project list', () => {
 
     // Switch back to Active, click into the active project.
     await page.getByRole('tab', { name: 'Active', exact: true }).click();
-    await expect(page).toHaveURL(/\/projects(?:\?(?!.*status=).*)?$/);
+    // The Active chip is the default state, so the URL collapses back to
+    // /projects without the `status=` query param. Two assertions are
+    // easier to read than the equivalent `(?!.*status=)` lookahead:
+    // (1) URL is /projects (with or without an unrelated query string),
+    // (2) it does NOT carry a `status=` filter.
+    await expect(page).toHaveURL(/\/projects(\?|$)/);
+    await expect(page).not.toHaveURL(/status=/);
     await page.getByRole('link', { name: new RegExp(activeProjectName, 'i') }).click();
 
     // URL navigates to /projects/{uuid} and the detail header shows the

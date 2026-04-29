@@ -84,17 +84,25 @@ export async function seedSubjectTenant(
 }
 
 /**
- * Clean up subject_tenant rows (and their events + ACL rows + activities
- * + claims + projects) whose name starts with the prefix. Mirrors
- * cleanupBySlugPrefix shape.
+ * Delete subject_tenants whose name matches a prefix, plus their
+ * dependent rows in the correct FK-cascade order:
  *
- * Order: activity → claim → project → event → subject_tenant_user →
- * subject_tenant. Activity references claim + project; claim and
- * project reference subject_tenant; events reference subject_tenant
- * directly. All FKs land on subject_tenant.id, so deleting them in
- * dependency order keeps the FK constraints satisfied. Earlier (P2)
- * specs only seeded events under a subject_tenant, so this teardown
- * was simpler — A10 added project/claim/activity seeding which hangs
+ *   1. activity (FK → claim, project; tenant_id pinned via tenant)
+ *   2. claim (FK → subject_tenant)
+ *   3. project (FK → subject_tenant)
+ *   4. event (FK → subject_tenant only — NOT to activity/claim/project,
+ *      even though A10 register events embed `activity_id` inside the
+ *      payload jsonb. The DB-level relationship is purely
+ *      `event.subject_tenant_id → subject_tenant.id`; the activity_id
+ *      pointer is application-level and is what powers the register
+ *      filter in events.ts (`payload->>'activity_id' = $1`).)
+ *   5. subject_tenant_user (FK → subject_tenant, user)
+ *   6. subject_tenant
+ *
+ * Each DELETE is scoped to subject_tenants matching the prefix; rows
+ * belonging to other test prefixes are not touched. Earlier (P2) specs
+ * only seeded events under a subject_tenant, so this teardown was
+ * simpler — A10 added project/claim/activity seeding which hangs
  * additional rows off the same subject_tenant, hence the wider sweep.
  */
 export async function cleanupSubjectTenantsByNamePrefix(prefix: string): Promise<void> {

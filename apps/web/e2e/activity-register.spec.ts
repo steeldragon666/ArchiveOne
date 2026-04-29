@@ -162,12 +162,15 @@ test.describe('Activity uncertainty register', () => {
     await expect(page.getByText('CA-001', { exact: true })).toBeVisible();
 
     // Three kind chips render via KindChip — uppercase kind strings.
-    // Use first()/scoped queries because the kind string can also appear
-    // in chart legends or aria-live regions. The chips are in the cards
-    // section so a strict-mode-friendly count is enough.
-    await expect(page.getByText('HYPOTHESIS').first()).toBeVisible();
-    await expect(page.getByText('OBSERVATION').first()).toBeVisible();
-    await expect(page.getByText('ACTIVITY_UPDATED').first()).toBeVisible();
+    // Scope to the register cards (rendered as <article> via the
+    // UncertaintyFeed component) rather than `.first()` against the
+    // whole page; otherwise a regression that drops the chip from the
+    // cards but leaves the kind string in a chart legend or aria-live
+    // region would silently still pass.
+    const cards = page.getByRole('article');
+    await expect(cards.getByText('HYPOTHESIS', { exact: true })).toBeVisible();
+    await expect(cards.getByText('OBSERVATION', { exact: true })).toBeVisible();
+    await expect(cards.getByText('ACTIVITY_UPDATED', { exact: true })).toBeVisible();
 
     // Each card's summary line — driven by summariseEvent. Truncated
     // raw_text for the classifier-emitted events; "Updated: ..." for
