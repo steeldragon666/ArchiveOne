@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { requireSession } from '@cpa/auth';
 import { sql } from '@cpa/db/client';
+import type { ExpenditureSource } from '@cpa/db/schema';
 import {
   renderApportionmentReportPdf,
   renderClaimSummaryPdf,
@@ -97,6 +98,17 @@ interface ActivityRow {
 interface ExpenditureSummaryRow {
   total_amount: string | number | null;
   count_total: string | number | null;
+}
+
+interface ExpenditureRow {
+  id: string;
+  source: ExpenditureSource;
+  source_external_id: string | null;
+  vendor_name: string;
+  reference: string | null;
+  expenditure_date: Date | string;
+  total_amount: string | number;
+  currency: string;
 }
 
 const isoOrNull = (v: Date | string | null | undefined): string | null => {
@@ -495,12 +507,34 @@ export function registerClaimPdf(app: FastifyInstance): void {
       // When events land, walk the expenditures and accumulate per-
       // activity counts + amounts (one entry per distinct activity
       // code, even if multiple expenditures map there).
+      //
+      // TODO(C9-followup-kind): when EXPENDITURE_MAPPED events emit, the
+      // route should join `activity` (by claim_id + code) to populate
+      // `activity_kind` on each mapping_state.mapped /
+      // mapping_state.apportioned.allocations entry. Until then, the
+      // rollup is empty (no events, no rows), so the placeholder is
+      // unreachable in production but rendered correctly in tests with
+      // synthetic input. The renderer falls back to '—' (em dash) when
+      // kind is undefined rather than silently relabelling SUPPORTING
+      // activities as 'Core'.
       const rollupMap = new Map<
         string,
-        { code: string; title: string; kind: 'CORE' | 'SUPPORTING'; count: number; amount: number }
+        {
+          code: string;
+          title: string;
+          kind?: 'CORE' | 'SUPPORTING';
+          count: number;
+          amount: number;
+        }
       >();
       // The TODO above will populate this map; today the loop is a
       // no-op because every mapping_state.type === 'unmapped'.
+      //
+      // `kind` is set conditionally (spread on the literal) so an
+      // undefined value doesn't surface as an explicit `kind: undefined`
+      // property — the workspace runs `exactOptionalPropertyTypes: true`,
+      // which rejects that shape against the optional-`kind?:` rollup
+      // entry type.
       for (const e of expenditures) {
         if (e.mapping_state.type === 'mapped') {
           const key = e.mapping_state.activity_code;
@@ -509,10 +543,14 @@ export function registerClaimPdf(app: FastifyInstance): void {
             existing.count += 1;
             existing.amount += e.amount;
           } else {
+            const kind = e.mapping_state.activity_kind;
             rollupMap.set(key, {
               code: e.mapping_state.activity_code,
               title: e.mapping_state.activity_title,
-              kind: 'CORE',
+              // Pass through whatever the upstream mapping carries; the
+              // route join (TODO above) will populate this once events
+              // land. Today: undefined → renderer shows em-dash.
+              ...(kind !== undefined ? { kind } : {}),
               count: 1,
               amount: e.amount,
             });
@@ -524,10 +562,11 @@ export function registerClaimPdf(app: FastifyInstance): void {
               existing.count += 1;
               existing.amount += alloc.amount;
             } else {
+              const kind = alloc.activity_kind;
               rollupMap.set(alloc.activity_code, {
                 code: alloc.activity_code,
                 title: alloc.activity_title,
-                kind: 'CORE',
+                ...(kind !== undefined ? { kind } : {}),
                 count: 1,
                 amount: alloc.amount,
               });
@@ -539,7 +578,12 @@ export function registerClaimPdf(app: FastifyInstance): void {
         .map((r) => ({
           code: r.code,
           title: r.title,
-          kind: r.kind,
+          // Conditionally include `kind` so undefined doesn't surface as
+          // an explicit `kind: undefined` property under
+          // exactOptionalPropertyTypes (renderer treats absence and
+          // explicit-undefined identically; this keeps the wire shape
+          // clean and the type narrow).
+          ...(r.kind !== undefined ? { kind: r.kind } : {}),
           expenditure_count: r.count,
           total_amount: r.amount,
         }))
@@ -598,20 +642,20 @@ export function registerClaimPdf(app: FastifyInstance): void {
  * The regulator-facing document doesn't distinguish "manual vs Xero"
  * origin — that's an audit-trail concern carried by `source` itself,
  * not the document kind. The collapse keeps the PDF column terse.
+ *
+ * `source` is typed as `ExpenditureSource` (the enum from `@cpa/db`)
+ * rather than a loose `string`. When a future migration adds a 5th
+ * source value, the typecheck fails at this site and forces an
+ * explicit decision instead of falling through to INVOICE.
  */
-function classifyKind(source: string): 'INVOICE' | 'BANK_TX' | 'RECEIPT' {
-  if (source === 'xero_bank_tx') return 'BANK_TX';
-  if (source === 'xero_receipt') return 'RECEIPT';
-  return 'INVOICE';
-}
-
-interface ExpenditureRow {
-  id: string;
-  source: string;
-  source_external_id: string | null;
-  vendor_name: string;
-  reference: string | null;
-  expenditure_date: Date | string;
-  total_amount: string | number;
-  currency: string;
+function classifyKind(source: ExpenditureSource): 'INVOICE' | 'BANK_TX' | 'RECEIPT' {
+  switch (source) {
+    case 'xero_bank_tx':
+      return 'BANK_TX';
+    case 'xero_receipt':
+      return 'RECEIPT';
+    case 'xero_invoice':
+    case 'manual':
+      return 'INVOICE';
+  }
 }

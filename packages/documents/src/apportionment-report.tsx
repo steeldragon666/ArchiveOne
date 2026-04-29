@@ -45,12 +45,26 @@ import { Document, Page, View, Text, StyleSheet, pdf } from '@react-pdf/renderer
 
 export type ApportionmentMappingState =
   | { type: 'unmapped' }
-  | { type: 'mapped'; activity_code: string; activity_title: string }
+  | {
+      type: 'mapped';
+      activity_code: string;
+      activity_title: string;
+      // Optional today: when EXPENDITURE_MAPPED events flow, the route
+      // joins activity (by claim_id + code) to populate kind. Until then
+      // it's undefined and the rollup renders an em-dash placeholder
+      // rather than silently relabelling SUPPORTING activities as 'Core'.
+      // See `TODO(C9-followup-kind)` at the route's rollup site.
+      activity_kind?: 'CORE' | 'SUPPORTING';
+    }
   | {
       type: 'apportioned';
       allocations: ReadonlyArray<{
         activity_code: string;
         activity_title: string;
+        // See `mapped.activity_kind` above — same population path, same
+        // fallback, applied per-allocation because an apportioned
+        // expenditure can split across activities of different kinds.
+        activity_kind?: 'CORE' | 'SUPPORTING';
         percentage: number;
         amount: number;
       }>;
@@ -71,7 +85,15 @@ export type ApportionmentExpenditure = {
 export type ApportionmentActivityRollup = {
   code: string;
   title: string;
-  kind: 'CORE' | 'SUPPORTING';
+  /**
+   * Optional today: rollups derived from mapping_states whose
+   * `activity_kind` is unset render the kind cell as '—' rather than
+   * defaulting silently to 'Core'. When the route layer joins activity
+   * to populate `activity_kind` on the upstream mapping_state, this
+   * becomes a populated 'CORE' | 'SUPPORTING'. See
+   * `TODO(C9-followup-kind)` at the route's rollup site.
+   */
+  kind?: 'CORE' | 'SUPPORTING';
   /** Distinct expenditures contributing to this activity. */
   expenditure_count: number;
   /** Sum across this activity's allocations, in claim currency. */
@@ -300,7 +322,11 @@ function ActivityRollupTable(props: { input: ApportionmentReportInput }): React.
               <Text style={[styles.td, styles.rollupColCode]}>{a.code}</Text>
               <Text style={[styles.td, styles.rollupColTitle]}>{a.title}</Text>
               <Text style={[styles.td, styles.rollupColKind]}>
-                {a.kind === 'CORE' ? 'Core' : 'Supporting'}
+                {/* Em-dash when activity_kind is undefined (today's reality —
+                    EXPENDITURE_MAPPED events don't emit yet, so the rollup is
+                    empty in production; see route comment at the rollup site).
+                    Renders correctly under tests with synthetic input. */}
+                {a.kind === 'CORE' ? 'Core' : a.kind === 'SUPPORTING' ? 'Supporting' : '—'}
               </Text>
               <Text style={[styles.td, styles.rollupColCount]}>{a.expenditure_count}</Text>
               <Text style={[styles.td, styles.rollupColAmount]}>
