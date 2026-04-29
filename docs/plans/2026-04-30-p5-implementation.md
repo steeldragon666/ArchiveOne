@@ -30,15 +30,15 @@
 **Worktree**: `p5a`. **Theme**: 1. **Depends on**: none. **Effort**: ~3 hours.
 
 **Files:**
-- Create: `packages/db/migrations/0018_claim_project_id.sql`
-- Modify: `packages/db/migrations/meta/_journal.json` (append idx 18)
+- Create: `packages/db/migrations/0019_claim_project_id.sql`
+- Modify: `packages/db/migrations/meta/_journal.json` (append idx 19)
 - Modify: `packages/db/src/schema/claim.ts` (add column)
 - Test: `packages/db/src/migrations.test.ts` (add round-trip assertion)
 
 **Step 1: Write the failing migration test**
 
 ```ts
-test('migration 0018: claim.project_id is nullable + indexed + backfills from activity', async () => {
+test('migration 0019: claim.project_id is nullable + indexed + backfills from activity', async () => {
   await applyMigrations({ uptoIdx: 18 });
   // Seed firm + subject_tenant + project + claim + activity (activity has project_id)
   const claim = await privilegedSql`
@@ -51,14 +51,14 @@ test('migration 0018: claim.project_id is nullable + indexed + backfills from ac
 **Step 2: Run to confirm fail**
 
 ```bash
-pnpm --filter @cpa/db test src/migrations.test.ts -- -t "migration 0018"
-# Expected: FAIL — migration 0018 does not exist
+pnpm --filter @cpa/db test src/migrations.test.ts -- -t "migration 0019"
+# Expected: FAIL — migration 0019 does not exist
 ```
 
 **Step 3: Write migration SQL**
 
 ```sql
--- 0018_claim_project_id.sql
+-- 0019_claim_project_id.sql
 ALTER TABLE claim ADD COLUMN project_id uuid REFERENCES project(id);
 CREATE INDEX claim_project_id_idx ON claim (project_id);
 
@@ -83,20 +83,20 @@ projectId: uuid('project_id').references(() => project.id),
 
 ```json
 // packages/db/migrations/meta/_journal.json
-{ "idx": 18, "tag": "0018_claim_project_id", ... }
+{ "idx": 19, "tag": "0019_claim_project_id", ... }
 ```
 
 **Step 6: Run test, confirm pass**
 
 ```bash
-pnpm --filter @cpa/db test src/migrations.test.ts -- -t "migration 0018"
+pnpm --filter @cpa/db test src/migrations.test.ts -- -t "migration 0019"
 # Expected: PASS
 ```
 
 **Step 7: Commit**
 
 ```bash
-git add packages/db/migrations/0018_claim_project_id.sql packages/db/migrations/meta/_journal.json packages/db/src/schema/claim.ts packages/db/src/migrations.test.ts
+git add packages/db/migrations/0019_claim_project_id.sql packages/db/migrations/meta/_journal.json packages/db/src/schema/claim.ts packages/db/src/migrations.test.ts
 git commit -m "feat(db): add claim.project_id (nullable, indexed) + backfill from activity"
 git push origin p5a/denormalization
 ```
@@ -108,8 +108,8 @@ git push origin p5a/denormalization
 **Worktree**: `p5a`. **Theme**: 1. **Depends on**: none. **Effort**: ~2 hours.
 
 **Files:**
-- Create: `packages/db/migrations/0019_expenditure_claim_id.sql`
-- Modify: `packages/db/migrations/meta/_journal.json` (append idx 19)
+- Create: `packages/db/migrations/0020_expenditure_claim_id.sql`
+- Modify: `packages/db/migrations/meta/_journal.json` (append idx 20)
 - Modify: `packages/db/src/schema/expenditure.ts`
 
 **Step 1: Test** — round-trip insert with `claim_id` set; query by claim_id returns row.
@@ -117,7 +117,7 @@ git push origin p5a/denormalization
 **Step 2: Migration**
 
 ```sql
--- 0019_expenditure_claim_id.sql
+-- 0020_expenditure_claim_id.sql
 ALTER TABLE expenditure ADD COLUMN claim_id uuid REFERENCES claim(id);
 CREATE INDEX expenditure_claim_id_idx ON expenditure (claim_id);
 -- No backfill — unmapped expenditures are a real state. Populated by Theme 5.
@@ -138,7 +138,7 @@ git commit -m "feat(db): add expenditure.claim_id (nullable, indexed)"
 **Worktree**: `p5a`. **Theme**: 1. **Depends on**: none (but Theme 5 uses it). **Effort**: ~2 hours.
 
 **Files:**
-- Create: `packages/db/migrations/0020_expenditure_line_number.sql`
+- Create: `packages/db/migrations/0021_expenditure_line_number.sql`
 - Modify: `apps/api/src/routes/preview-rules.ts:286, 415` (the two `ORDER BY id ASC` callsites — replace with `ORDER BY line_number ASC, id ASC`)
 
 **Step 1: Test** — multi-line expenditure returns first line by `line_number`, not by UUID.
@@ -154,7 +154,7 @@ test('preview-rules: multi-line expenditure picks line_number=1, not UUID-first'
 **Step 2: Migration**
 
 ```sql
--- 0020_expenditure_line_number.sql
+-- 0021_expenditure_line_number.sql
 ALTER TABLE expenditure_line ADD COLUMN line_number integer NOT NULL DEFAULT 1;
 CREATE UNIQUE INDEX expenditure_line_number_unique
   ON expenditure_line (expenditure_id, line_number);
@@ -286,7 +286,7 @@ git commit -m "feat(api): add ?project_id= filter to GET /v1/events"
 **Worktree**: `p5b`. **Theme**: 2. **Depends on**: none. **Effort**: ~6 hours.
 
 **Files:**
-- Create: `packages/db/migrations/0021_audit_log_table.sql`
+- Create: `packages/db/migrations/0022_audit_log_table.sql`
 - Create: `packages/db/src/schema/audit_log.ts`
 - Modify: `apps/api/src/auth/middleware.ts` (set `app.current_firm_id` GUC alongside existing `app.current_tenant_id`)
 - Create: `apps/api/src/routes/audit-log.test.ts` (RLS positive-control test — NEW PRECEDENT)
@@ -325,7 +325,7 @@ test('audit_log RLS: GUC unset → query returns no rows', async () => {
 **Step 3: Migration**
 
 ```sql
--- 0021_audit_log_table.sql
+-- 0022_audit_log_table.sql
 CREATE TABLE audit_log (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   firm_id       uuid NOT NULL REFERENCES firm(id) ON DELETE CASCADE,
@@ -376,12 +376,12 @@ git commit -m "feat(db,api): add audit_log table + RLS + firm_id GUC plumbing"
 - Create: `packages/schemas/src/audit.ts` (new — `AUDIT_KINDS`, payload Zod schemas)
 - Modify: `packages/schemas/src/event.ts` (remove the three `MAPPING_RULE_*` entries from `evidenceKind`)
 - Modify: `packages/db/src/schema/event.ts` (remove from `EVIDENCE_KINDS`)
-- Create: `packages/db/migrations/0022_remove_mapping_rule_from_event_kinds.sql`
+- Create: `packages/db/migrations/0023_remove_mapping_rule_from_event_kinds.sql`
 
 **Migration**
 
 ```sql
--- 0022_remove_mapping_rule_from_event_kinds.sql
+-- 0023_remove_mapping_rule_from_event_kinds.sql
 -- The event_kind_valid CHECK constraint was rebuilt in 0017 to include MAPPING_RULE_*.
 -- Now rebuild it to exclude them.
 ALTER TABLE event DROP CONSTRAINT event_kind_valid;
@@ -474,7 +474,7 @@ git commit -m "feat(api): emit MAPPING_RULE_CREATED/UPDATED/ARCHIVED to audit_lo
 **Files:**
 - Modify: `packages/schemas/src/event.ts` (add to `evidenceKind` enum + add `ExpenditureMappedPayload` Zod schema)
 - Modify: `packages/db/src/schema/event.ts` (add to `EVIDENCE_KINDS`)
-- Create: `packages/db/migrations/0023_expenditure_mapped_kind.sql` (rebuild `event_kind_valid` CHECK)
+- Create: `packages/db/migrations/0024_expenditure_mapped_kind.sql` (rebuild `event_kind_valid` CHECK)
 - Modify: `packages/db/src/chain.canonical.test.ts` (add to `P4_KIND_FIXTURES` — replaces the `TODO(B9-emission)` anchor)
 - Modify: `packages/db/src/chain.test.ts` (add to `P4_KIND_INSERT_FIXTURES`)
 
