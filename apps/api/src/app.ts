@@ -15,6 +15,9 @@ import {
 import { createLogger } from '@cpa/observability';
 import { sessionPlugin } from '@cpa/auth';
 import { registerHostnameTenantResolver } from './middleware/hostname-tenant-resolver.js';
+import { registerActivities } from './routes/activities.js';
+import { registerActivityPdf } from './routes/activity-pdf.js';
+import { registerArtefactLinks } from './routes/artefact-links.js';
 import { registerGoogleAuth } from './routes/auth/google.js';
 import { registerMicrosoftAuth } from './routes/auth/microsoft.js';
 import { registerSignout } from './routes/auth/signout.js';
@@ -23,6 +26,7 @@ import { registerAuditScore } from './routes/audit-score.js';
 import { registerBrandConfig } from './routes/brand-config.js';
 import { registerClaimantMagicLinkRedeem } from './routes/claimant-magic-link.js';
 import { registerClaimantStatus } from './routes/claimant-status.js';
+import { registerClaims } from './routes/claims.js';
 import { registerEmployees } from './routes/employees.js';
 import { registerMagicLinkRedeem } from './routes/magic-link.js';
 import { registerMedia } from './routes/media.js';
@@ -30,6 +34,7 @@ import { registerMobileEvents } from './routes/mobile-events.js';
 import { registerRefreshRoute } from './routes/mobile-session.js';
 import { registerEvents } from './routes/events.js';
 import { registerIntegrations } from './routes/integrations.js';
+import { registerProjects } from './routes/projects.js';
 import { registerSigning, registerDocuSignWebhookPlugin } from './routes/signing.js';
 import { registerSubjectTenants } from './routes/subject-tenants.js';
 import { registerTimeEntries } from './routes/time-entries.js';
@@ -219,6 +224,26 @@ export function buildApp(): App {
   });
   app.register((instance, _opts, done) => {
     registerIntegrations(instance);
+    done();
+  });
+  app.register((instance, _opts, done) => {
+    registerClaims(instance);
+    done();
+  });
+  app.register((instance, _opts, done) => {
+    registerProjects(instance);
+    done();
+  });
+  app.register((instance, _opts, done) => {
+    registerActivities(instance);
+    done();
+  });
+  app.register((instance, _opts, done) => {
+    registerArtefactLinks(instance);
+    done();
+  });
+  app.register((instance, _opts, done) => {
+    registerActivityPdf(instance);
     done();
   });
   app.register((instance, _opts, done) => {

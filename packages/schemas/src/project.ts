@@ -33,12 +33,85 @@ export type Project = z.infer<typeof Project>;
  * title until the consultant fleshes it out.
  *
  * `tenant_id` is derived from the session, not the body.
+ *
+ * `.refine()` rejects an inverted date range — `ended_at >= started_at`
+ * when both are present. Mirrors the `createManualTimeEntryBody` pattern
+ * (compares via `new Date()` to be safe across timezone offsets).
  */
-export const CreateProjectBody = z.object({
-  subject_tenant_id: Uuid,
-  name: z.string().min(1).max(200),
-  description: z.string().optional(),
-  started_at: Iso8601,
-  ended_at: Iso8601.optional(),
-});
+export const CreateProjectBody = z
+  .object({
+    subject_tenant_id: Uuid,
+    name: z.string().min(1).max(200),
+    description: z.string().optional(),
+    started_at: Iso8601,
+    ended_at: Iso8601.optional(),
+  })
+  .refine((b) => b.ended_at == null || new Date(b.started_at) <= new Date(b.ended_at), {
+    message: 'ended_at must be on or after started_at',
+    path: ['ended_at'],
+  });
 export type CreateProjectBody = z.infer<typeof CreateProjectBody>;
+
+/**
+ * PATCH /v1/projects/:id body — partial update.
+ *
+ * Identity / lifecycle markers (`subject_tenant_id`, `archived_at`,
+ * `created_at`, `updated_at`) are NOT updatable through this body:
+ *   - moving a project between claimants requires a separate flow
+ *     (out of scope for P4),
+ *   - archive uses DELETE /v1/projects/:id (sets `archived_at`),
+ *   - timestamps are server-managed.
+ *
+ * `description` and `ended_at` accept null so the consultant can
+ * explicitly clear them — the `.nullable().optional()` chain mirrors
+ * `UpdateActivityBody`.
+ *
+ * `.strict()` rejects unknown keys with a 400 — protects against
+ * silent typos like `{starts_at: ...}` (note the `s`).
+ *
+ * `.refine()` fires ONLY when both `started_at` and `ended_at` are
+ * present in the patch — that's the simple cross-field case we can
+ * validate without the existing row. The fuller cross-field check
+ * (combining patch with the existing row when only one of the two is
+ * being updated) lives in the route handler in `apps/api/src/routes/
+ * projects.ts`.
+ */
+export const UpdateProjectBody = z
+  .object({
+    name: z.string().min(1).max(200).optional(),
+    description: z.string().nullable().optional(),
+    started_at: Iso8601.optional(),
+    ended_at: Iso8601.nullable().optional(),
+  })
+  .strict()
+  .refine(
+    (b) =>
+      b.started_at === undefined ||
+      b.ended_at === undefined ||
+      b.ended_at === null ||
+      new Date(b.started_at) <= new Date(b.ended_at),
+    { message: 'ended_at must be on or after started_at', path: ['ended_at'] },
+  );
+export type UpdateProjectBody = z.infer<typeof UpdateProjectBody>;
+
+/**
+ * GET /v1/projects query — optional `subject_tenant_id` filter.
+ * RLS already filters cross-firm rows; this narrows further within
+ * a firm to projects belonging to one claimant.
+ */
+export const ListProjectsQuery = z.object({
+  subject_tenant_id: Uuid.optional(),
+});
+export type ListProjectsQuery = z.infer<typeof ListProjectsQuery>;
+
+/**
+ * DELETE /v1/projects/:id is a soft-delete that sets `archived_at`.
+ * The optional body lets a consultant attach a free-text rationale
+ * that's persisted on the PROJECT_ARCHIVED event payload.
+ */
+export const ArchiveProjectBody = z
+  .object({
+    reason: z.string().min(1).max(2000).optional(),
+  })
+  .strict();
+export type ArchiveProjectBody = z.infer<typeof ArchiveProjectBody>;

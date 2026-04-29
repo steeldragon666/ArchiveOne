@@ -41,16 +41,30 @@ export function canonicaliseEvent(e: EventForHashing): string {
   // identical canonical bytes — and therefore the same SHA-256 hash —
   // they had pre-migration. New mobile events (employee_id set,
   // user_id null) get a different canonical shape; no collision.
+  //
+  // A9 hardening: the include test treats both `undefined` (seedEvent
+  // path, which omits the property entirely from the EventForHashing
+  // literal) and `null` (verifyChain path, which feeds the column
+  // through `?? null`) as "absent", so the canonical string is
+  // byte-identical either way. The previous form relied on loose
+  // equality (`!= null`) for the same effect; this explicit guard is
+  // easier to reason about and survives a hypothetical future lint
+  // rule banning loose equality. See chain.canonical.test.ts H1.
+  const employeeId = e.captured_by_employee_id;
   return canonicalJsonStringify({
     subject_tenant_id: e.subject_tenant_id,
     kind: e.kind,
     payload: e.payload,
     classification: e.classification,
+    // captured_at is normalised via toISOString() so callers can pass
+    // either a Date (insertEventWithChain path) or whatever postgres-js
+    // returns from a timestamptz column without drifting the canonical
+    // bytes.
     captured_at: e.captured_at.toISOString(),
     captured_by_user_id: e.captured_by_user_id,
-    ...(e.captured_by_employee_id != null
-      ? { captured_by_employee_id: e.captured_by_employee_id }
-      : {}),
+    ...(employeeId === undefined || employeeId === null
+      ? {}
+      : { captured_by_employee_id: employeeId }),
     override_of_event_id: e.override_of_event_id ?? null,
     override_new_kind: e.override_new_kind ?? null,
     override_reason: e.override_reason ?? null,

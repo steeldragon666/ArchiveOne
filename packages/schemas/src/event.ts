@@ -18,12 +18,13 @@ import { EXPENDITURE_SOURCES_LITERAL } from './expenditure.js';
  *
  * KEEP IN SYNC WITH:
  *   1. `EVIDENCE_KINDS` in `@cpa/db/schema/event.ts`
- *   2. The `event_kind_valid` CHECK in `migrations/0006_fair_network.sql`
- *      and `migrations/0014_p4_evidence_kinds.sql`
+ *   2. The `event_kind_valid` CHECK in `migrations/0006_fair_network.sql`,
+ *      `migrations/0014_p4_evidence_kinds.sql`, and
+ *      `migrations/0015_project_updated_kind.sql`
  *
  * Order matches `@cpa/db` byte-for-byte: the first 13 entries
  * (HYPOTHESIS through OVERRIDE) are R&D evidence classifications;
- * the 14 P4 entries are state-transition events (entity created,
+ * the 15 P4 entries are state-transition events (entity created,
  * claim advanced, etc.) and cannot be re-classified via OVERRIDE
  * (see {@link classifiableKind}, which is the override-eligible
  * subset and is unchanged from P0–P3).
@@ -43,7 +44,8 @@ export const evidenceKind = z.enum([
   'INELIGIBLE',
   'OVERRIDE',
   // P4 state-transition events (must match `EVIDENCE_KINDS` in
-  // @cpa/db/schema/event.ts and the CHECK in 0014_p4_evidence_kinds.sql)
+  // @cpa/db/schema/event.ts and the CHECK in 0014_p4_evidence_kinds.sql /
+  // 0015_project_updated_kind.sql)
   'ACTIVITY_CREATED',
   'ACTIVITY_UPDATED',
   'ACTIVITY_LOCKED',
@@ -58,6 +60,9 @@ export const evidenceKind = z.enum([
   'PROJECT_CREATED',
   'PROJECT_ARCHIVED',
   'DOCUMENT_GENERATED',
+  // Added in T-A1 (0015_project_updated_kind.sql) — emitted by
+  // PATCH /v1/projects/:id, mirrors ACTIVITY_UPDATED.
+  'PROJECT_UPDATED',
 ]);
 export type EvidenceKind = z.infer<typeof evidenceKind>;
 
@@ -233,13 +238,63 @@ export type ListEventsFilter = z.infer<typeof listEventsFilter>;
  * limit defaults to 50 (max 200) — matches the consultant portal feed
  * default. cursor is opaque base64; clients pass next_cursor verbatim
  * to get the next page.
+ *
+ * Scope: at least one of `subject_tenant_id` or `activity_id` MUST be
+ * supplied — both narrow the visible row set to a specific entity.
+ *   - `subject_tenant_id` is the canonical claimant scope; matches the
+ *     view's FK column directly.
+ *   - `activity_id` filters on `payload->>'activity_id'` and is used by
+ *     the A6 technical uncertainty register. The route resolves the
+ *     activity under RLS (cross-firm → 404) and infers subject_tenant_id
+ *     from it when not supplied.
+ *   - `kind` is a comma-delimited list of evidenceKind values. When
+ *     omitted the route returns all kinds; when supplied each value
+ *     must be a valid evidenceKind. The route widens this to a SQL
+ *     `kind IN (...)` predicate. Used by the A6 register page to scope
+ *     to the seven uncertainty kinds (HYPOTHESIS, UNCERTAINTY, etc.).
+ *
+ * `kind` is parsed as a comma-delimited string at the wire boundary
+ * (URL query params don't have a native list type) and exposed as a
+ * `string[]` to the route handler. Empty list ⇒ no filter.
  */
-export const listEventsQuery = z.object({
-  subject_tenant_id: Uuid,
-  filter: listEventsFilter.default('all'),
-  limit: z.coerce.number().int().min(1).max(200).default(50),
-  cursor: z.string().optional(),
-});
+export const listEventsQuery = z
+  .object({
+    subject_tenant_id: Uuid.optional(),
+    activity_id: Uuid.optional(),
+    filter: listEventsFilter.default('all'),
+    limit: z.coerce.number().int().min(1).max(200).default(50),
+    cursor: z.string().optional(),
+    // Comma-delimited list of evidenceKind values; transformed to an
+    // array of validated kinds. Empty / missing ⇒ undefined (no filter).
+    kind: z
+      .string()
+      .optional()
+      .transform((s, ctx) => {
+        if (s === undefined || s === '') return undefined;
+        const parts = s
+          .split(',')
+          .map((p) => p.trim())
+          .filter((p) => p.length > 0);
+        if (parts.length === 0) return undefined;
+        const result: EvidenceKind[] = [];
+        for (const part of parts) {
+          const parsed = evidenceKind.safeParse(part);
+          if (!parsed.success) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: `Unknown event kind: ${part}`,
+            });
+            return z.NEVER;
+          }
+          result.push(parsed.data);
+        }
+        return result;
+      }),
+  })
+  .refine((q) => q.subject_tenant_id !== undefined || q.activity_id !== undefined, {
+    message: 'Either subject_tenant_id or activity_id is required',
+    path: ['subject_tenant_id'],
+  });
 export type ListEventsQuery = z.infer<typeof listEventsQuery>;
 
 /**
@@ -351,6 +406,15 @@ export type ArtefactLinkedPayload = z.infer<typeof ArtefactLinkedPayload>;
 /**
  * ARTEFACT_UNLINKED — the inverse of ARTEFACT_LINKED. `reason` is
  * optional free-text (e.g. "wrong activity", "duplicate").
+ *
+ * Pairing: the chain is append-only, so an UNLINKED event references
+ * its LINKED counterpart by `(activity_id, artefact_kind, artefact_id)`
+ * + temporal ordering — the helper at
+ * `apps/api/src/lib/activity-artefacts.ts` materialises "currently linked
+ * artefacts" by walking events for an activity in `captured_at` order
+ * and toggling each (kind, artefact_id) pair on/off as LINKED/UNLINKED
+ * arrive. Re-link (LINKED → UNLINKED → LINKED) leaves the artefact
+ * visible because the second LINK fires after the UNLINK.
  */
 export const ArtefactUnlinkedPayload = z.object({
   activity_id: Uuid,
@@ -359,6 +423,41 @@ export const ArtefactUnlinkedPayload = z.object({
   reason: z.string().optional(),
 });
 export type ArtefactUnlinkedPayload = z.infer<typeof ArtefactUnlinkedPayload>;
+
+/**
+ * POST /v1/activities/:id/artefact-links body.
+ *
+ * `artefact_kind` mirrors the four artefact target tables (see
+ * {@link artefactKind}). `artefact_id` must reference a row in the
+ * matching table within the caller's tenant — the route does an RLS-
+ * scoped existence check to enforce this. `link_reason` is optional
+ * free-text and is persisted on the ARTEFACT_LINKED event payload.
+ *
+ * `.strict()` rejects unknown keys (defends against typos like
+ * `artefactKind` camelCase or stray `tenant_id`).
+ */
+export const CreateArtefactLinkBody = z
+  .object({
+    artefact_kind: artefactKind,
+    artefact_id: Uuid,
+    link_reason: z.string().min(1).max(2000).optional(),
+  })
+  .strict();
+export type CreateArtefactLinkBody = z.infer<typeof CreateArtefactLinkBody>;
+
+/**
+ * DELETE /v1/activities/:id/artefact-links/:event_id body.
+ *
+ * Optional — the DELETE route accepts either an empty body or a
+ * `{ reason }` rationale. Mirrors the A1 `ArchiveProjectBody` pattern.
+ * `reason` flows onto the ARTEFACT_UNLINKED event payload.
+ */
+export const UnlinkArtefactBody = z
+  .object({
+    reason: z.string().min(1).max(2000).optional(),
+  })
+  .strict();
+export type UnlinkArtefactBody = z.infer<typeof UnlinkArtefactBody>;
 
 /**
  * EXPENDITURE_INGESTED — emitted by the Xero sync worker (or POST
@@ -456,6 +555,25 @@ export const ProjectArchivedPayload = z.object({
   reason: z.string().optional(),
 });
 export type ProjectArchivedPayload = z.infer<typeof ProjectArchivedPayload>;
+
+/**
+ * PROJECT_UPDATED — emitted by PATCH /v1/projects/:id. Mirrors
+ * `ActivityUpdatedPayload`: `fields_changed` is a heterogeneous record
+ * keyed by column name with `{from, to}` pairs carrying the previous
+ * and new values. Values are `unknown` because the columns vary in type
+ * (string, nullable string, ISO timestamp); the route layer is
+ * responsible for serialising sensibly.
+ *
+ * The kind sits alongside PROJECT_CREATED / PROJECT_ARCHIVED rather
+ * than reusing PROJECT_CREATED — the latter is meant to denote project
+ * inception (carrying `started_at` for timeline rendering) and would be
+ * misleading on a partial update.
+ */
+export const ProjectUpdatedPayload = z.object({
+  project_id: Uuid,
+  fields_changed: z.record(z.string(), z.object({ from: z.unknown(), to: z.unknown() })),
+});
+export type ProjectUpdatedPayload = z.infer<typeof ProjectUpdatedPayload>;
 
 /**
  * DOCUMENT_GENERATED — emitted by the document generator pipeline once

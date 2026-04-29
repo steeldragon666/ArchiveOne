@@ -84,14 +84,42 @@ export async function seedSubjectTenant(
 }
 
 /**
- * Clean up subject_tenant rows (and their events + ACL rows) whose name
- * starts with the prefix. Mirrors cleanupBySlugPrefix shape.
+ * Delete subject_tenants whose name matches a prefix, plus their
+ * dependent rows in the correct FK-cascade order:
  *
- * Order: events → subject_tenant_user → subject_tenant. Events reference
- * subject_tenant via FK so they have to go first, then the ACL table, then
- * the parent.
+ *   1. activity (FK → claim, project; tenant_id pinned via tenant)
+ *   2. claim (FK → subject_tenant)
+ *   3. project (FK → subject_tenant)
+ *   4. event (FK → subject_tenant only — NOT to activity/claim/project,
+ *      even though A10 register events embed `activity_id` inside the
+ *      payload jsonb. The DB-level relationship is purely
+ *      `event.subject_tenant_id → subject_tenant.id`; the activity_id
+ *      pointer is application-level and is what powers the register
+ *      filter in events.ts (`payload->>'activity_id' = $1`).)
+ *   5. subject_tenant_user (FK → subject_tenant, user)
+ *   6. subject_tenant
+ *
+ * Each DELETE is scoped to subject_tenants matching the prefix; rows
+ * belonging to other test prefixes are not touched. Earlier (P2) specs
+ * only seeded events under a subject_tenant, so this teardown was
+ * simpler — A10 added project/claim/activity seeding which hangs
+ * additional rows off the same subject_tenant, hence the wider sweep.
  */
 export async function cleanupSubjectTenantsByNamePrefix(prefix: string): Promise<void> {
+  await privilegedSql`DELETE FROM activity
+                       WHERE claim_id IN (
+                         SELECT c.id FROM claim c
+                          JOIN subject_tenant st ON st.id = c.subject_tenant_id
+                          WHERE st.name LIKE ${prefix + '%'}
+                       )`;
+  await privilegedSql`DELETE FROM claim
+                       WHERE subject_tenant_id IN (
+                         SELECT id FROM subject_tenant WHERE name LIKE ${prefix + '%'}
+                       )`;
+  await privilegedSql`DELETE FROM project
+                       WHERE subject_tenant_id IN (
+                         SELECT id FROM subject_tenant WHERE name LIKE ${prefix + '%'}
+                       )`;
   await privilegedSql`DELETE FROM event
                        WHERE subject_tenant_id IN (
                          SELECT id FROM subject_tenant WHERE name LIKE ${prefix + '%'}
@@ -171,4 +199,113 @@ export async function seedEvent(input: SeedEventInput): Promise<{ id: string; ha
   `;
 
   return { id, hash };
+}
+
+/**
+ * Seed a project under a subject_tenant. Returns the project id.
+ *
+ * Used by A-swimlane e2e specs (T-A10) to seed list/detail surfaces.
+ * Pair with `cleanupSubjectTenantsByNamePrefix` (which now cascades
+ * through activity → claim → project) to keep teardown a single call.
+ *
+ * Defaults `started_at` to "one year ago" so the row sorts naturally
+ * alongside ad-hoc test data without colliding with `now()`-based
+ * created_at timestamps elsewhere in the suite.
+ */
+export interface SeedProjectInput {
+  tenantId: string;
+  subjectTenantId: string;
+  name: string;
+  description?: string | null;
+  startedAt?: Date;
+  endedAt?: Date | null;
+  archivedAt?: Date | null;
+}
+
+export async function seedProject(input: SeedProjectInput): Promise<string> {
+  const id = crypto.randomUUID();
+  const startedAt = input.startedAt ?? new Date(Date.now() - 365 * 24 * 60 * 60 * 1000);
+  const startedAtIso = startedAt.toISOString();
+  const endedAtIso = input.endedAt ? input.endedAt.toISOString() : null;
+  const archivedAtIso = input.archivedAt ? input.archivedAt.toISOString() : null;
+  await privilegedSql`
+    INSERT INTO project (id, tenant_id, subject_tenant_id, name, description,
+                         started_at, ended_at, archived_at)
+    VALUES (
+      ${id}, ${input.tenantId}, ${input.subjectTenantId}, ${input.name},
+      ${input.description ?? null},
+      ${startedAtIso}::timestamptz,
+      ${endedAtIso === null ? null : endedAtIso}::timestamptz,
+      ${archivedAtIso === null ? null : archivedAtIso}::timestamptz
+    )
+  `;
+  return id;
+}
+
+/**
+ * Seed a claim under a subject_tenant. Returns the claim id.
+ *
+ * `(subject_tenant_id, fiscal_year)` is uniquely-indexed (one claim per
+ * claimant per fiscal year — matches AusIndustry's one-registration-per-
+ * entity-per-year rule). Tests should pick distinct `fiscalYear` values
+ * if they seed multiple claims under the same claimant.
+ */
+export interface SeedClaimInput {
+  tenantId: string;
+  subjectTenantId: string;
+  fiscalYear: number;
+  stage?: string;
+}
+
+export async function seedClaim(input: SeedClaimInput): Promise<string> {
+  const id = crypto.randomUUID();
+  const stage = input.stage ?? 'narrative_drafting';
+  await privilegedSql`
+    INSERT INTO claim (id, tenant_id, subject_tenant_id, fiscal_year, stage)
+    VALUES (${id}, ${input.tenantId}, ${input.subjectTenantId}, ${input.fiscalYear}, ${stage})
+  `;
+  return id;
+}
+
+/**
+ * Seed an activity under a project + claim. Returns the activity id.
+ *
+ * `code` must match `^(CA|SA)-\d{2,3}$` (CHECK constraint
+ * activity_code_format in 0012); tests should default to `CA-001` /
+ * `SA-001` etc. `kind` ('core' | 'supporting') must agree with the
+ * `code` prefix (CA = core, SA = supporting).
+ */
+export interface SeedActivityInput {
+  tenantId: string;
+  projectId: string;
+  claimId: string;
+  code: string;
+  kind: 'core' | 'supporting';
+  title: string;
+  description?: string | null;
+  hypothesis?: string | null;
+  technicalUncertainty?: string | null;
+  experimentationLog?: string | null;
+  expectedOutcome?: string | null;
+  actualOutcome?: string | null;
+}
+
+export async function seedActivity(input: SeedActivityInput): Promise<string> {
+  const id = crypto.randomUUID();
+  await privilegedSql`
+    INSERT INTO activity (id, tenant_id, project_id, claim_id, code, kind, title,
+                          description, hypothesis, technical_uncertainty,
+                          experimentation_log, expected_outcome, actual_outcome)
+    VALUES (
+      ${id}, ${input.tenantId}, ${input.projectId}, ${input.claimId},
+      ${input.code}, ${input.kind}, ${input.title},
+      ${input.description ?? null},
+      ${input.hypothesis ?? null},
+      ${input.technicalUncertainty ?? null},
+      ${input.experimentationLog ?? null},
+      ${input.expectedOutcome ?? null},
+      ${input.actualOutcome ?? null}
+    )
+  `;
+  return id;
 }
