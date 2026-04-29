@@ -1,0 +1,58 @@
+{
+  "Contacts": [
+    {
+      "ContactID": "c0c0c0c0-1111-4111-8111-c0c0c0c0c0c0",
+      "ContactStatus": "ACTIVE",
+      "Name": "AWS Australia",
+      "EmailAddress": "billing@aws.example.com.au",
+      "IsSupplier": true,
+      "IsCustomer": false,
+      "UpdatedDateUTC": "/Date(1641000000000+0000)/"
+    },
+    {
+      "ContactID": "c0c0c0c0-2222-4222-8222-c0c0c0c0c0c0",
+      "ContactStatus": "ACTIVE",
+      "Name": "Officeworks",
+      "EmailAddress": "ar@officeworks.example.com.au",
+      "IsSupplier": true,
+      "IsCustomer": false,
+      "UpdatedDateUTC": "/Date(1641100000000+0000)/"
+    },
+    {
+      "ContactID": "c0c0c0c0-3333-4333-8333-c0c0c0c0c0c0",
+      "ContactStatus": "ACTIVE",
+      "Name": "Telstra",
+      "EmailAddress": "business-billing@telstra.example.com.au",
+      "IsSupplier": true,
+      "IsCustomer": false,
+      "UpdatedDateUTC": "/Date(1641200000000+0000)/"
+    },
+    {
+      "ContactID": "c0c0c0c0-4444-4444-8444-c0c0c0c0c0c0",
+      "ContactStatus": "ACTIVE",
+      "Name": "Cab Co",
+      "EmailAddress": "fares@cabco.example.com.au",
+      "IsSupplier": true,
+      "IsCustomer": false,
+      "UpdatedDateUTC": "/Date(1641250000000+0000)/"
+    },
+    {
+      "ContactID": "c0c0c0c0-5555-4555-8555-c0c0c0c0c0c0",
+      "ContactStatus": "ACTIVE",
+      "Name": "Conference Catering",
+      "EmailAddress": null,
+      "IsSupplier": true,
+      "IsCustomer": false,
+      "UpdatedDateUTC": "/Date(1641300000000+0000)/"
+    },
+    {
+      "ContactID": "c0c0c0c0-9999-4999-8999-c0c0c0c0c0c0",
+      "ContactStatus": "ACTIVE",
+      "Name": "Coffee Shop Co",
+      "EmailAddress": "shop@coffee.example.com.au",
+      "IsSupplier": true,
+      "IsCustomer": false,
+      "UpdatedDateUTC": "/Date(1641350000000+0000)/"
+    }
+  ]
+}

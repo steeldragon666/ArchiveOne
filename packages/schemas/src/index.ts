@@ -16,3 +16,4 @@ export * from './claim.js';
 export * from './activity.js';
 export * from './expenditure.js';
 export * from './expenditure_mapping_rule.js';
+export * from './mapping-rule.js';

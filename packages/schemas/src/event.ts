@@ -63,6 +63,16 @@ export const evidenceKind = z.enum([
   // Added in T-A1 (0015_project_updated_kind.sql) — emitted by
   // PATCH /v1/projects/:id, mirrors ACTIVITY_UPDATED.
   'PROJECT_UPDATED',
+  // T-B9 mapping-rule lifecycle kinds. Kept in sync with EVIDENCE_KINDS
+  // in @cpa/db/schema/event.ts and the CHECK in 0018_mapping_rule.sql
+  // (renumbered during p4b rebase from 0017 to 0018 — main has
+  // 0017_xero_caches in the previous slot). Reserved for future audit
+  // surfaces — the event table is per-subject_tenant and mapping rules
+  // are firm-scoped, so B9 itself does NOT emit chain events for these
+  // kinds (see B9 commit notes).
+  'MAPPING_RULE_CREATED',
+  'MAPPING_RULE_UPDATED',
+  'MAPPING_RULE_ARCHIVED',
 ]);
 export type EvidenceKind = z.infer<typeof evidenceKind>;
 
@@ -587,3 +597,53 @@ export const DocumentGeneratedPayload = z.object({
   content_sha256: Sha256Hash,
 });
 export type DocumentGeneratedPayload = z.infer<typeof DocumentGeneratedPayload>;
+
+/**
+ * MAPPING_RULE_CREATED — emitted when a new mapping_rule row is inserted
+ * via POST /v1/mapping-rules (T-B9). Carries the denormalised rule body
+ * so downstream readers don't need to re-fetch (mirrors the
+ * ACTIVITY_CREATED pattern).
+ *
+ * `conditions` and `action` are typed as `unknown` here to avoid pulling
+ * B8's discriminated unions across the schemas/integrations boundary —
+ * the wire format is whatever B8's runtime accepts, and the API layer
+ * has already validated against B8's runtime before emitting. Readers
+ * that care about the shape narrow against B8's `RuleCondition[]` /
+ * `RuleAction` types.
+ *
+ * NOTE: B9 itself does NOT emit chain events (the `event` table requires
+ * a subject_tenant_id and mapping rules are firm-scoped). The schema is
+ * reserved for a future audit surface.
+ */
+export const MappingRuleCreatedPayload = z.object({
+  mapping_rule_id: Uuid,
+  name: z.string(),
+  priority: z.number().int().nonnegative(),
+  conditions: z.unknown(),
+  action: z.unknown(),
+});
+export type MappingRuleCreatedPayload = z.infer<typeof MappingRuleCreatedPayload>;
+
+/**
+ * MAPPING_RULE_UPDATED — emitted on PATCH /v1/mapping-rules/:id. Same
+ * `fields_changed` shape as ACTIVITY_UPDATED so consumers can render
+ * field-level diffs uniformly.
+ */
+export const MappingRuleUpdatedPayload = z.object({
+  mapping_rule_id: Uuid,
+  fields_changed: z.record(z.string(), z.object({ from: z.unknown(), to: z.unknown() })),
+});
+export type MappingRuleUpdatedPayload = z.infer<typeof MappingRuleUpdatedPayload>;
+
+/**
+ * MAPPING_RULE_ARCHIVED — emitted on DELETE /v1/mapping-rules/:id. The
+ * route uses soft-delete (sets `enabled = false`) so the row stays
+ * queryable for audit; this event flags the lifecycle transition.
+ * `reason` is optional free-text.
+ */
+export const MappingRuleArchivedPayload = z.object({
+  mapping_rule_id: Uuid,
+  archived_by_user_id: Uuid,
+  reason: z.string().optional(),
+});
+export type MappingRuleArchivedPayload = z.infer<typeof MappingRuleArchivedPayload>;

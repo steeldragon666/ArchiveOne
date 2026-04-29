@@ -1,0 +1,113 @@
+{
+  "BankTransactions": [
+    {
+      "BankTransactionID": "b1b1b1b1-1111-4111-8111-b1b1b1b1b1b1",
+      "Type": "SPEND",
+      "Status": "AUTHORISED",
+      "Date": "/Date(1640995200000+0000)/",
+      "UpdatedDateUTC": "/Date(1641000000000+0000)/",
+      "Contact": {
+        "ContactID": "c0c0c0c0-1111-4111-8111-c0c0c0c0c0c0",
+        "Name": "AWS Australia"
+      },
+      "Reference": "AWS Subscription — debit Apr",
+      "CurrencyCode": "AUD",
+      "Total": "1000.00",
+      "SubTotal": "909.09",
+      "TotalTax": "90.91",
+      "BankAccount": {
+        "AccountID": "a4a4a4a4-4444-4aaa-8aaa-a4a4a4a4a4a4",
+        "Code": "090",
+        "Name": "Business Cheque"
+      },
+      "LineItems": [
+        {
+          "LineItemID": "b1b1b1b1-aaaa-4aaa-8aaa-b1b1b1b1b1b1",
+          "Description": "EC2 compute hours",
+          "Quantity": 1,
+          "UnitAmount": "500.00",
+          "LineAmount": "500.00",
+          "AccountCode": "400"
+        },
+        {
+          "LineItemID": "b1b1b1b1-aaaa-4aaa-8aaa-b1b1b1b1b1b2",
+          "Description": "S3 storage",
+          "Quantity": 1,
+          "UnitAmount": "500.00",
+          "LineAmount": "500.00",
+          "AccountCode": "400"
+        }
+      ]
+    },
+    {
+      "BankTransactionID": "b2b2b2b2-2222-4222-8222-b2b2b2b2b2b2",
+      "Type": "SPEND",
+      "Status": "AUTHORISED",
+      "Date": "/Date(1641081600000+0000)/",
+      "UpdatedDateUTC": "/Date(1641100000000+0000)/",
+      "Contact": {
+        "ContactID": "c0c0c0c0-2222-4222-8222-c0c0c0c0c0c0",
+        "Name": "Officeworks"
+      },
+      "Reference": "Office supplies — debit card",
+      "CurrencyCode": "AUD",
+      "Total": "250.50",
+      "SubTotal": "227.73",
+      "TotalTax": "22.77",
+      "BankAccount": {
+        "AccountID": "a4a4a4a4-4444-4aaa-8aaa-a4a4a4a4a4a4",
+        "Code": "090",
+        "Name": "Business Cheque"
+      },
+      "LineItems": [
+        {
+          "LineItemID": "b2b2b2b2-bbbb-4bbb-8bbb-b2b2b2b2b2b1",
+          "Description": "Whiteboard markers",
+          "Quantity": 5,
+          "UnitAmount": "10.10",
+          "LineAmount": "50.50",
+          "AccountCode": "453"
+        },
+        {
+          "LineItemID": "b2b2b2b2-bbbb-4bbb-8bbb-b2b2b2b2b2b2",
+          "Description": "Standing desk",
+          "Quantity": 1,
+          "UnitAmount": "200.00",
+          "LineAmount": "200.00",
+          "AccountCode": "461"
+        }
+      ]
+    },
+    {
+      "BankTransactionID": "b3b3b3b3-3333-4333-8333-b3b3b3b3b3b3",
+      "Type": "SPEND",
+      "Status": "AUTHORISED",
+      "Date": "/Date(1641168000000+0000)/",
+      "UpdatedDateUTC": "/Date(1641200000000+0000)/",
+      "Contact": {
+        "ContactID": "c0c0c0c0-9999-4999-8999-c0c0c0c0c0c0",
+        "Name": "Coffee Shop Co"
+      },
+      "Reference": "Team coffee run",
+      "CurrencyCode": "AUD",
+      "Total": "45.00",
+      "SubTotal": "40.91",
+      "TotalTax": "4.09",
+      "BankAccount": {
+        "AccountID": "a4a4a4a4-4444-4aaa-8aaa-a4a4a4a4a4a4",
+        "Code": "090",
+        "Name": "Business Cheque"
+      },
+      "LineItems": [
+        {
+          "LineItemID": "b3b3b3b3-cccc-4ccc-8ccc-b3b3b3b3b3b1",
+          "Description": "Flat whites x10",
+          "Quantity": 10,
+          "UnitAmount": "4.50",
+          "LineAmount": "45.00",
+          "AccountCode": "420"
+        }
+      ]
+    }
+  ]
+}

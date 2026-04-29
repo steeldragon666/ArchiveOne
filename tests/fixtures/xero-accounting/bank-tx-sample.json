@@ -1,0 +1,144 @@
+{
+  "BankTransactions": [
+    {
+      "BankTransactionID": "11111111-1111-4111-8111-111111111111",
+      "Type": "SPEND",
+      "Status": "AUTHORISED",
+      "Date": "/Date(1640995200000+0000)/",
+      "UpdatedDateUTC": "/Date(1641000000000+0000)/",
+      "Contact": {
+        "ContactID": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+        "Name": "AWS Australia"
+      },
+      "Reference": "AWS Subscription Apr",
+      "CurrencyCode": "AUD",
+      "Total": "1000.00",
+      "SubTotal": "909.09",
+      "TotalTax": "90.91",
+      "BankAccount": {
+        "AccountID": "11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "Code": "090",
+        "Name": "Business Cheque"
+      },
+      "LineItems": [
+        {
+          "LineItemID": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+          "Description": "EC2 compute hours",
+          "Quantity": 1,
+          "UnitAmount": "500.00",
+          "LineAmount": "500.00",
+          "AccountCode": "400"
+        },
+        {
+          "LineItemID": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2",
+          "Description": "S3 storage",
+          "Quantity": 1,
+          "UnitAmount": "500.00",
+          "LineAmount": "500.00",
+          "AccountCode": "400"
+        }
+      ]
+    },
+    {
+      "BankTransactionID": "22222222-2222-4222-8222-222222222222",
+      "Type": "SPEND",
+      "Status": "AUTHORISED",
+      "Date": "/Date(1641081600000+0000)/",
+      "UpdatedDateUTC": "/Date(1641100000000+0000)/",
+      "Contact": {
+        "ContactID": "bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb",
+        "Name": "Officeworks"
+      },
+      "Reference": "Office supplies — debit card",
+      "CurrencyCode": "AUD",
+      "Total": "250.50",
+      "SubTotal": "227.73",
+      "TotalTax": "22.77",
+      "BankAccount": {
+        "AccountID": "11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "Code": "090",
+        "Name": "Business Cheque"
+      },
+      "LineItems": [
+        {
+          "LineItemID": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1",
+          "Description": "Whiteboard markers",
+          "Quantity": 5,
+          "UnitAmount": "10.10",
+          "LineAmount": "50.50",
+          "AccountCode": "453"
+        },
+        {
+          "LineItemID": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb2",
+          "Description": "Standing desk",
+          "Quantity": 1,
+          "UnitAmount": "200.00",
+          "LineAmount": "200.00",
+          "AccountCode": "461"
+        }
+      ]
+    },
+    {
+      "BankTransactionID": "33333333-3333-4333-8333-333333333333",
+      "Type": "SPEND",
+      "Status": "AUTHORISED",
+      "Date": "/Date(1641168000000+0000)/",
+      "UpdatedDateUTC": "/Date(1641200000000+0000)/",
+      "Contact": {
+        "ContactID": "cccccccc-3333-4333-8333-cccccccccccc",
+        "Name": "Coffee Shop"
+      },
+      "Reference": "Team coffee run",
+      "CurrencyCode": "AUD",
+      "Total": "45.00",
+      "SubTotal": "40.91",
+      "TotalTax": "4.09",
+      "BankAccount": {
+        "AccountID": "11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "Code": "090",
+        "Name": "Business Cheque"
+      },
+      "LineItems": [
+        {
+          "LineItemID": "cccccccc-cccc-4ccc-8ccc-ccccccccccc1",
+          "Description": "Flat whites x10",
+          "Quantity": 10,
+          "UnitAmount": "4.50",
+          "LineAmount": "45.00",
+          "AccountCode": "420"
+        }
+      ]
+    },
+    {
+      "BankTransactionID": "99999999-9999-4999-8999-999999999999",
+      "Type": "RECEIVE",
+      "Status": "AUTHORISED",
+      "Date": "/Date(1641254400000+0000)/",
+      "UpdatedDateUTC": "/Date(1641300000000+0000)/",
+      "Contact": {
+        "ContactID": "dddddddd-9999-4999-8999-dddddddddddd",
+        "Name": "Customer Pty Ltd"
+      },
+      "Reference": "Invoice payment received",
+      "CurrencyCode": "AUD",
+      "Total": "5000.00",
+      "SubTotal": "4545.45",
+      "TotalTax": "454.55",
+      "BankAccount": {
+        "AccountID": "11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "Code": "090",
+        "Name": "Business Cheque"
+      },
+      "LineItems": [
+        {
+          "LineItemID": "dddddddd-dddd-4ddd-8ddd-ddddddddddd1",
+          "Description": "Customer payment — must be filtered out",
+          "Quantity": 1,
+          "UnitAmount": "5000.00",
+          "LineAmount": "5000.00",
+          "AccountCode": "200"
+        }
+      ]
+    }
+  ]
+}

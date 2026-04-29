@@ -56,17 +56,72 @@ provider" UI). Most consumers should reach for the narrower subpath.
 
 ## Environment variables
 
-| Variable                                | Required                         | Notes                                                                                                                                                                                   |
-| --------------------------------------- | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `TOKEN_ENCRYPTION_KEY`                  | yes (production)                 | 32-byte hex (64 chars). AES-256-GCM key for `encryptToken`/`decryptToken`. Rotation strategy is a P9 task — current scheme requires a migration to re-encrypt old rows under a new key. |
-| `DEEPGRAM_API_KEY`                      | when calling Deepgram            | Workspace-scoped. AU region inferred from the URL the client posts to.                                                                                                                  |
-| `DOCUSIGN_INTEGRATION_KEY`              | when calling DocuSign            | Per integration_connection row at runtime; this env var is only the dev-mode default.                                                                                                   |
-| `DOCUSIGN_WEBHOOK_SECRET`               | when receiving DocuSign webhooks | The shared HMAC secret configured in DocuSign Connect.                                                                                                                                  |
-| `EMPLOYMENT_HERO_CLIENT_ID` / `_SECRET` | when calling Employment Hero     | OAuth 2.0 client credentials.                                                                                                                                                           |
-| `KEYPAY_API_KEY`                        | when calling KeyPay              | API-key auth (no OAuth).                                                                                                                                                                |
-| `DEPUTY_CLIENT_ID` / `_SECRET`          | when calling Deputy              | OAuth 2.0 with per-tenant install URL.                                                                                                                                                  |
-| `XERO_CLIENT_ID` / `_SECRET`            | when calling Xero Payroll        | OAuth 2.0 PKCE; tenant-id header per call.                                                                                                                                              |
-| `PLATFORM_CNAME_TARGET`                 | no                               | Used by the custom-domain state machine (defaults to `platform-cnames.platform.com.au`). Same value as `apps/api/src/routes/brand-config.ts` consumes.                                  |
+| Variable                                | Required                         | Notes                                                                                                                                                                                    |
+| --------------------------------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TOKEN_ENCRYPTION_KEY`                  | yes (production)                 | 32-byte hex (64 chars). AES-256-GCM key for `encryptToken`/`decryptToken`. Rotation strategy is a P9 task — current scheme requires a migration to re-encrypt old rows under a new key.  |
+| `DEEPGRAM_API_KEY`                      | when calling Deepgram            | Workspace-scoped. AU region inferred from the URL the client posts to.                                                                                                                   |
+| `DOCUSIGN_INTEGRATION_KEY`              | when calling DocuSign            | Per integration_connection row at runtime; this env var is only the dev-mode default.                                                                                                    |
+| `DOCUSIGN_WEBHOOK_SECRET`               | when receiving DocuSign webhooks | The shared HMAC secret configured in DocuSign Connect.                                                                                                                                   |
+| `EMPLOYMENT_HERO_CLIENT_ID` / `_SECRET` | when calling Employment Hero     | OAuth 2.0 client credentials.                                                                                                                                                            |
+| `KEYPAY_API_KEY`                        | when calling KeyPay              | API-key auth (no OAuth).                                                                                                                                                                 |
+| `DEPUTY_CLIENT_ID` / `_SECRET`          | when calling Deputy              | OAuth 2.0 with per-tenant install URL.                                                                                                                                                   |
+| `XERO_CLIENT_ID` / `_SECRET`            | when calling Xero Payroll        | OAuth 2.0 PKCE; tenant-id header per call.                                                                                                                                               |
+| `XERO_IMPL`                             | no                               | Set to `stub` to swap the Xero **accounting** integration (B2-B6) over to deterministic local fixtures — see "Xero accounting stub" below. Any other value (or unset) uses the real API. |
+| `PLATFORM_CNAME_TARGET`                 | no                               | Used by the custom-domain state machine (defaults to `platform-cnames.platform.com.au`). Same value as `apps/api/src/routes/brand-config.ts` consumes.                                   |
+
+## Xero accounting stub (`XERO_IMPL=stub`)
+
+The Xero accounting integration (B2-B6 sync paths) supports a
+deterministic local stub — useful for dev work, CI runs, and any
+end-to-end test that doesn't have real Xero credentials.
+
+**Activation**: set `XERO_IMPL=stub` in the environment before starting
+the API or running the sync job. Any other value (or unset) keeps the
+real fetch-based client.
+
+```sh
+# Run the API end-to-end without a Xero connection:
+XERO_IMPL=stub pnpm --filter @cpa/api dev
+
+# Run the api job tests under stub mode:
+XERO_IMPL=stub pnpm --filter @cpa/api test src/jobs/xero-accounting-sync.test.ts
+```
+
+**What it does**: the stub swaps `xeroAccountingGet` (the shared HTTP
+helper that B2-B5 use) for `xeroAccountingGetStub`, which reads JSON
+fixtures from `packages/integrations/src/xero-accounting/fixtures/`
+and returns them with the same wire shape Xero produces. The B2-B5
+sync code is unchanged — they call `createXeroAccountingGet()` from
+`client-factory.ts` once per sync invocation and the factory hands
+back the right implementation based on env state.
+
+**Coverage**: the stub serves the five sync paths used by B2-B6:
+
+- `/Invoices` → 3 ACCPAY (bills) covering AUTHORISED + PAID
+- `/BankTransactions` → 3 SPEND transactions
+- `/Receipts` → 2 AUTHORISED receipts with AU emails
+- `/Contacts` → 6 ACTIVE contacts
+- `/Accounts` → 10 chart-of-accounts entries spanning REVENUE / EXPENSE
+  / ASSET / LIABILITY / BANK
+
+**`since=` semantics**: incremental sync is honoured. When the sync
+sends `If-Modified-Since: <UTCString>`, the stub filters fixtures by
+their `UpdatedDateUTC` field. Backfill mode (no header) returns every
+fixture row.
+
+**What the stub deliberately does NOT do**:
+
+- No tenant-id / access-token validation. Any opts pair works.
+- No write surface (B2-B6 are read-only at this scope).
+- No pagination. Fixtures are <100 rows; a full request returns them
+  all and the sync's "short page → exit" branch terminates the loop.
+- No `where=` clause filtering — the sync code's defensive client-side
+  filter (`if (inv.Type !== 'ACCPAY') continue`) handles the predicate.
+
+To amend / extend the stub: edit the fixture JSON files (UUIDs are
+deterministic — hand-pick new ones), update `stub-client.ts`'s switch
+if you add a new endpoint, and re-run
+`pnpm --filter @cpa/integrations test src/xero-accounting/client-factory.test.ts`.
 
 ## Adding a new integration (recipe)
 

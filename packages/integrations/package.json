@@ -45,10 +45,14 @@
     "./payroll/xero-payroll": {
       "types": "./dist/payroll/xero-payroll/index.d.ts",
       "import": "./dist/payroll/xero-payroll/index.js"
+    },
+    "./xero-accounting": {
+      "types": "./dist/xero-accounting/index.d.ts",
+      "import": "./dist/xero-accounting/index.js"
     }
   },
   "scripts": {
-    "build": "tsc -b",
+    "build": "tsc -b && node scripts/copy-fixtures.mjs",
     "test": "tsx --env-file-if-exists=../../.env --test --test-force-exit \"src/**/*.test.ts\"",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src"
