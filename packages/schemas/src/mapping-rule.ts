@@ -185,9 +185,19 @@ export type UpdateMappingRuleApiBody = z.infer<typeof updateMappingRuleBody>;
  * GET /v1/mapping-rules query. `enabled` filters on the soft-delete /
  * disable flag; omitting it returns both. `cursor` is opaque base64url
  * JSON — clients shouldn't introspect.
+ *
+ * `enabled` MUST be a value-aware transformer rather than
+ * `z.coerce.boolean()` — the latter calls `Boolean(value)`, which
+ * returns `true` for ANY non-empty string (including the literal
+ * string `'false'`). A naive coerce would silently flip
+ * `?enabled=false` into a filter for enabled=true rows. The enum +
+ * transform pattern locks the contract to the two valid wire values.
  */
 export const listMappingRulesQuery = z.object({
-  enabled: z.coerce.boolean().optional(),
+  enabled: z
+    .enum(['true', 'false'])
+    .transform((v) => v === 'true')
+    .optional(),
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(200).optional().default(50),
 });

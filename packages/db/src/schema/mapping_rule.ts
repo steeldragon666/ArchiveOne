@@ -28,6 +28,14 @@ import { user } from './user.js';
  * directly (not through the ORM), so the annotation is mostly
  * documentation — but it ensures any future drizzle-orm consumer of
  * this column gets the right shape automatically.
+ *
+ * TODO(P4-followup): consolidate RuleConditionShape / RuleActionShape
+ * via a shared @cpa/types meta-package. Currently inlined here to
+ * avoid the db -> integrations dep cycle (integrations imports from
+ * db; importing types FROM integrations into db would create a cycle).
+ * The redeclaration must stay byte-identical to
+ * packages/integrations/src/xero-accounting/mapping-rules/types.ts;
+ * runtime safety is via Zod + B8's evaluateRule.
  */
 type RuleConditionShape =
   | {

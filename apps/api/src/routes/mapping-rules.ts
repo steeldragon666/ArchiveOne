@@ -47,8 +47,8 @@ import {
  *      write boundary rather than silently waiting for B10's apply job.
  *
  * Soft-delete: DELETE flips `enabled = false` rather than removing the
- * row, mirroring the project.ts archive pattern. The row stays visible
- * to GET (with `enabled: false` in the response) so audit trails survive.
+ * row. The row stays visible to GET (with `enabled: false` in the
+ * response) so audit trails survive.
  *
  * Event emission: NOT YET WIRED. The chain `event` table requires a
  * NOT NULL `subject_tenant_id`, but mapping rules are tenant-scoped
@@ -56,7 +56,8 @@ import {
  * MAPPING_RULE_CREATED / UPDATED / ARCHIVED kinds are reserved in the
  * EVIDENCE_KINDS enum and the 0018_mapping_rule.sql CHECK so a future
  * audit surface (an audit_log table, or a per-tenant event table) can
- * adopt them without another migration.
+ * adopt them without another migration. The three handler return sites
+ * carry TODO(P4-followup) anchors so the deferral is grep-able.
  */
 
 // ---------------------------------------------------------------------------
@@ -132,12 +133,19 @@ const toApi = (r: RawMappingRuleRow): MappingRuleApi =>
 const VALIDATION_DUMMY: ExpenditureForRules = {
   id: '00000000-0000-4000-8000-000000000001',
   kind: 'INVOICE',
-  contact_name: '',
-  reference: '',
+  // B8 types contact_name / reference / description as `string | null`.
+  // Using null (rather than '') aligns the dummy with the real wire
+  // shape — and per B8's README, nullable fields never match string
+  // ops, so a rule with `contact_name eq ''` won't accidentally
+  // "match" the dummy and short-circuit validation. The dummy's
+  // purpose is to trigger eager action validation; the conditions
+  // arm of evaluateRule walks every condition regardless.
+  contact_name: null,
+  reference: null,
   account_code: '',
   amount: 1,
   currency: 'AUD',
-  description: '',
+  description: null,
   date: '2025-01-01',
 };
 
@@ -268,6 +276,9 @@ export function registerMappingRules(app: FastifyInstance): void {
       throw new Error('POST /v1/mapping-rules: INSERT returned no row');
     }
 
+    // TODO(P4-followup): emit MAPPING_RULE_CREATED once the event table
+    // accepts NULL subject_tenant_id (firm-scoped events). See route
+    // doc-block above for the deferral rationale.
     return reply.status(201).send({ mapping_rule: toApi(inserted) });
   });
 
@@ -477,6 +488,9 @@ export function registerMappingRules(app: FastifyInstance): void {
             requestId: req.id,
           });
         }
+        // TODO(P4-followup): emit MAPPING_RULE_UPDATED once the event
+        // table accepts NULL subject_tenant_id (firm-scoped events).
+        // See route doc-block above for the deferral rationale.
         return { mapping_rule: toApi(row) };
       });
     },
@@ -518,6 +532,9 @@ export function registerMappingRules(app: FastifyInstance): void {
             requestId: req.id,
           });
         }
+        // TODO(P4-followup): emit MAPPING_RULE_ARCHIVED once the event
+        // table accepts NULL subject_tenant_id (firm-scoped events).
+        // See route doc-block above for the deferral rationale.
         return reply.status(204).send();
       });
     },
