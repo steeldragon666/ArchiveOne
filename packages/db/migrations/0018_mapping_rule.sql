@@ -76,6 +76,14 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON "mapping_rule" TO cpa_app;
 -- audit_log table) can adopt them without another schema change.
 -- ============================================================
 
+-- IMPORTANT: this list MUST include PROJECT_UPDATED (added in 0015 by A6)
+-- alongside MAPPING_RULE_* (this migration's contribution). 0018's DROP+ADD
+-- pattern means we have to enumerate every kind 0014/0015 introduced;
+-- omitting PROJECT_UPDATED here was a rebase oversight (B was originally
+-- numbered 0017 before main got 0016_nullif and 0017_xero_caches; the
+-- A→B coordination on this list is a manual step). Verified by chain.test.ts
+-- "A9 phase 3: PROJECT_UPDATED round-trips" failing with event_kind_valid
+-- CHECK violation in PR #5 CI run 25130238366.
 ALTER TABLE "event" DROP CONSTRAINT IF EXISTS "event_kind_valid";
 ALTER TABLE "event" ADD CONSTRAINT "event_kind_valid" CHECK (
   "kind" IN (
@@ -87,7 +95,8 @@ ALTER TABLE "event" ADD CONSTRAINT "event_kind_valid" CHECK (
     'EXPENDITURE_INGESTED', 'EXPENDITURE_LINE_MAPPED',
     'EXPENDITURE_LINE_UNMAPPED', 'EXPENDITURE_VOIDED',
     'CLAIM_STAGE_ADVANCED', 'CLAIM_SUBMITTED',
-    'PROJECT_CREATED', 'PROJECT_ARCHIVED', 'DOCUMENT_GENERATED',
+    'PROJECT_CREATED', 'PROJECT_ARCHIVED', 'PROJECT_UPDATED',
+    'DOCUMENT_GENERATED',
     'MAPPING_RULE_CREATED', 'MAPPING_RULE_UPDATED', 'MAPPING_RULE_ARCHIVED'
   )
 );
