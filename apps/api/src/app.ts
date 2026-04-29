@@ -39,6 +39,7 @@ import { registerSigning, registerDocuSignWebhookPlugin } from './routes/signing
 import { registerSubjectTenants } from './routes/subject-tenants.js';
 import { registerTimeEntries } from './routes/time-entries.js';
 import { registerMappingRules } from './routes/mapping-rules.js';
+import { registerPreviewRules } from './routes/preview-rules.js';
 import { registerListTenants } from './routes/tenants/list.js';
 import { registerSwitchTenant } from './routes/tenants/switch.js';
 import { registerAddUser } from './routes/users/add.js';
@@ -253,6 +254,10 @@ export function buildApp(): App {
   });
   app.register((instance, _opts, done) => {
     registerMappingRules(instance);
+    done();
+  });
+  app.register((instance, _opts, done) => {
+    registerPreviewRules(instance);
     done();
   });
   // DocuSign Connect webhook is registered as its own plugin so the
