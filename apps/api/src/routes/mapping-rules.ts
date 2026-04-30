@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { requireSession } from '@cpa/auth';
+import { insertAuditLog } from '@cpa/db';
 import { sql } from '@cpa/db/client';
 import {
   createMappingRuleBody,
@@ -50,14 +51,15 @@ import {
  * row. The row stays visible to GET (with `enabled: false` in the
  * response) so audit trails survive.
  *
- * Event emission: NOT YET WIRED. The chain `event` table requires a
- * NOT NULL `subject_tenant_id`, but mapping rules are tenant-scoped
- * (firm-wide) — there is no subject_tenant to anchor the event on. The
- * MAPPING_RULE_CREATED / UPDATED / ARCHIVED kinds are reserved in the
- * EVIDENCE_KINDS enum and the 0018_mapping_rule.sql CHECK so a future
- * audit surface (an audit_log table, or a per-tenant event table) can
- * adopt them without another migration. The three handler return sites
- * carry TODO(P4-followup) anchors so the deferral is grep-able.
+ * Audit emission (P5 Task 2.4): the three POST/PATCH/DELETE handlers
+ * now emit MAPPING_RULE_CREATED / UPDATED / ARCHIVED rows to the
+ * firm-scoped `audit_log` table (P5 Task 2.1) via `insertAuditLog`.
+ * Each emission rides on the same `sql.begin` as the underlying
+ * mutation so a downstream throw rolls both back atomically. The
+ * three kinds are no longer in `EVIDENCE_KINDS` — Task 2.2 moved them
+ * to `AUDIT_KINDS` and rebuilt `event_kind_valid` (0023) to exclude
+ * them, making attempts to insert them into `event` fail with CHECK
+ * violation. See `@cpa/db/audit-log.ts` for the writer contract.
  */
 
 // ---------------------------------------------------------------------------
@@ -256,6 +258,31 @@ export function registerMappingRules(app: FastifyInstance): void {
 
     const inserted = await sql.begin(async (tx) => {
       await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+      // P5 Task 2.4: also set app.current_firm_id inside this tx so the
+      // audit_log RLS WITH CHECK passes when insertAuditLog runs below.
+      // In this codebase firm_id IS the consultant tenant id.
+      await tx`SELECT set_config('app.current_firm_id', ${tenantId}, true)`;
+      // jsonb columns: bind a JSON-text string with the SQL-side cast
+      // `::text::jsonb`. The double cast pins the parameter's wire type
+      // to TEXT (postgres oid 25), which sidesteps a postgres-js v3.4.9
+      // pitfall: `client.ts` calls `drizzle(sql)`, and drizzle's
+      // postgres-js driver MUTATES `sql.options.serializers[3802]`
+      // (jsonb) to an identity passthrough so its ORM-side query
+      // builder can manage serialization itself. Raw `${value}`
+      // (Object/Array) then trips `Buffer.byteLength` at Bind time
+      // (CI runs 25165786894 / 25167769866; same root cause as the
+      // Date workaround in chain.ts ~line 117). The single-cast form
+      // `${JSON.stringify(value)}::jsonb` works under drizzle (identity
+      // passes the JSON-string unmodified, server parses text→jsonb)
+      // but DOUBLE-ENCODES under privilegedSql (default JSON.stringify
+      // serializer JSON.stringify's the already-JSON string, producing
+      // a jsonb scalar STRING — see audit_log_payload_object CHECK
+      // failure in CI 25160635668). The double-cast `::text::jsonb`
+      // works in both: server infers parameter type as TEXT (25),
+      // postgres-js's text serializer is consistent across both
+      // contexts (default `'' + x` and drizzle identity both no-op on
+      // strings), and Postgres casts text→jsonb after the wire round-
+      // trip. See audit-log.ts for the same idiom.
       const rows = await tx<RawMappingRuleRow[]>`
         INSERT INTO mapping_rule (
           tenant_id, id, name, priority, enabled,
@@ -263,22 +290,37 @@ export function registerMappingRules(app: FastifyInstance): void {
         )
         VALUES (
           ${tenantId}, ${id}, ${body.name}, ${body.priority}, ${enabled},
-          ${JSON.stringify(body.conditions)}::jsonb,
-          ${JSON.stringify(body.action)}::jsonb,
+          ${JSON.stringify(body.conditions)}::text::jsonb,
+          ${JSON.stringify(body.action)}::text::jsonb,
           ${userId}
         )
         RETURNING id, tenant_id, name, priority, enabled,
                   conditions, action, created_at, created_by_user_id, updated_at
       `;
-      return rows[0] ?? null;
+      const row = rows[0];
+      if (!row) {
+        throw new Error('POST /v1/mapping-rules: INSERT returned no row');
+      }
+      // P5 Task 2.4: emit MAPPING_RULE_CREATED to audit_log. Same tx as
+      // the INSERT above so a downstream failure rolls both back; the
+      // helper riding on `tx` is the contract documented in
+      // @cpa/db/audit-log.ts.
+      await insertAuditLog({
+        tx,
+        firmId: tenantId,
+        kind: 'MAPPING_RULE_CREATED',
+        payload: {
+          mapping_rule_id: row.id,
+          name: row.name,
+          priority: row.priority,
+          conditions: row.conditions,
+          action: row.action,
+        },
+        actorUserId: userId,
+      });
+      return row;
     });
-    if (!inserted) {
-      throw new Error('POST /v1/mapping-rules: INSERT returned no row');
-    }
 
-    // TODO(P4-followup): emit MAPPING_RULE_CREATED once the event table
-    // accepts NULL subject_tenant_id (firm-scoped events). See route
-    // doc-block above for the deferral rationale.
     return reply.status(201).send({ mapping_rule: toApi(inserted) });
   });
 
@@ -411,6 +453,10 @@ export function registerMappingRules(app: FastifyInstance): void {
 
       return await sql.begin(async (tx) => {
         await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+        // P5 Task 2.4: also set app.current_firm_id inside this tx so
+        // the audit_log RLS WITH CHECK passes when insertAuditLog runs
+        // below. firm_id IS the consultant tenant id in this codebase.
+        await tx`SELECT set_config('app.current_firm_id', ${tenantId}, true)`;
 
         // Step 1: load the existing row under RLS. 404 covers missing
         // + cross-firm.
@@ -461,6 +507,11 @@ export function registerMappingRules(app: FastifyInstance): void {
         // Step 3: perform the UPDATE. COALESCE-on-undefined-bind keeps
         // the statement single-shot regardless of which subset of
         // fields the patch carried (mirrors brand-config PATCH).
+        //
+        // jsonb columns: same `${JSON.stringify(value)}::text::jsonb`
+        // double-cast pattern as the POST above (see commentary there).
+        // For absent fields we pass `null` and let the surrounding CASE
+        // pick the ELSE branch (existing column value).
         const conditionsPresent = patch.conditions !== undefined;
         const conditionsJson = conditionsPresent ? JSON.stringify(patch.conditions) : null;
         const actionPresent = patch.action !== undefined;
@@ -471,8 +522,8 @@ export function registerMappingRules(app: FastifyInstance): void {
              SET name = COALESCE(${patch.name ?? null}, name),
                  priority = COALESCE(${patch.priority ?? null}, priority),
                  enabled = COALESCE(${patch.enabled ?? null}, enabled),
-                 conditions = CASE WHEN ${conditionsPresent} THEN ${conditionsJson}::jsonb ELSE conditions END,
-                 action = CASE WHEN ${actionPresent} THEN ${actionJson}::jsonb ELSE action END,
+                 conditions = CASE WHEN ${conditionsPresent} THEN ${conditionsJson}::text::jsonb ELSE conditions END,
+                 action = CASE WHEN ${actionPresent} THEN ${actionJson}::text::jsonb ELSE action END,
                  updated_at = NOW()
            WHERE id = ${id} AND tenant_id = ${tenantId}
           RETURNING id, tenant_id, name, priority, enabled,
@@ -488,9 +539,43 @@ export function registerMappingRules(app: FastifyInstance): void {
             requestId: req.id,
           });
         }
-        // TODO(P4-followup): emit MAPPING_RULE_UPDATED once the event
-        // table accepts NULL subject_tenant_id (firm-scoped events).
-        // See route doc-block above for the deferral rationale.
+        // P5 Task 2.4: emit MAPPING_RULE_UPDATED to audit_log. Same tx
+        // as the UPDATE so a downstream failure rolls both back.
+        // `fields_changed` carries only the fields the patch touched
+        // (mirrors ACTIVITY_UPDATED) — readers render field-level
+        // diffs without re-fetching prior state.
+        const fieldsChanged: Record<string, { from: unknown; to: unknown }> = {};
+        if (patch.name !== undefined && patch.name !== existing.name) {
+          fieldsChanged['name'] = { from: existing.name, to: row.name };
+        }
+        if (patch.priority !== undefined && patch.priority !== existing.priority) {
+          fieldsChanged['priority'] = { from: existing.priority, to: row.priority };
+        }
+        if (patch.enabled !== undefined && patch.enabled !== existing.enabled) {
+          fieldsChanged['enabled'] = { from: existing.enabled, to: row.enabled };
+        }
+        if (patch.conditions !== undefined) {
+          fieldsChanged['conditions'] = { from: existing.conditions, to: row.conditions };
+        }
+        if (patch.action !== undefined) {
+          fieldsChanged['action'] = { from: existing.action, to: row.action };
+        }
+        // Only emit if something actually changed (the empty-patch
+        // 400 above already rejects no-op PATCHes, but a patch that
+        // only sets fields to their current values would be a no-op
+        // diff — silent no-op rather than a misleading audit row).
+        if (Object.keys(fieldsChanged).length > 0) {
+          await insertAuditLog({
+            tx,
+            firmId: tenantId,
+            kind: 'MAPPING_RULE_UPDATED',
+            payload: {
+              mapping_rule_id: row.id,
+              fields_changed: fieldsChanged,
+            },
+            actorUserId: req.user!.id,
+          });
+        }
         return { mapping_rule: toApi(row) };
       });
     },
@@ -516,6 +601,10 @@ export function registerMappingRules(app: FastifyInstance): void {
 
       return await sql.begin(async (tx) => {
         await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+        // P5 Task 2.4: also set app.current_firm_id inside this tx so
+        // the audit_log RLS WITH CHECK passes when insertAuditLog runs
+        // below. firm_id IS the consultant tenant id in this codebase.
+        await tx`SELECT set_config('app.current_firm_id', ${tenantId}, true)`;
         // Soft-archive: flip `enabled = false`. The row stays
         // queryable for audit; mirrors the project.ts archive pattern.
         const rows = await tx<{ id: string }[]>`
@@ -525,16 +614,29 @@ export function registerMappingRules(app: FastifyInstance): void {
            WHERE id = ${id} AND tenant_id = ${tenantId}
           RETURNING id
         `;
-        if (rows.length === 0) {
+        const archived = rows[0];
+        if (!archived) {
           return reply.status(404).send({
             error: 'mapping_rule_not_found',
             message: 'No mapping rule with that id in this firm',
             requestId: req.id,
           });
         }
-        // TODO(P4-followup): emit MAPPING_RULE_ARCHIVED once the event
-        // table accepts NULL subject_tenant_id (firm-scoped events).
-        // See route doc-block above for the deferral rationale.
+        // P5 Task 2.4: emit MAPPING_RULE_ARCHIVED to audit_log. Same
+        // tx as the UPDATE so a downstream failure rolls both back.
+        // No `reason` field on the wire (DELETE body is empty); admins
+        // who need to record rationale can add it later via a follow-
+        // up audit kind. The archive itself is the auditable event.
+        await insertAuditLog({
+          tx,
+          firmId: tenantId,
+          kind: 'MAPPING_RULE_ARCHIVED',
+          payload: {
+            mapping_rule_id: archived.id,
+            archived_by_user_id: req.user!.id,
+          },
+          actorUserId: req.user!.id,
+        });
         return reply.status(204).send();
       });
     },
