@@ -34,15 +34,24 @@ import type { AuditKind, AuditPayload } from '@cpa/schemas';
  * raises "row violates row-level security policy". Tests in
  * `apps/api/src/routes/audit-log.test.ts` cover both branches.
  *
- * **Payload encoding**: serialise via `JSON.stringify(...)::jsonb`,
- * the same pattern `chain.ts/insertEventWithChain` uses. The TEXT
- * param is parsed as JSON by Postgres on the `::jsonb` cast — yields
- * a true jsonb object that supports `->>'key'` extracts. (The naked
- * `${obj}` form also works for object literals where TS can prove
- * JSONValue compatibility, but the AuditPayload Zod schemas expose
- * `unknown` fields for `conditions`/`action` which trip the
- * `JSONValue` typing — `JSON.stringify` sidesteps that without the
- * unsafe `as` cast.)
+ * **Payload encoding**: pass the object directly via `${opts.payload}`.
+ * postgres-js auto-encodes objects as JSON when the target column is
+ * jsonb. The earlier `${JSON.stringify(payload)}::jsonb` form
+ * double-encoded (postgres-js JSON.stringifies AGAIN when binding to
+ * a jsonb column hint, producing a jsonb scalar STRING `"{...}"`
+ * rather than a jsonb OBJECT) — confirmed by the audit_log_payload_object
+ * CHECK constraint firing in CI run 25160635668 with
+ * `jsonb_typeof(payload) = 'object'` violated. The same pattern in
+ * `chain.ts/insertEventWithChain` is silently broken too (events are
+ * stored as scalar strings) — it just hasn't surfaced because the
+ * event table has no equivalent CHECK and downstream readers parse
+ * the same wrong shape on both ends. Fix tracked separately.
+ *
+ * The TS cast `as Record<string, unknown>` is needed because
+ * AuditPayload's Zod schemas expose `unknown` fields for some
+ * branches which don't satisfy postgres-js's `JSONValue` typing —
+ * the runtime value is always an object thanks to the wire-side
+ * Zod parse, so the cast is safe.
  *
  * @param opts.tx           caller's transaction client (`postgres.TransactionSql`)
  * @param opts.firmId       audit_log.firm_id (= consultant tenant id)
@@ -60,15 +69,20 @@ export async function insertAuditLog(opts: {
   payload: AuditPayload;
   actorUserId: string | null;
 }): Promise<{ id: string; created_at: Date }> {
-  // Serialise via JSON.stringify + ::jsonb cast — mirrors chain.ts's
-  // `insertEventWithChain` shape. See the JSDoc above for why this is
-  // preferred over the naked `${opts.payload}` form here (the
-  // AuditPayload union has `unknown` fields that don't satisfy
-  // postgres-js's `JSONValue` typing).
-  const payloadJson = JSON.stringify(opts.payload);
+  // Pass the payload object DIRECTLY (no JSON.stringify, no ::jsonb cast).
+  // See JSDoc above for the double-encoding bug that surfaced via the
+  // audit_log_payload_object CHECK in CI run 25160635668.
+  //
+  // Type cast: AuditPayload's Zod union contains `unknown` fields for
+  // `conditions`/`action` snapshots, which don't satisfy postgres-js's
+  // recursive JSONValue type. The cast through `never` is the
+  // documented escape hatch for dynamic JSON values — runtime safety
+  // is guaranteed by Zod-side validation at the wire boundary plus
+  // the audit_log_payload_object DB CHECK constraint.
+  const payloadValue = opts.payload as unknown as never;
   const rows = await opts.tx<{ id: string; created_at: Date }[]>`
     INSERT INTO audit_log (firm_id, kind, payload, actor_user_id)
-    VALUES (${opts.firmId}, ${opts.kind}, ${payloadJson}::jsonb, ${opts.actorUserId})
+    VALUES (${opts.firmId}, ${opts.kind}, ${payloadValue}, ${opts.actorUserId})
     RETURNING id, created_at
   `;
   const row = rows[0];
