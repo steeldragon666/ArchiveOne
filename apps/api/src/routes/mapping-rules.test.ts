@@ -147,6 +147,9 @@ test('POST /v1/mapping-rules: 201 happy path with map_to_activity action', async
       action: { type: 'map_to_activity', activity_id: ACTIVITY_X },
     },
   });
+  if (res.statusCode !== 201) {
+    console.error('[p5b-debug2]', res.statusCode, res.body);
+  }
   assert.equal(res.statusCode, 201);
   const body = res.json<{
     mapping_rule: {
