@@ -95,16 +95,13 @@ export const EVIDENCE_KINDS = [
   // PATCH /v1/projects/:id. Mirrors the ACTIVITY_UPDATED pattern so we
   // don't reuse the misleading PROJECT_CREATED kind for partial updates.
   'PROJECT_UPDATED',
-  // T-B9 mapping-rule lifecycle kinds (CHECK extended in
-  // 0018_mapping_rule.sql — renumbered during p4b rebase from 0017 to
-  // 0018 because main now has 0017_xero_caches occupying the previous
-  // slot). B9 reserves the kinds here for future audit surfaces; the
-  // `event` table requires a NOT NULL subject_tenant_id and mapping
-  // rules are firm-scoped, so B9 itself does not insert event rows
-  // for these kinds.
-  'MAPPING_RULE_CREATED',
-  'MAPPING_RULE_UPDATED',
-  'MAPPING_RULE_ARCHIVED',
+  // P5 Theme 2 Task 2.2 — the three MAPPING_RULE_* kinds were briefly
+  // listed here (B9 added them in 0018_mapping_rule.sql for a future
+  // audit surface) but have moved to AUDIT_KINDS in
+  // `@cpa/db/schema/audit_log.ts` and the new `audit_log` table.
+  // 0023_remove_mapping_rule_from_event_kinds.sql rebuilds
+  // `event_kind_valid` to EXCLUDE the three values; this list tracks
+  // the CHECK byte-for-byte.
 ] as const;
 export type EvidenceKind = (typeof EVIDENCE_KINDS)[number];
 

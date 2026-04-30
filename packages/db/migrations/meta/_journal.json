@@ -162,6 +162,13 @@
       "when": 1777806564090,
       "tag": "0022_audit_log_table",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1777720340000,
+      "tag": "0023_remove_mapping_rule_from_event_kinds",
+      "breakpoints": true
     }
   ]
 }

@@ -748,38 +748,50 @@ test('DELETE /v1/mapping-rules/:id: 404 unknown id', async () => {
 });
 
 // ---------------------------------------------------------------------------
-// MAPPING_RULE_* event-kind reservation
+// MAPPING_RULE_* audit-kind relocation (P5 Task 2.2)
 // ---------------------------------------------------------------------------
 
-test('MAPPING_RULE_* event kinds are reserved in the evidence-kind enum', async () => {
-  // B9 doesn't itself emit chain events (subject_tenant_id NOT NULL on
-  // the event table — see route comment), but the kinds are reserved
-  // for future audit surfaces. Pin that the schema package + DB enum
-  // both expose them.
+test('MAPPING_RULE_* kinds are NOT in evidenceKind (post-2.2 relocation)', async () => {
+  // P5 Task 2.2 moved the three MAPPING_RULE_* kinds out of evidenceKind
+  // (event chain) and into AUDIT_KINDS (audit_log). This pins that the
+  // wire-format Zod enum no longer admits the three values — any caller
+  // that still tries to ship them as `event.kind` will fail Zod parse,
+  // matching the DB-side `event_kind_valid` CHECK rebuilt in 0023.
   const { evidenceKind } = await import('@cpa/schemas');
-  // Zod enum exposes its options.
   const options = evidenceKind.options;
-  assert.ok(options.includes('MAPPING_RULE_CREATED'));
-  assert.ok(options.includes('MAPPING_RULE_UPDATED'));
-  assert.ok(options.includes('MAPPING_RULE_ARCHIVED'));
+  assert.ok(!options.includes('MAPPING_RULE_CREATED' as never));
+  assert.ok(!options.includes('MAPPING_RULE_UPDATED' as never));
+  assert.ok(!options.includes('MAPPING_RULE_ARCHIVED' as never));
 });
 
-test('MAPPING_RULE_* payloads parse cleanly via the Zod schemas', async () => {
-  const { MappingRuleCreatedPayload, MappingRuleUpdatedPayload, MappingRuleArchivedPayload } =
-    await import('@cpa/schemas');
+test('MAPPING_RULE_* kinds ARE in AUDIT_KINDS (their new home)', async () => {
+  const { AUDIT_KINDS, auditKind } = await import('@cpa/schemas');
+  assert.ok(AUDIT_KINDS.includes('MAPPING_RULE_CREATED'));
+  assert.ok(AUDIT_KINDS.includes('MAPPING_RULE_UPDATED'));
+  assert.ok(AUDIT_KINDS.includes('MAPPING_RULE_ARCHIVED'));
+  // Zod enum mirrors the const array.
+  assert.ok(auditKind.options.includes('MAPPING_RULE_CREATED'));
+});
+
+test('MAPPING_RULE_* audit payloads parse cleanly via the Zod schemas', async () => {
+  const {
+    MappingRuleCreatedAuditPayload,
+    MappingRuleUpdatedAuditPayload,
+    MappingRuleArchivedAuditPayload,
+  } = await import('@cpa/schemas');
   // A representative shape for each variant.
-  MappingRuleCreatedPayload.parse({
+  MappingRuleCreatedAuditPayload.parse({
     mapping_rule_id: RULE_A1,
     name: 'r',
     priority: 1,
     conditions: [],
     action: { type: 'flag_for_review', reason: 'x' },
   });
-  MappingRuleUpdatedPayload.parse({
+  MappingRuleUpdatedAuditPayload.parse({
     mapping_rule_id: RULE_A1,
     fields_changed: { priority: { from: 10, to: 11 } },
   });
-  MappingRuleArchivedPayload.parse({
+  MappingRuleArchivedAuditPayload.parse({
     mapping_rule_id: RULE_A1,
     archived_by_user_id: ADMIN_USER,
   });

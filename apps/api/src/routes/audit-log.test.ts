@@ -135,3 +135,44 @@ test('audit_log RLS: privilegedSql bypasses RLS — sanity check', async () => {
   assert.equal(rows[0]?.firm_id, FIRM_A);
   assert.equal(rows[1]?.firm_id, FIRM_B);
 });
+
+// ---------------------------------------------------------------------------
+// Task 2.2 cross-check — MAPPING_RULE_* moved out of event_kind_valid
+// ---------------------------------------------------------------------------
+
+test('event_kind_valid CHECK rejects MAPPING_RULE_CREATED post-0023', async () => {
+  // After 0023_remove_mapping_rule_from_event_kinds.sql lands, the
+  // `event` table's `kind` CHECK constraint no longer admits the three
+  // MAPPING_RULE_* values — those events live on `audit_log` instead.
+  // Inserting MAPPING_RULE_CREATED into event must raise a CHECK
+  // violation (regardless of how well-formed the row is otherwise).
+  //
+  // We don't need a real subject_tenant_id / hash etc. because the
+  // CHECK runs before FK / NOT NULL — but we do need the row to make
+  // it past column-level NOT NULLs. Use privilegedSql so RLS isn't
+  // the gate.
+  let caught: unknown = null;
+  try {
+    await privilegedSql`
+      INSERT INTO event (
+        id, tenant_id, subject_tenant_id, kind, payload,
+        prev_hash, hash, captured_at, captured_by_user_id
+      ) VALUES (
+        gen_random_uuid(), ${FIRM_A}, ${FIRM_A},
+        'MAPPING_RULE_CREATED', ${{}},
+        NULL,
+        '0000000000000000000000000000000000000000000000000000000000000000',
+        NOW(),
+        ${ADMIN_A}
+      )
+    `;
+  } catch (err) {
+    caught = err;
+  }
+  assert.ok(caught !== null, 'INSERT MAPPING_RULE_CREATED into event must fail');
+  assert.match(
+    String((caught as Error)?.message ?? caught),
+    /event_kind_valid|check constraint/i,
+    'failure must reference the event_kind_valid CHECK',
+  );
+});
