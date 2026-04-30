@@ -256,59 +256,78 @@ export function registerMappingRules(app: FastifyInstance): void {
       });
     }
 
-    const inserted = await sql.begin(async (tx) => {
-      await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
-      // P5 Task 2.4: also set app.current_firm_id inside this tx so the
-      // audit_log RLS WITH CHECK passes when insertAuditLog runs below.
-      // In this codebase firm_id IS the consultant tenant id.
-      await tx`SELECT set_config('app.current_firm_id', ${tenantId}, true)`;
-      // jsonb column binding: pre-stringify + ::jsonb cast. postgres-js
-      // sends a TEXT param and PG parses the cast on the server. Tested
-      // and working in PR #5 / B9. The previous attempt to switch to
-      // `${object}` form (commit 31d31f2) failed for the conditions
-      // ARRAY case — postgres-js's array-handling intercepts before the
-      // jsonb-OID type serializer runs and falls into a text[]/array
-      // serializer that errors with "Received an instance of Array"
-      // when array elements are objects (CI run 25165786894). The bare
-      // `${object}` pattern works for OBJECT roots (audit_log payload,
-      // event payload) but NOT for arrays of objects.
-      const rows = await tx<RawMappingRuleRow[]>`
+    let __debug_step = 'before-begin';
+    const inserted = await sql
+      .begin(async (tx) => {
+        __debug_step = 'inside-begin';
+        __debug_step = 'set-tenant-guc';
+        await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+        __debug_step = 'set-firm-guc';
+        // P5 Task 2.4: also set app.current_firm_id inside this tx so the
+        // audit_log RLS WITH CHECK passes when insertAuditLog runs below.
+        // In this codebase firm_id IS the consultant tenant id.
+        await tx`SELECT set_config('app.current_firm_id', ${tenantId}, true)`;
+        __debug_step = 'before-insert';
+        // jsonb column binding: pass values directly, no JSON.stringify or
+        // ::jsonb cast. Mirrors the test-seed pattern in mapping-rules.test.ts
+        // (line 49+) which uses privilegedSql with `${[]}` arrays and `${{}}`
+        // objects directly. Both prior attempts on this branch failed:
+        //   - `${value as unknown as never}` (no cast) → TypeError "Received
+        //     an instance of Array" (CI run 25165786894)
+        //   - `${JSON.stringify(value)}::jsonb` (PR #5 pattern) → TypeError
+        //     "Received an instance of Object" (CI run 25166962997)
+        // The test seeds use the bare untyped form successfully — match that.
+        const rows = await tx<RawMappingRuleRow[]>`
         INSERT INTO mapping_rule (
           tenant_id, id, name, priority, enabled,
           conditions, action, created_by_user_id
         )
         VALUES (
           ${tenantId}, ${id}, ${body.name}, ${body.priority}, ${enabled},
-          ${JSON.stringify(body.conditions)}::jsonb,
-          ${JSON.stringify(body.action)}::jsonb,
+          ${body.conditions as unknown as never},
+          ${body.action as unknown as never},
           ${userId}
         )
         RETURNING id, tenant_id, name, priority, enabled,
                   conditions, action, created_at, created_by_user_id, updated_at
       `;
-      const row = rows[0];
-      if (!row) {
-        throw new Error('POST /v1/mapping-rules: INSERT returned no row');
-      }
-      // P5 Task 2.4: emit MAPPING_RULE_CREATED to audit_log. Same tx as
-      // the INSERT above so a downstream failure rolls both back; the
-      // helper riding on `tx` is the contract documented in
-      // @cpa/db/audit-log.ts.
-      await insertAuditLog({
-        tx,
-        firmId: tenantId,
-        kind: 'MAPPING_RULE_CREATED',
-        payload: {
-          mapping_rule_id: row.id,
-          name: row.name,
-          priority: row.priority,
-          conditions: row.conditions,
-          action: row.action,
-        },
-        actorUserId: userId,
+        __debug_step = 'after-insert';
+        const row = rows[0];
+        if (!row) {
+          throw new Error('POST /v1/mapping-rules: INSERT returned no row');
+        }
+        __debug_step = 'before-audit';
+        // P5 Task 2.4: emit MAPPING_RULE_CREATED to audit_log. Same tx as
+        // the INSERT above so a downstream failure rolls both back; the
+        // helper riding on `tx` is the contract documented in
+        // @cpa/db/audit-log.ts.
+        await insertAuditLog({
+          tx,
+          firmId: tenantId,
+          kind: 'MAPPING_RULE_CREATED',
+          payload: {
+            mapping_rule_id: row.id,
+            name: row.name,
+            priority: row.priority,
+            conditions: row.conditions,
+            action: row.action,
+          },
+          actorUserId: userId,
+        });
+        __debug_step = 'after-audit';
+        return row;
+      })
+      .catch((e: unknown) => {
+        const err = e as Error;
+        console.error(
+          '[p5b-debug3] sql.begin threw at step:',
+          __debug_step,
+          '— err:',
+          err?.message,
+          err?.stack,
+        );
+        throw e;
       });
-      return row;
-    });
 
     return reply.status(201).send({ mapping_rule: toApi(inserted) });
   });
@@ -497,23 +516,22 @@ export function registerMappingRules(app: FastifyInstance): void {
         // the statement single-shot regardless of which subset of
         // fields the patch carried (mirrors brand-config PATCH).
         //
-        // jsonb columns: pre-stringify + ::jsonb cast (same pattern as
-        // POST handler above; revert of 31d31f2 which broke arrays).
-        // The conditionsPresent/actionPresent flags drive the CASE so
-        // an absent field preserves the existing column value rather
-        // than overwriting with null/empty-string.
+        // jsonb columns: pass values directly (no JSON.stringify, no
+        // ::jsonb cast) — same pattern as POST handler above. The
+        // conditionsPresent/actionPresent flags drive the CASE so an
+        // absent field preserves the existing column value.
         const conditionsPresent = patch.conditions !== undefined;
-        const conditionsJson = conditionsPresent ? JSON.stringify(patch.conditions) : null;
+        const conditionsValue = conditionsPresent ? patch.conditions : null;
         const actionPresent = patch.action !== undefined;
-        const actionJson = actionPresent ? JSON.stringify(patch.action) : null;
+        const actionValue = actionPresent ? patch.action : null;
 
         const updatedRows = await tx<RawMappingRuleRow[]>`
           UPDATE mapping_rule
              SET name = COALESCE(${patch.name ?? null}, name),
                  priority = COALESCE(${patch.priority ?? null}, priority),
                  enabled = COALESCE(${patch.enabled ?? null}, enabled),
-                 conditions = CASE WHEN ${conditionsPresent} THEN ${conditionsJson}::jsonb ELSE conditions END,
-                 action = CASE WHEN ${actionPresent} THEN ${actionJson}::jsonb ELSE action END,
+                 conditions = CASE WHEN ${conditionsPresent} THEN ${conditionsValue as unknown as never} ELSE conditions END,
+                 action = CASE WHEN ${actionPresent} THEN ${actionValue as unknown as never} ELSE action END,
                  updated_at = NOW()
            WHERE id = ${id} AND tenant_id = ${tenantId}
           RETURNING id, tenant_id, name, priority, enabled,
