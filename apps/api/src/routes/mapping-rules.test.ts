@@ -796,3 +796,159 @@ test('MAPPING_RULE_* audit payloads parse cleanly via the Zod schemas', async ()
     archived_by_user_id: ADMIN_USER,
   });
 });
+
+// ---------------------------------------------------------------------------
+// P5 Task 2.4 — emission-shape assertions
+// ---------------------------------------------------------------------------
+// One per kind. Each test exercises the full route → audit_log path:
+// hits the API, then reads back via privilegedSql and asserts the
+// audit_log row has the expected (firm_id, kind, payload, actor_user_id).
+
+test('POST /v1/mapping-rules: emits MAPPING_RULE_CREATED with correct payload', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'POST',
+    url: '/v1/mapping-rules',
+    cookies: { cpa_session: await consultantJwt() },
+    payload: {
+      name: 'Audit-emission rule',
+      priority: 77,
+      conditions: [],
+      action: { type: 'flag_for_review', reason: 'audit emission test' },
+    },
+  });
+  assert.equal(res.statusCode, 201);
+  const created = res.json<{ mapping_rule: { id: string } }>().mapping_rule;
+
+  // Read back the audit_log row (privilegedSql bypasses RLS — RLS is
+  // covered by the keystone test in audit-log.test.ts).
+  const rows = await privilegedSql<
+    {
+      firm_id: string;
+      kind: string;
+      payload: { mapping_rule_id?: string; name?: string; priority?: number };
+      actor_user_id: string | null;
+    }[]
+  >`
+    SELECT firm_id, kind, payload, actor_user_id
+      FROM audit_log
+     WHERE firm_id = ${TENANT_A}
+       AND kind = 'MAPPING_RULE_CREATED'
+       AND payload ->> 'mapping_rule_id' = ${created.id}
+     ORDER BY created_at DESC
+     LIMIT 1
+  `;
+  assert.equal(rows.length, 1, 'expected one MAPPING_RULE_CREATED audit row');
+  const audit = rows[0]!;
+  assert.equal(audit.firm_id, TENANT_A);
+  assert.equal(audit.kind, 'MAPPING_RULE_CREATED');
+  assert.equal(audit.payload.mapping_rule_id, created.id);
+  assert.equal(audit.payload.name, 'Audit-emission rule');
+  assert.equal(audit.payload.priority, 77);
+  assert.equal(audit.actor_user_id, CONSULTANT_USER);
+
+  // Cleanup.
+  await privilegedSql`DELETE FROM audit_log WHERE payload ->> 'mapping_rule_id' = ${created.id}`;
+  await privilegedSql`DELETE FROM mapping_rule WHERE id = ${created.id}`;
+  await app.close();
+});
+
+test('PATCH /v1/mapping-rules/:id: emits MAPPING_RULE_UPDATED with fields_changed diff', async () => {
+  const app = buildApp();
+  // PATCH the pre-seeded RULE_A1 (priority 10 → 99).
+  const res = await app.inject({
+    method: 'PATCH',
+    url: `/v1/mapping-rules/${RULE_A1}`,
+    cookies: { cpa_session: await consultantJwt() },
+    payload: { priority: 99 },
+  });
+  assert.equal(res.statusCode, 200);
+
+  const rows = await privilegedSql<
+    {
+      firm_id: string;
+      kind: string;
+      payload: {
+        mapping_rule_id?: string;
+        fields_changed?: Record<string, { from: unknown; to: unknown }>;
+      };
+      actor_user_id: string | null;
+    }[]
+  >`
+    SELECT firm_id, kind, payload, actor_user_id
+      FROM audit_log
+     WHERE firm_id = ${TENANT_A}
+       AND kind = 'MAPPING_RULE_UPDATED'
+       AND payload ->> 'mapping_rule_id' = ${RULE_A1}
+     ORDER BY created_at DESC
+     LIMIT 1
+  `;
+  assert.equal(rows.length, 1, 'expected one MAPPING_RULE_UPDATED audit row');
+  const audit = rows[0]!;
+  assert.equal(audit.kind, 'MAPPING_RULE_UPDATED');
+  assert.equal(audit.payload.mapping_rule_id, RULE_A1);
+  // fields_changed must contain the priority diff (10 → 99) only.
+  const fc = audit.payload.fields_changed!;
+  assert.deepEqual(fc['priority'], { from: 10, to: 99 });
+  // Other fields untouched → not in fields_changed.
+  assert.equal(fc['name'], undefined);
+  assert.equal(audit.actor_user_id, CONSULTANT_USER);
+
+  // Cleanup: revert RULE_A1 back to priority 10 + drop audit row so
+  // subsequent test runs see a clean fixture state.
+  await privilegedSql`UPDATE mapping_rule SET priority = 10 WHERE id = ${RULE_A1}`;
+  await privilegedSql`DELETE FROM audit_log WHERE kind = 'MAPPING_RULE_UPDATED' AND payload ->> 'mapping_rule_id' = ${RULE_A1}`;
+  await app.close();
+});
+
+test('DELETE /v1/mapping-rules/:id: emits MAPPING_RULE_ARCHIVED with admin actor', async () => {
+  const app = buildApp();
+  // Insert a fresh rule to archive (don't touch the pre-seeded RULE_A1
+  // which other tests rely on).
+  const ARCHIVE_RULE = '00000000-0000-4000-8000-0000000b9091';
+  await privilegedSql`
+    INSERT INTO mapping_rule (
+      tenant_id, id, name, priority, enabled, conditions, action, created_by_user_id
+    ) VALUES (
+      ${TENANT_A}, ${ARCHIVE_RULE}, 'Archive me', 90, true,
+      ${[]},
+      ${{ type: 'flag_for_review', reason: 'pre-archive' }},
+      ${ADMIN_USER}
+    )
+  `;
+  const res = await app.inject({
+    method: 'DELETE',
+    url: `/v1/mapping-rules/${ARCHIVE_RULE}`,
+    cookies: { cpa_session: await adminJwt() },
+  });
+  assert.equal(res.statusCode, 204);
+
+  const rows = await privilegedSql<
+    {
+      firm_id: string;
+      kind: string;
+      payload: { mapping_rule_id?: string; archived_by_user_id?: string };
+      actor_user_id: string | null;
+    }[]
+  >`
+    SELECT firm_id, kind, payload, actor_user_id
+      FROM audit_log
+     WHERE firm_id = ${TENANT_A}
+       AND kind = 'MAPPING_RULE_ARCHIVED'
+       AND payload ->> 'mapping_rule_id' = ${ARCHIVE_RULE}
+     ORDER BY created_at DESC
+     LIMIT 1
+  `;
+  assert.equal(rows.length, 1, 'expected one MAPPING_RULE_ARCHIVED audit row');
+  const audit = rows[0]!;
+  assert.equal(audit.firm_id, TENANT_A);
+  assert.equal(audit.kind, 'MAPPING_RULE_ARCHIVED');
+  assert.equal(audit.payload.mapping_rule_id, ARCHIVE_RULE);
+  assert.equal(audit.payload.archived_by_user_id, ADMIN_USER);
+  assert.equal(audit.actor_user_id, ADMIN_USER);
+
+  // Cleanup.
+  await privilegedSql`DELETE FROM audit_log WHERE payload ->> 'mapping_rule_id' = ${ARCHIVE_RULE}`;
+  await privilegedSql`DELETE FROM mapping_rule WHERE id = ${ARCHIVE_RULE}`;
+  await app.close();
+});

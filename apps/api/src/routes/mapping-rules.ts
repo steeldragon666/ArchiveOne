@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { requireSession } from '@cpa/auth';
+import { insertAuditLog } from '@cpa/db';
 import { sql } from '@cpa/db/client';
 import {
   createMappingRuleBody,
@@ -50,14 +51,15 @@ import {
  * row. The row stays visible to GET (with `enabled: false` in the
  * response) so audit trails survive.
  *
- * Event emission: NOT YET WIRED. The chain `event` table requires a
- * NOT NULL `subject_tenant_id`, but mapping rules are tenant-scoped
- * (firm-wide) — there is no subject_tenant to anchor the event on. The
- * MAPPING_RULE_CREATED / UPDATED / ARCHIVED kinds are reserved in the
- * EVIDENCE_KINDS enum and the 0018_mapping_rule.sql CHECK so a future
- * audit surface (an audit_log table, or a per-tenant event table) can
- * adopt them without another migration. The three handler return sites
- * carry TODO(P4-followup) anchors so the deferral is grep-able.
+ * Audit emission (P5 Task 2.4): the three POST/PATCH/DELETE handlers
+ * now emit MAPPING_RULE_CREATED / UPDATED / ARCHIVED rows to the
+ * firm-scoped `audit_log` table (P5 Task 2.1) via `insertAuditLog`.
+ * Each emission rides on the same `sql.begin` as the underlying
+ * mutation so a downstream throw rolls both back atomically. The
+ * three kinds are no longer in `EVIDENCE_KINDS` — Task 2.2 moved them
+ * to `AUDIT_KINDS` and rebuilt `event_kind_valid` (0023) to exclude
+ * them, making attempts to insert them into `event` fail with CHECK
+ * violation. See `@cpa/db/audit-log.ts` for the writer contract.
  */
 
 // ---------------------------------------------------------------------------
@@ -256,6 +258,10 @@ export function registerMappingRules(app: FastifyInstance): void {
 
     const inserted = await sql.begin(async (tx) => {
       await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+      // P5 Task 2.4: also set app.current_firm_id inside this tx so the
+      // audit_log RLS WITH CHECK passes when insertAuditLog runs below.
+      // In this codebase firm_id IS the consultant tenant id.
+      await tx`SELECT set_config('app.current_firm_id', ${tenantId}, true)`;
       const rows = await tx<RawMappingRuleRow[]>`
         INSERT INTO mapping_rule (
           tenant_id, id, name, priority, enabled,
@@ -270,15 +276,30 @@ export function registerMappingRules(app: FastifyInstance): void {
         RETURNING id, tenant_id, name, priority, enabled,
                   conditions, action, created_at, created_by_user_id, updated_at
       `;
-      return rows[0] ?? null;
+      const row = rows[0];
+      if (!row) {
+        throw new Error('POST /v1/mapping-rules: INSERT returned no row');
+      }
+      // P5 Task 2.4: emit MAPPING_RULE_CREATED to audit_log. Same tx as
+      // the INSERT above so a downstream failure rolls both back; the
+      // helper riding on `tx` is the contract documented in
+      // @cpa/db/audit-log.ts.
+      await insertAuditLog({
+        tx,
+        firmId: tenantId,
+        kind: 'MAPPING_RULE_CREATED',
+        payload: {
+          mapping_rule_id: row.id,
+          name: row.name,
+          priority: row.priority,
+          conditions: row.conditions,
+          action: row.action,
+        },
+        actorUserId: userId,
+      });
+      return row;
     });
-    if (!inserted) {
-      throw new Error('POST /v1/mapping-rules: INSERT returned no row');
-    }
 
-    // TODO(P4-followup): emit MAPPING_RULE_CREATED once the event table
-    // accepts NULL subject_tenant_id (firm-scoped events). See route
-    // doc-block above for the deferral rationale.
     return reply.status(201).send({ mapping_rule: toApi(inserted) });
   });
 
@@ -411,6 +432,10 @@ export function registerMappingRules(app: FastifyInstance): void {
 
       return await sql.begin(async (tx) => {
         await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+        // P5 Task 2.4: also set app.current_firm_id inside this tx so
+        // the audit_log RLS WITH CHECK passes when insertAuditLog runs
+        // below. firm_id IS the consultant tenant id in this codebase.
+        await tx`SELECT set_config('app.current_firm_id', ${tenantId}, true)`;
 
         // Step 1: load the existing row under RLS. 404 covers missing
         // + cross-firm.
@@ -488,9 +513,43 @@ export function registerMappingRules(app: FastifyInstance): void {
             requestId: req.id,
           });
         }
-        // TODO(P4-followup): emit MAPPING_RULE_UPDATED once the event
-        // table accepts NULL subject_tenant_id (firm-scoped events).
-        // See route doc-block above for the deferral rationale.
+        // P5 Task 2.4: emit MAPPING_RULE_UPDATED to audit_log. Same tx
+        // as the UPDATE so a downstream failure rolls both back.
+        // `fields_changed` carries only the fields the patch touched
+        // (mirrors ACTIVITY_UPDATED) — readers render field-level
+        // diffs without re-fetching prior state.
+        const fieldsChanged: Record<string, { from: unknown; to: unknown }> = {};
+        if (patch.name !== undefined && patch.name !== existing.name) {
+          fieldsChanged['name'] = { from: existing.name, to: row.name };
+        }
+        if (patch.priority !== undefined && patch.priority !== existing.priority) {
+          fieldsChanged['priority'] = { from: existing.priority, to: row.priority };
+        }
+        if (patch.enabled !== undefined && patch.enabled !== existing.enabled) {
+          fieldsChanged['enabled'] = { from: existing.enabled, to: row.enabled };
+        }
+        if (patch.conditions !== undefined) {
+          fieldsChanged['conditions'] = { from: existing.conditions, to: row.conditions };
+        }
+        if (patch.action !== undefined) {
+          fieldsChanged['action'] = { from: existing.action, to: row.action };
+        }
+        // Only emit if something actually changed (the empty-patch
+        // 400 above already rejects no-op PATCHes, but a patch that
+        // only sets fields to their current values would be a no-op
+        // diff — silent no-op rather than a misleading audit row).
+        if (Object.keys(fieldsChanged).length > 0) {
+          await insertAuditLog({
+            tx,
+            firmId: tenantId,
+            kind: 'MAPPING_RULE_UPDATED',
+            payload: {
+              mapping_rule_id: row.id,
+              fields_changed: fieldsChanged,
+            },
+            actorUserId: req.user!.id,
+          });
+        }
         return { mapping_rule: toApi(row) };
       });
     },
@@ -516,6 +575,10 @@ export function registerMappingRules(app: FastifyInstance): void {
 
       return await sql.begin(async (tx) => {
         await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+        // P5 Task 2.4: also set app.current_firm_id inside this tx so
+        // the audit_log RLS WITH CHECK passes when insertAuditLog runs
+        // below. firm_id IS the consultant tenant id in this codebase.
+        await tx`SELECT set_config('app.current_firm_id', ${tenantId}, true)`;
         // Soft-archive: flip `enabled = false`. The row stays
         // queryable for audit; mirrors the project.ts archive pattern.
         const rows = await tx<{ id: string }[]>`
@@ -525,16 +588,29 @@ export function registerMappingRules(app: FastifyInstance): void {
            WHERE id = ${id} AND tenant_id = ${tenantId}
           RETURNING id
         `;
-        if (rows.length === 0) {
+        const archived = rows[0];
+        if (!archived) {
           return reply.status(404).send({
             error: 'mapping_rule_not_found',
             message: 'No mapping rule with that id in this firm',
             requestId: req.id,
           });
         }
-        // TODO(P4-followup): emit MAPPING_RULE_ARCHIVED once the event
-        // table accepts NULL subject_tenant_id (firm-scoped events).
-        // See route doc-block above for the deferral rationale.
+        // P5 Task 2.4: emit MAPPING_RULE_ARCHIVED to audit_log. Same
+        // tx as the UPDATE so a downstream failure rolls both back.
+        // No `reason` field on the wire (DELETE body is empty); admins
+        // who need to record rationale can add it later via a follow-
+        // up audit kind. The archive itself is the auditable event.
+        await insertAuditLog({
+          tx,
+          firmId: tenantId,
+          kind: 'MAPPING_RULE_ARCHIVED',
+          payload: {
+            mapping_rule_id: archived.id,
+            archived_by_user_id: req.user!.id,
+          },
+          actorUserId: req.user!.id,
+        });
         return reply.status(204).send();
       });
     },
