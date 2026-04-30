@@ -102,6 +102,13 @@ export const EVIDENCE_KINDS = [
   // 0023_remove_mapping_rule_from_event_kinds.sql rebuilds
   // `event_kind_valid` to EXCLUDE the three values; this list tracks
   // the CHECK byte-for-byte.
+  // P5 Theme 5 Task 5.1 — emitted by
+  // POST /v1/expenditures/:id/apply-rules (and the batch
+  // /v1/claims/:id/apply-rules) when a mapping rule's action type
+  // resolves to `map_to_activity`. The `event_kind_valid` CHECK is
+  // rebuilt to admit it by 0024_expenditure_mapped_kind.sql; this
+  // list tracks the CHECK byte-for-byte.
+  'EXPENDITURE_MAPPED',
 ] as const;
 export type EvidenceKind = (typeof EVIDENCE_KINDS)[number];
 

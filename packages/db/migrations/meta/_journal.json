@@ -169,6 +169,13 @@
       "when": 1777720340000,
       "tag": "0023_remove_mapping_rule_from_event_kinds",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1777720350000,
+      "tag": "0024_expenditure_mapped_kind",
+      "breakpoints": true
     }
   ]
 }
