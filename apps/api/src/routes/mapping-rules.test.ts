@@ -24,6 +24,12 @@ const ACTIVITY_X = '00000000-0000-4000-8000-0000000b9091';
 const ACTIVITY_Y = '00000000-0000-4000-8000-0000000b9092';
 
 const cleanup = async (): Promise<void> => {
+  // P5 Task 2.4 wired POST/PATCH/DELETE handlers to emit MAPPING_RULE_*
+  // rows to audit_log. audit_log.actor_user_id FK to user(id) has no
+  // CASCADE, so the user DELETE below trips unless we clear matching
+  // audit rows first. firm_id ON DELETE CASCADE would handle the tenant
+  // delete, but the user delete runs first (FK-safe order).
+  await privilegedSql`DELETE FROM audit_log WHERE firm_id IN (${TENANT_A}, ${TENANT_B})`;
   await privilegedSql`DELETE FROM mapping_rule WHERE tenant_id IN (${TENANT_A}, ${TENANT_B})`;
   await privilegedSql`DELETE FROM tenant_user WHERE tenant_id IN (${TENANT_A}, ${TENANT_B})`;
   await sql`DELETE FROM "user" WHERE id IN (${ADMIN_USER}, ${VIEWER_USER}, ${CONSULTANT_USER})`;
