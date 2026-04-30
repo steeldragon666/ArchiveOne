@@ -109,6 +109,12 @@ export const EVIDENCE_KINDS = [
   // rebuilt to admit it by 0024_expenditure_mapped_kind.sql; this
   // list tracks the CHECK byte-for-byte.
   'EXPENDITURE_MAPPED',
+  // P5 Theme 5 Task 5.2 — emitted by the apply-rules endpoint when a
+  // mapping rule's action type resolves to `apportion`. The
+  // `event_kind_valid` CHECK is rebuilt to admit it by
+  // 0025_expenditure_apportioned_kind.sql; this list tracks the
+  // CHECK byte-for-byte.
+  'EXPENDITURE_APPORTIONED',
 ] as const;
 export type EvidenceKind = (typeof EVIDENCE_KINDS)[number];
 

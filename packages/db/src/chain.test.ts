@@ -435,11 +435,25 @@ const P4_KIND_INSERT_FIXTURES = [
       rule_id: '00000000-0000-4000-8000-0000b0000099',
     },
   },
-  // TODO(B9-emission): when EXPENDITURE_APPORTIONED and
-  // MAPPING_RULE_{CREATED,UPDATED,ARCHIVED} are added to evidenceKind
-  // + event_kind_valid CHECK, add their canonical-shape fixtures here.
-  // The engine and route layers (B8/B9) already handle them — only the
-  // chain round-trip is gated on the schema enum.
+  // P5 Theme 5 Task 5.2 — EXPENDITURE_APPORTIONED round-trip. Emitted
+  // by apps/api/src/routes/apply-rules.ts when a mapping rule's action
+  // is `apportion`. The DB CHECK is rebuilt by 0025 to admit this kind.
+  // allocations sum to 100 — the Zod schema enforces this with a
+  // ±0.001 tolerance.
+  {
+    kind: 'EXPENDITURE_APPORTIONED' as const,
+    payload: {
+      _v: 1,
+      expenditure_id: '00000000-0000-4000-8000-0000f0000001',
+      claim_id: '00000000-0000-4000-8000-0000d0000001',
+      allocations: [
+        { activity_id: '00000000-0000-4000-8000-0000a0000001', percentage: 60 },
+        { activity_id: '00000000-0000-4000-8000-0000a0000002', percentage: 40 },
+      ],
+      apportioned_by_user_id: USER_ID,
+      rule_id: '00000000-0000-4000-8000-0000b0000099',
+    },
+  },
 ];
 
 for (const { kind, payload } of P4_KIND_INSERT_FIXTURES) {

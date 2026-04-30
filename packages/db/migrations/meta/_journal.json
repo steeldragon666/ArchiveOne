@@ -176,6 +176,13 @@
       "when": 1777720350000,
       "tag": "0024_expenditure_mapped_kind",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1777720360000,
+      "tag": "0025_expenditure_apportioned_kind",
+      "breakpoints": true
     }
   ]
 }

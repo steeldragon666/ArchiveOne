@@ -95,6 +95,11 @@ export const evidenceKind = z.enum([
   // 0024_expenditure_mapped_kind.sql to admit it; this Zod enum
   // tracks the same set.
   'EXPENDITURE_MAPPED',
+  // P5 Theme 5 Task 5.2 — emitted by the apply-rules endpoint when a
+  // mapping rule's action type is `apportion`. The CHECK is rebuilt by
+  // 0025_expenditure_apportioned_kind.sql to admit it; this Zod enum
+  // tracks the same set.
+  'EXPENDITURE_APPORTIONED',
 ]);
 export type EvidenceKind = z.infer<typeof evidenceKind>;
 
@@ -659,3 +664,42 @@ export const ExpenditureMappedPayload = z.object({
   rule_id: Uuid.optional(),
 });
 export type ExpenditureMappedPayload = z.infer<typeof ExpenditureMappedPayload>;
+
+/**
+ * EXPENDITURE_APPORTIONED — emitted by POST /v1/expenditures/:id/apply-rules
+ * (and the batch /v1/claims/:id/apply-rules) when a mapping rule's
+ * action is `apportion`. The action carries an array of allocations
+ * (activity_id + percentage); the engine validates eagerly that the
+ * percentages sum to 100 (B8 `validateRuleAction`), so any rule that
+ * survives write-time validation is guaranteed valid here too.
+ *
+ * The Zod-side `.refine(... ±0.001)` belt-and-braces guards against an
+ * emitter that bypasses the engine (none should — every emit path
+ * runs `applyRules` first — but the chain is append-only so we
+ * defend in depth at the wire boundary too).
+ *
+ * Mirrors `ExpenditureMappedPayload` shape: same `_v`, same
+ * `expenditure_id` / `claim_id` lineage. `rule_id` is the action's
+ * source rule (a single `apportion` action draws from one rule; the
+ * allocations are the action's body, not separate rules).
+ */
+export const ExpenditureApportionedPayload = z
+  .object({
+    _v: z.literal(1),
+    expenditure_id: Uuid,
+    claim_id: Uuid,
+    allocations: z
+      .array(
+        z.object({
+          activity_id: Uuid,
+          percentage: z.number().positive(),
+        }),
+      )
+      .min(1),
+    apportioned_by_user_id: Uuid,
+    rule_id: Uuid.optional(),
+  })
+  .refine((d) => Math.abs(d.allocations.reduce((s, a) => s + a.percentage, 0) - 100) <= 0.001, {
+    message: 'allocations must sum to 100% (±0.001)',
+  });
+export type ExpenditureApportionedPayload = z.infer<typeof ExpenditureApportionedPayload>;
