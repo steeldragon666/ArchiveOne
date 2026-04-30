@@ -218,13 +218,12 @@ test('migration 0020: round-trip insert with claim_id set', async () => {
 
 // ---------------------------------------------------------------------------
 // Task 1.3 — expenditure_line.line_number
-// TODO(P5-Task-1.3): flip these test.skip → test once migration 0021 lands.
 // Tests verify NOT NULL DEFAULT 1, the (expenditure_id, line_number) unique
 // index, and that ORDER BY line_number ASC supersedes ORDER BY id ASC for
 // the multi-line picker callsites in preview-rules.ts.
 // ---------------------------------------------------------------------------
 
-test.skip('migration 0021: expenditure_line.line_number column exists with NOT NULL DEFAULT 1', async () => {
+test('migration 0021: expenditure_line.line_number column exists with NOT NULL DEFAULT 1', async () => {
   const rows = await privilegedSql<
     {
       column_name: string;
@@ -247,7 +246,7 @@ test.skip('migration 0021: expenditure_line.line_number column exists with NOT N
   );
 });
 
-test.skip('migration 0021: (expenditure_id, line_number) unique index exists', async () => {
+test('migration 0021: (expenditure_id, line_number) unique index exists', async () => {
   const rows = await privilegedSql<{ indexname: string; indexdef: string }[]>`
     SELECT indexname, indexdef FROM pg_indexes
      WHERE tablename = 'expenditure_line'
@@ -257,7 +256,7 @@ test.skip('migration 0021: (expenditure_id, line_number) unique index exists', a
   assert.match(rows[0]!.indexdef, /UNIQUE/i, 'index must be UNIQUE');
 });
 
-test.skip('migration 0021: ORDER BY line_number picks line_number=1 regardless of UUID order', async () => {
+test('migration 0021: ORDER BY line_number picks line_number=1 regardless of UUID order', async () => {
   await privilegedSql`SELECT set_config('app.current_tenant_id', ${TENANT_ID}, true)`;
   await privilegedSql`
     INSERT INTO expenditure (
@@ -296,7 +295,7 @@ test.skip('migration 0021: ORDER BY line_number picks line_number=1 regardless o
   assert.equal(rows[2]!.line_number, 3);
 });
 
-test.skip('migration 0021: duplicate (expenditure_id, line_number) is rejected by unique index', async () => {
+test('migration 0021: duplicate (expenditure_id, line_number) is rejected by unique index', async () => {
   await privilegedSql`SELECT set_config('app.current_tenant_id', ${TENANT_ID}, true)`;
   // LINE_3B already has line_number=1; inserting another line_number=1
   // for the same expenditure must violate the unique index.
