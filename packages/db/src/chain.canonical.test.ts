@@ -511,3 +511,69 @@ test('chain.ts source uses ::text::jsonb double-cast for jsonb binds (revert gua
     `chain.ts must NOT contain bare ::jsonb casts (every cast must go through ::text::jsonb); found ${bareCasts.length} bare cast(s)`,
   );
 });
+
+// P6 Theme 1 follow-up — broader anti-pattern guard: bare-object-literal
+// interpolated into `::text::jsonb` cast.
+//
+// The Theme 1 migrations CI failure (PR #14, run 25230334059) was three
+// migrations.test.ts INSERTs of the form:
+//
+//     ${{ _v: 1, ... }}::text::jsonb
+//
+// instead of the canonical:
+//
+//     ${JSON.stringify({ _v: 1, ... })}::text::jsonb
+//
+// The `::text` cast pins the wire type to TEXT; postgres-js then encodes
+// the JS object via implicit String() coercion, yielding `[object Object]`,
+// which PostgreSQL rejects with `Token "object" is invalid` when re-parsing
+// as jsonb. The original chain.ts revert guard above only scans chain.ts,
+// so the bug slipped through Theme 1 review.
+//
+// This guard scans ALL `*.ts` files under `packages/db/src/` for the
+// signature pattern `}}::text::jsonb` (object-literal close immediately
+// followed by the jsonb cast). The valid canonical form always ends with
+// `JSON.stringify(...)}::text::jsonb` (closing parenthesis before the
+// brace), so this regex catches the anti-pattern without false positives
+// on the canonical form.
+test('packages/db/src TS sources use JSON.stringify(...) (not bare object) before ::text::jsonb', async () => {
+  const { readFileSync, readdirSync, statSync } = await import('node:fs');
+  const { fileURLToPath } = await import('node:url');
+  const path = await import('node:path');
+
+  const srcDir = path.dirname(fileURLToPath(new URL('./chain.ts', import.meta.url)));
+
+  // Recursive walk: collect all *.ts (incl. test files).
+  const tsFiles: string[] = [];
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir)) {
+      const full = path.join(dir, entry);
+      const st = statSync(full);
+      if (st.isDirectory()) walk(full);
+      else if (full.endsWith('.ts')) tsFiles.push(full);
+    }
+  };
+  walk(srcDir);
+
+  // For each file, strip comments then scan for the anti-pattern.
+  const offenders: string[] = [];
+  for (const file of tsFiles) {
+    const src = readFileSync(file, 'utf8');
+    const codeOnly = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    // `}}::text::jsonb` or `}}::jsonb` immediately after an object-literal close.
+    // The canonical pattern `JSON.stringify(...)}::text::jsonb` ends with `)}`,
+    // not `}}`, so it doesn't match.
+    const matches = codeOnly.match(/\}\}::(text::)?jsonb/g);
+    if (matches && matches.length > 0) {
+      offenders.push(`${path.relative(srcDir, file)}: ${matches.length} occurrence(s)`);
+    }
+  }
+
+  assert.equal(
+    offenders.length,
+    0,
+    `Bare-object-literal interpolated into ::text::jsonb cast detected. ` +
+      `Use \`\${JSON.stringify(obj)}::text::jsonb\` instead. ` +
+      `Offenders:\n${offenders.join('\n')}`,
+  );
+});

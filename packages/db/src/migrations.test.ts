@@ -401,7 +401,7 @@ test('migration 0026: event_kind_valid CHECK admits EXPENDITURE_CLASSIFIED', asy
       hash, captured_at, captured_by_user_id
     ) VALUES (
       ${EVENT_26_ID}, ${TENANT_ID}, ${SUBJECT_ID}, 'EXPENDITURE_CLASSIFIED',
-      ${{
+      ${JSON.stringify({
         _v: 1,
         expenditure_id: '00000000-0000-4000-8000-000000abc001',
         decision: 'eligible',
@@ -413,7 +413,7 @@ test('migration 0026: event_kind_valid CHECK admits EXPENDITURE_CLASSIFIED', asy
         model: 'claude-haiku-4-5',
         prompt_version: 'classify-expenditure@1.0.0',
         idempotency_key: 'fixture-key',
-      }}::text::jsonb,
+      })}::text::jsonb,
       ${'a6'.padEnd(64, '0')}, '2026-05-01T00:00:00Z', ${USER_ID}
     )
   `;
@@ -454,7 +454,7 @@ test('migration 0027: event_kind_valid CHECK admits ACTIVITY_REGISTER_DRAFTED', 
       hash, captured_at, captured_by_user_id
     ) VALUES (
       ${EVENT_27_ID}, ${TENANT_ID}, ${SUBJECT_ID}, 'ACTIVITY_REGISTER_DRAFTED',
-      ${{
+      ${JSON.stringify({
         _v: 1,
         project_id: '00000000-0000-4000-8000-000000abd001',
         proposed_activities: [
@@ -478,7 +478,7 @@ test('migration 0027: event_kind_valid CHECK admits ACTIVITY_REGISTER_DRAFTED', 
         model: 'claude-sonnet-4-5',
         prompt_version: 'synthesize-register@1.0.0',
         idempotency_key: 'fixture-key-27',
-      }}::text::jsonb,
+      })}::text::jsonb,
       ${'a7'.padEnd(64, '0')}, '2026-05-01T00:00:00Z', ${USER_ID}
     )
   `;
@@ -532,7 +532,7 @@ test('migration 0028: event_kind_valid CHECK admits NARRATIVE_DRAFTED', async ()
       hash, captured_at, captured_by_user_id
     ) VALUES (
       ${EVENT_28_ID}, ${TENANT_ID}, ${SUBJECT_ID}, 'NARRATIVE_DRAFTED',
-      ${{
+      ${JSON.stringify({
         _v: 1,
         narrative_draft_id: narrativeDraftId,
         activity_id: activityId,
@@ -546,7 +546,7 @@ test('migration 0028: event_kind_valid CHECK admits NARRATIVE_DRAFTED', async ()
         segment_count: 7,
         claim_segment_count: 4,
         idempotency_key: 'fixture-key-28',
-      }}::text::jsonb,
+      })}::text::jsonb,
       ${'a8'.padEnd(64, '0')}, '2026-05-01T00:00:00Z', ${USER_ID}
     )
   `;
