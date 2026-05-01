@@ -86,9 +86,23 @@ const CLAIM_4B_ID = '00000000-0000-4000-8000-00006a001454';
 const ACTIVITY_4B_ID = '00000000-0000-4000-8000-00006a001455';
 const DRAFT_4B_ID = '00000000-0000-4000-8000-00006a001456';
 
+// P6 Task 1.5 — migration 0030 narrative_draft_version round-trip.
+// Reuses Task 1.4's DRAFT_4A_ID / DRAFT_4B_ID parents (seeded in
+// the 0029 test which runs earlier in this file). Three version
+// rows: two against tenant-A's draft (initial + section_regen, to
+// exercise lineage and the UNIQUE constraint), one against tenant-B
+// for the cross-tenant RLS positive control.
+const DRAFT_VERSION_5A_INITIAL_ID = '00000000-0000-4000-8000-00006a001501';
+const DRAFT_VERSION_5A_REGEN_ID = '00000000-0000-4000-8000-00006a001502';
+const DRAFT_VERSION_5B_INITIAL_ID = '00000000-0000-4000-8000-00006a001503';
+
 const cleanup = async (): Promise<void> => {
   await privilegedSql`DELETE FROM event WHERE id IN (${EVENT_26_ID}, ${EVENT_27_ID}, ${EVENT_28_ID})`;
-  // Drafts first — FK to activity has ON DELETE CASCADE so the activity
+  // Versions first — FK to narrative_draft has ON DELETE CASCADE so
+  // the draft delete below would clean these up too, but explicit
+  // DELETE keeps the cleanup readable and idempotent across reruns.
+  await privilegedSql`DELETE FROM narrative_draft_version WHERE id IN (${DRAFT_VERSION_5A_INITIAL_ID}, ${DRAFT_VERSION_5A_REGEN_ID}, ${DRAFT_VERSION_5B_INITIAL_ID})`;
+  // Drafts next — FK to activity has ON DELETE CASCADE so the activity
   // delete below would clean these up too, but explicit DELETE keeps the
   // cleanup readable and idempotent across reruns.
   await privilegedSql`DELETE FROM narrative_draft WHERE id IN (${DRAFT_4A_ID}, ${DRAFT_4B_ID})`;
@@ -710,4 +724,228 @@ test('migration 0029: narrative_draft table exists with expected columns and RLS
   });
   assert.equal(visibleAsB.length, 1, 'TENANT_B session must see exactly one row through RLS');
   assert.equal(visibleAsB[0]!.id, DRAFT_4B_ID, 'TENANT_B session must see only its own draft');
+});
+
+// ---------------------------------------------------------------------------
+// P6 Task 1.5 — migration 0030 narrative_draft_version (append-only history).
+// Six assertions in one test:
+//   1. Column existence (NOT NULL ordinal-position list matches the
+//      Task 1.5 spec verbatim) — guards against accidental column
+//      reorders or drops.
+//   2. Initial version insert (parent_version=NULL, version=1,
+//      generation_kind='initial') — happy path for the first version
+//      of a draft.
+//   3. section_regen version insert (parent_version=1, version=2,
+//      generation_kind='section_regen') — happy path for lineage.
+//   4. UNIQUE violation on duplicate (tenant_id, draft_id, version) —
+//      attempting another version=2 against the same draft must be
+//      rejected by the unique index (worker-retry safety).
+//   5. Append-only enforcement: an UPDATE attempt as the cpa_app role
+//      must fail with a permission-denied error (the migration grants
+//      only SELECT, INSERT — no UPDATE / DELETE).
+//   6. RLS positive control — a TENANT_A session via cpa_app must see
+//      its own version rows but NOT the TENANT_B row.
+//
+// Reuses Task 1.4's DRAFT_4A_ID / DRAFT_4B_ID parents seeded by the
+// 0029 test which runs earlier in this file (Node's test runner
+// preserves declaration order within a file). Segments are bound via
+// the canonical `${JSON.stringify(arr)}::text::jsonb` pattern (same
+// as the 0029 test) — explicit JSON.stringify on the JS side because
+// segments is an ARRAY, and postgres-js may try to detect a Postgres-
+// array bind for raw `[...]` literals (wrong shape for jsonb).
+// ---------------------------------------------------------------------------
+
+test('migration 0030: narrative_draft_version append-only table + RLS isolation', async () => {
+  // ---- 1. Column existence assertion -------------------------------------
+  const cols = await privilegedSql<{ column_name: string }[]>`
+    SELECT column_name FROM information_schema.columns
+     WHERE table_name = 'narrative_draft_version'
+     ORDER BY ordinal_position
+  `;
+  const expected = [
+    'tenant_id',
+    'id',
+    'draft_id',
+    'version',
+    'segments',
+    'content_hash',
+    'model',
+    'prompt_version',
+    'parent_version',
+    'generation_kind',
+    'created_at',
+    'created_by_user_id',
+  ];
+  assert.deepEqual(
+    cols.map((c) => c.column_name),
+    expected,
+    'narrative_draft_version columns must match the Task 1.5 spec in declared order',
+  );
+
+  // ---- 2. Initial version insert (parent_version=NULL) -------------------
+  const initialSegmentsA = [
+    { type: 'prose', text: 'Tenant A initial new-knowledge prose segment.' },
+  ];
+  await privilegedSql`SELECT set_config('app.current_tenant_id', ${TENANT_ID}, true)`;
+  await privilegedSql`
+    INSERT INTO narrative_draft_version (
+      tenant_id, id, draft_id, version, segments, content_hash, model,
+      prompt_version, parent_version, generation_kind, created_by_user_id
+    ) VALUES (
+      ${TENANT_ID}, ${DRAFT_VERSION_5A_INITIAL_ID}, ${DRAFT_4A_ID}, 1,
+      ${JSON.stringify(initialSegmentsA)}::text::jsonb,
+      ${'a'.repeat(64)}, 'claude-sonnet-4-5', 'draft-narrative@1.0.0',
+      NULL, 'initial', ${USER_ID}
+    )
+  `;
+
+  // Verify the initial row landed with parent_version IS NULL — confirms
+  // the column is genuinely nullable (no NOT NULL drift) and round-trips
+  // a NULL bind correctly.
+  const initialRow = await privilegedSql<
+    {
+      version: number;
+      parent_version: number | null;
+      generation_kind: string;
+    }[]
+  >`SELECT version, parent_version, generation_kind
+      FROM narrative_draft_version WHERE id = ${DRAFT_VERSION_5A_INITIAL_ID}`;
+  assert.equal(initialRow.length, 1, 'initial version row must round-trip');
+  assert.equal(initialRow[0]!.version, 1, 'initial version must be 1');
+  assert.equal(
+    initialRow[0]!.parent_version,
+    null,
+    'initial version must have NULL parent_version',
+  );
+  assert.equal(
+    initialRow[0]!.generation_kind,
+    'initial',
+    'initial version must have generation_kind=initial',
+  );
+
+  // ---- 3. section_regen version insert (parent_version=1, version=2) ----
+  const regenSegmentsA = [
+    { type: 'prose', text: 'Tenant A regenerated new-knowledge prose segment.' },
+  ];
+  await privilegedSql`
+    INSERT INTO narrative_draft_version (
+      tenant_id, id, draft_id, version, segments, content_hash, model,
+      prompt_version, parent_version, generation_kind, created_by_user_id
+    ) VALUES (
+      ${TENANT_ID}, ${DRAFT_VERSION_5A_REGEN_ID}, ${DRAFT_4A_ID}, 2,
+      ${JSON.stringify(regenSegmentsA)}::text::jsonb,
+      ${'c'.repeat(64)}, 'claude-sonnet-4-5', 'draft-narrative@1.0.0',
+      1, 'section_regen', ${USER_ID}
+    )
+  `;
+
+  const regenRow = await privilegedSql<
+    {
+      version: number;
+      parent_version: number | null;
+      generation_kind: string;
+    }[]
+  >`SELECT version, parent_version, generation_kind
+      FROM narrative_draft_version WHERE id = ${DRAFT_VERSION_5A_REGEN_ID}`;
+  assert.equal(regenRow.length, 1, 'section_regen version row must round-trip');
+  assert.equal(regenRow[0]!.version, 2, 'regen version must be 2');
+  assert.equal(regenRow[0]!.parent_version, 1, 'regen must point at parent_version=1');
+  assert.equal(
+    regenRow[0]!.generation_kind,
+    'section_regen',
+    'regen must have generation_kind=section_regen',
+  );
+
+  // ---- 4. UNIQUE violation on duplicate (tenant_id, draft_id, version) --
+  // Worker-retry safety: a second version=2 against the same draft must
+  // fail loudly. The unique index is the structural guard.
+  const dupId = '00000000-0000-4000-8000-00006a00150d';
+  const dupSegments = [{ type: 'prose', text: 'Duplicate version=2 attempt.' }];
+  await assert.rejects(
+    () => privilegedSql`
+      INSERT INTO narrative_draft_version (
+        tenant_id, id, draft_id, version, segments, content_hash, model,
+        prompt_version, parent_version, generation_kind, created_by_user_id
+      ) VALUES (
+        ${TENANT_ID}, ${dupId}, ${DRAFT_4A_ID}, 2,
+        ${JSON.stringify(dupSegments)}::text::jsonb,
+        ${'d'.repeat(64)}, 'claude-sonnet-4-5', 'draft-narrative@1.0.0',
+        1, 'section_regen', ${USER_ID}
+      )
+    `,
+    /unique|duplicate/i,
+    'duplicate (tenant_id, draft_id, version) must be rejected by the unique index',
+  );
+
+  // ---- 5. Append-only enforcement: UPDATE denied to cpa_app -------------
+  // The migration grants only SELECT, INSERT to cpa_app — no UPDATE /
+  // DELETE. Postgres surfaces "permission denied for table
+  // narrative_draft_version" (SQLSTATE 42501) when the role lacks the
+  // privilege. This is the structural append-only enforcement (mirrors
+  // audit_log from migration 0022).
+  await assert.rejects(
+    () =>
+      sql.begin(async (tx) => {
+        await tx`SELECT set_config('app.current_tenant_id', ${TENANT_ID}, true)`;
+        await tx`
+          UPDATE narrative_draft_version
+             SET content_hash = ${'e'.repeat(64)}
+           WHERE id = ${DRAFT_VERSION_5A_INITIAL_ID}
+        `;
+      }),
+    /permission denied/i,
+    'UPDATE on narrative_draft_version as cpa_app must fail (append-only GRANT)',
+  );
+
+  // ---- 6. RLS positive control: seed a tenant-B version + cross-tenant --
+  // Seed one tenant-B row (privilegedSql bypasses RLS as table owner +
+  // superuser) so the cross-tenant SELECT below has something to NOT see.
+  const initialSegmentsB = [
+    { type: 'prose', text: 'Tenant B initial new-knowledge prose segment.' },
+  ];
+  await privilegedSql`SELECT set_config('app.current_tenant_id', ${TENANT_B_ID}, true)`;
+  await privilegedSql`
+    INSERT INTO narrative_draft_version (
+      tenant_id, id, draft_id, version, segments, content_hash, model,
+      prompt_version, parent_version, generation_kind, created_by_user_id
+    ) VALUES (
+      ${TENANT_B_ID}, ${DRAFT_VERSION_5B_INITIAL_ID}, ${DRAFT_4B_ID}, 1,
+      ${JSON.stringify(initialSegmentsB)}::text::jsonb,
+      ${'b'.repeat(64)}, 'claude-sonnet-4-5', 'draft-narrative@1.0.0',
+      NULL, 'initial', ${USER_B_ID}
+    )
+  `;
+
+  // sql is the cpa_app handle (non-owner, non-superuser) — RLS DOES
+  // apply. TENANT_A session must see ONLY its own two version rows
+  // (the initial + the section_regen seeded above), NOT the tenant-B
+  // row.
+  const visibleAsA = await sql.begin(async (tx) => {
+    await tx`SELECT set_config('app.current_tenant_id', ${TENANT_ID}, true)`;
+    return tx<{ id: string }[]>`SELECT id FROM narrative_draft_version ORDER BY id`;
+  });
+  assert.equal(
+    visibleAsA.length,
+    2,
+    'TENANT_A session must see exactly two narrative_draft_version rows through RLS',
+  );
+  const visibleIds = visibleAsA.map((r) => r.id).sort();
+  assert.deepEqual(
+    visibleIds,
+    [DRAFT_VERSION_5A_INITIAL_ID, DRAFT_VERSION_5A_REGEN_ID].sort(),
+    'TENANT_A session must see only its own version rows (tenant-B row is invisible)',
+  );
+
+  // Symmetric assertion for TENANT_B — guards against an accidental
+  // policy that always returned tenant-A regardless of GUC.
+  const visibleAsB = await sql.begin(async (tx) => {
+    await tx`SELECT set_config('app.current_tenant_id', ${TENANT_B_ID}, true)`;
+    return tx<{ id: string }[]>`SELECT id FROM narrative_draft_version ORDER BY id`;
+  });
+  assert.equal(visibleAsB.length, 1, 'TENANT_B session must see exactly one row through RLS');
+  assert.equal(
+    visibleAsB[0]!.id,
+    DRAFT_VERSION_5B_INITIAL_ID,
+    'TENANT_B session must see only its own version row',
+  );
 });
