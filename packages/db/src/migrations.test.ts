@@ -59,8 +59,12 @@ const LINE_3C_ID = '00000000-0000-4000-8000-00005a001304';
 // Reuses TENANT/USER/SUBJECT seeded in the suite-wide before() hook.
 const EVENT_26_ID = '00000000-0000-4000-8000-00006a000026';
 
+// P6 Task 1.2 — migration 0027 ACTIVITY_REGISTER_DRAFTED CHECK round-trip.
+// Reuses the same suite-wide TENANT/USER/SUBJECT.
+const EVENT_27_ID = '00000000-0000-4000-8000-00006a000027';
+
 const cleanup = async (): Promise<void> => {
-  await privilegedSql`DELETE FROM event WHERE id IN (${EVENT_26_ID})`;
+  await privilegedSql`DELETE FROM event WHERE id IN (${EVENT_26_ID}, ${EVENT_27_ID})`;
   await privilegedSql`DELETE FROM expenditure_line WHERE expenditure_id IN (${EXPENDITURE_2_ID}, ${EXPENDITURE_3_ID})`;
   await privilegedSql`DELETE FROM expenditure WHERE id IN (${EXPENDITURE_2_ID}, ${EXPENDITURE_3_ID})`;
   await privilegedSql`DELETE FROM activity WHERE id IN (${ACTIVITY_1_ID})`;
@@ -363,4 +367,84 @@ test('migration 0026: event_kind_valid CHECK admits EXPENDITURE_CLASSIFIED', asy
   `;
   assert.equal(rows.length, 1, 'EXPENDITURE_CLASSIFIED row must be admitted by the CHECK');
   assert.equal(rows[0]!.kind, 'EXPENDITURE_CLASSIFIED');
+});
+
+// ---------------------------------------------------------------------------
+// P6 Task 1.2 — migration 0027 ACTIVITY_REGISTER_DRAFTED kind
+// Round-trip: a raw INSERT with kind='ACTIVITY_REGISTER_DRAFTED' must succeed
+// post-migration. Pre-migration the same row would fail the
+// `event_kind_valid` CHECK with a 23514 violation. Same privilegedSql /
+// jsonb-double-cast pattern as the 0026 test above. The payload follows
+// `ActivityRegisterDraftedPayload` in @cpa/schemas/event.ts and intentionally
+// includes a non-empty `proposed_activities` array so the round-trip
+// exercises the nested `ProposedActivity` shape (not just the top-level
+// fields).
+// ---------------------------------------------------------------------------
+
+test('migration 0027: event_kind_valid CHECK admits ACTIVITY_REGISTER_DRAFTED', async () => {
+  await privilegedSql`SELECT set_config('app.current_tenant_id', ${TENANT_ID}, true)`;
+  // Two distinct event ids the cluster pretends to have drawn from —
+  // they do NOT need to refer to real `event` rows for the CHECK
+  // round-trip; the payload is jsonb so referential integrity is
+  // not enforced here. They exist just so the inserted row exercises
+  // the nested `ProposedActivity.clustered_event_ids` shape.
+  const clusteredEventA = '00000000-0000-4000-8000-000000abe001';
+  const clusteredEventB = '00000000-0000-4000-8000-000000abe002';
+  const unclusteredTail = '00000000-0000-4000-8000-000000abe003';
+  const proposedActivityId = '00000000-0000-4000-8000-000000abf001';
+
+  await privilegedSql`
+    INSERT INTO event (
+      id, tenant_id, subject_tenant_id, kind, payload,
+      hash, captured_at, captured_by_user_id
+    ) VALUES (
+      ${EVENT_27_ID}, ${TENANT_ID}, ${SUBJECT_ID}, 'ACTIVITY_REGISTER_DRAFTED',
+      ${{
+        _v: 1,
+        project_id: '00000000-0000-4000-8000-000000abd001',
+        proposed_activities: [
+          {
+            proposed_id: proposedActivityId,
+            name: 'RL sample-efficiency study',
+            kind: 'core',
+            statutory_anchor: 's.355-25',
+            rationale: 'Cluster spans hypothesis + experiment events on PPO efficiency.',
+            clustered_event_ids: [clusteredEventA, clusteredEventB],
+            confidence: 0.81,
+            proposed_hypothesis:
+              'PPO with auxiliary task pretraining converges in <50% of baseline samples.',
+            proposed_uncertainty: 'Sample-efficiency gap on sparse-reward envs is unknown.',
+          },
+        ],
+        unclustered_event_ids: [unclusteredTail],
+        total_input_events: 3,
+        events_truncated: false,
+        synthesizer_notes: 'unit test fixture',
+        model: 'claude-sonnet-4-5',
+        prompt_version: 'synthesize-register@1.0.0',
+        idempotency_key: 'fixture-key-27',
+      }}::text::jsonb,
+      ${'a7'.padEnd(64, '0')}, '2026-05-01T00:00:00Z', ${USER_ID}
+    )
+  `;
+  const rows = await privilegedSql<
+    { id: string; kind: string; payload: { proposed_activities: { proposed_id: string }[] } }[]
+  >`
+    SELECT id, kind, payload FROM event WHERE id = ${EVENT_27_ID}
+  `;
+  assert.equal(rows.length, 1, 'ACTIVITY_REGISTER_DRAFTED row must be admitted by the CHECK');
+  assert.equal(rows[0]!.kind, 'ACTIVITY_REGISTER_DRAFTED');
+  // Sanity-check the nested ProposedActivity round-tripped through
+  // jsonb intact — this is what makes the test exercise the nested
+  // shape, not just the top-level kind admission.
+  assert.equal(
+    rows[0]!.payload.proposed_activities.length,
+    1,
+    'payload.proposed_activities must round-trip with one entry',
+  );
+  assert.equal(
+    rows[0]!.payload.proposed_activities[0]!.proposed_id,
+    proposedActivityId,
+    'nested ProposedActivity.proposed_id must round-trip via jsonb',
+  );
 });

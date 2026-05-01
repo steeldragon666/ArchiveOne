@@ -105,6 +105,12 @@ export const evidenceKind = z.enum([
   // 0026_expenditure_classified_kind.sql to admit it; this Zod enum
   // tracks the same set.
   'EXPENDITURE_CLASSIFIED',
+  // P6 Task 1.2 — emitted by the future Agent B activity-register
+  // synthesizer (once per draft pass) carrying the proposed activity
+  // cluster set. The CHECK is rebuilt by
+  // 0027_activity_register_drafted_kind.sql to admit it; this Zod
+  // enum tracks the same set.
+  'ACTIVITY_REGISTER_DRAFTED',
 ]);
 export type EvidenceKind = z.infer<typeof evidenceKind>;
 
@@ -746,3 +752,115 @@ export const ExpenditureClassifiedPayload = z.object({
   idempotency_key: z.string().min(1),
 });
 export type ExpenditureClassifiedPayload = z.infer<typeof ExpenditureClassifiedPayload>;
+
+/**
+ * One row of the Agent B activity-register draft — a proposed R&D
+ * activity clustered from the raw evidence stream.
+ *
+ * Reused at TWO emission sites:
+ *
+ *   1. **Agent B** (`ACTIVITY_REGISTER_DRAFTED` payload, this file):
+ *      the synthesizer emits ONE event per draft pass carrying an
+ *      array of `ProposedActivity` rows. Each row is a
+ *      not-yet-persisted candidate — `proposed_id` is a fresh UUID
+ *      the synthesizer mints, NOT yet a real `activity.id`. A
+ *      downstream consultant-review step (or Agent C handoff)
+ *      decides which proposals are promoted to actual `activity`
+ *      rows via the existing `ACTIVITY_CREATED` path.
+ *
+ *   2. **Agent C** (narrative drafter, downstream P6 task):
+ *      consumes the same shape verbatim and inherits
+ *      `proposed_hypothesis` + `proposed_uncertainty` as a
+ *      head-start on the activity narrative — those two fields
+ *      exist precisely so Agent C doesn't have to re-invent the
+ *      baseline framing Agent B already inferred.
+ *
+ * Field meanings:
+ * - `proposed_id` — fresh UUID minted by the synthesizer; stable
+ *   handle for the proposal across the draft → review → promotion
+ *   lifecycle. Distinct from any future `activity.id`.
+ * - `name` — short human-readable activity name (≤200 chars), e.g.
+ *   "Reinforcement learning sample-efficiency study".
+ * - `kind` — `core` (Division 355 §355-25, conducting the
+ *   experimental work) or `supporting` (§355-30, directly
+ *   contributing to a core activity).
+ * - `statutory_anchor` — paired with `kind`; pins the proposal to
+ *   the matching Division 355 reference.
+ * - `rationale` — 1–2000 char justification for why this evidence
+ *   cluster maps to this activity (surfaces in the consultant
+ *   review UI and the assurance report).
+ * - `clustered_event_ids` — non-empty array of `event.id`s that
+ *   form THIS activity's evidence cluster. Used by the review UI to
+ *   show "what evidence backs this proposal" and by Agent C to
+ *   pull narrative material.
+ * - `confidence` — model-stated 0..1 score for the cluster's
+ *   coherence; the consultant review threshold is parameterised
+ *   downstream.
+ * - `proposed_hypothesis` / `proposed_uncertainty` — Agent C
+ *   pre-fills (≤1500 chars each, nullable when the cluster has
+ *   no clear hypothesis frame yet). Inherited verbatim by Agent C
+ *   when the proposal is promoted, so the narrative drafter starts
+ *   from Agent B's framing rather than a blank page.
+ */
+export const ProposedActivity = z.object({
+  proposed_id: Uuid,
+  name: z.string().min(1).max(200),
+  kind: z.enum(['core', 'supporting']),
+  statutory_anchor: z.enum(['s.355-25', 's.355-30']),
+  rationale: z.string().min(1).max(2000),
+  clustered_event_ids: z.array(Uuid).min(1),
+  confidence: z.number().min(0).max(1),
+  proposed_hypothesis: z.string().max(1500).nullable(),
+  proposed_uncertainty: z.string().max(1500).nullable(),
+});
+export type ProposedActivity = z.infer<typeof ProposedActivity>;
+
+/**
+ * ACTIVITY_REGISTER_DRAFTED — emitted by the future Agent B
+ * activity-register synthesizer ONCE per draft pass. The synthesizer
+ * reads the recent evidence stream for a project (raw events plus
+ * Agent A's EXPENDITURE_CLASSIFIED decisions), clusters that stream
+ * into candidate activities, and emits this single event carrying
+ * the full draft register. See {@link ProposedActivity} for the
+ * per-row shape and the dual reuse at Agent B / Agent C.
+ *
+ * Field meanings:
+ * - `project_id` — the project whose evidence stream was synthesized.
+ * - `proposed_activities` — the cluster set Agent B inferred. May
+ *   be empty if the synthesizer concluded the input lacked any
+ *   coherent R&D activity (every event is unclustered).
+ * - `unclustered_event_ids` — events the synthesizer saw but did
+ *   not assign to any proposed activity. Surfaces in the review UI
+ *   so the consultant can decide whether to re-cluster manually,
+ *   ignore them, or kick off a re-run with adjusted prompts.
+ * - `total_input_events` — count of events the synthesizer ingested
+ *   (≥ sum of clustered + unclustered when truncation kicks in).
+ * - `events_truncated` — true when the input window was capped
+ *   below the project's full event count (the harness has a
+ *   per-pass token budget; large projects may need multiple passes).
+ * - `synthesizer_notes` — free-form ≤3000 chars; the synthesizer's
+ *   commentary on the draft (e.g. "split a noisy cluster", "low
+ *   confidence on the supporting/core boundary for cluster #3").
+ *   Surfaces in the consultant review UI.
+ * - `model` / `prompt_version` — pin the exact agent version
+ *   (replay / reproducibility).
+ * - `idempotency_key` — the SDK side dedupes on this key before
+ *   appending to the chain, so the agent can retry safely across
+ *   worker crashes.
+ *
+ * `_v: 1` is the payload-shape version stamp; bumping it whenever
+ * fields change keeps reads safe across rolling deploys.
+ */
+export const ActivityRegisterDraftedPayload = z.object({
+  _v: z.literal(1),
+  project_id: Uuid,
+  proposed_activities: z.array(ProposedActivity),
+  unclustered_event_ids: z.array(Uuid),
+  total_input_events: z.number().int().nonnegative(),
+  events_truncated: z.boolean(),
+  synthesizer_notes: z.string().max(3000),
+  model: z.string().min(1),
+  prompt_version: z.string().min(1),
+  idempotency_key: z.string().min(1),
+});
+export type ActivityRegisterDraftedPayload = z.infer<typeof ActivityRegisterDraftedPayload>;

@@ -123,6 +123,15 @@ export const EVIDENCE_KINDS = [
   // 0026_expenditure_classified_kind.sql; this list tracks the
   // CHECK byte-for-byte.
   'EXPENDITURE_CLASSIFIED',
+  // P6 Task 1.2 — emitted by the future Agent B activity-register
+  // synthesizer; once per draft pass, proposes a clustered set of
+  // candidate activities (each with a statutory anchor under
+  // Division 355 §355-25 core / §355-30 supporting) drawn from the
+  // raw evidence stream and the unclustered tail of event ids that
+  // didn't fit any cluster. The `event_kind_valid` CHECK is rebuilt
+  // to admit it by 0027_activity_register_drafted_kind.sql; this
+  // list tracks the CHECK byte-for-byte.
+  'ACTIVITY_REGISTER_DRAFTED',
 ] as const;
 export type EvidenceKind = (typeof EVIDENCE_KINDS)[number];
 
