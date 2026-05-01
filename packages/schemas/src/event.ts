@@ -111,6 +111,13 @@ export const evidenceKind = z.enum([
   // 0027_activity_register_drafted_kind.sql to admit it; this Zod
   // enum tracks the same set.
   'ACTIVITY_REGISTER_DRAFTED',
+  // P6 Task 1.3 — emitted by the future Agent C streaming narrative
+  // drafter (one event per persisted (activity_id, section_kind,
+  // version) draft) carrying metadata only — segments live in the
+  // `narrative_draft` table. The CHECK is rebuilt by
+  // 0028_narrative_drafted_kind.sql to admit it; this Zod enum
+  // tracks the same set.
+  'NARRATIVE_DRAFTED',
 ]);
 export type EvidenceKind = z.infer<typeof evidenceKind>;
 
@@ -864,3 +871,136 @@ export const ActivityRegisterDraftedPayload = z.object({
   idempotency_key: z.string().min(1),
 });
 export type ActivityRegisterDraftedPayload = z.infer<typeof ActivityRegisterDraftedPayload>;
+
+/**
+ * One segment of an Agent C narrative-section draft — the
+ * fundamental unit of the δ hybrid audit-anchor model.
+ *
+ * Discriminated union on `type`:
+ *
+ *   - **`prose`** — narrative bridges, definitions, statutory
+ *     connectors, and other framing text that does NOT make a
+ *     factual claim about the project. Carries only `text`. The
+ *     consultant review UI renders these inline without a citation
+ *     affordance because there's nothing to anchor.
+ *
+ *   - **`claim`** — every factual statement about the R&D activity
+ *     (what was done, what was learned, what remains uncertain).
+ *     Carries `text` PLUS a non-empty `citing_events` array of
+ *     `event.id`s that back the claim. The δ model is hybrid in
+ *     that audit anchoring is segment-scoped (not whole-document
+ *     scoped): the auditor can click any claim segment and see the
+ *     evidence cluster behind it without trawling the entire
+ *     activity timeline.
+ *
+ * The Zod schema enforces STRUCTURAL validity only — `claim`
+ * segments must have a non-empty `citing_events` array, but Zod
+ * cannot verify the cited UUIDs actually correspond to real events
+ * for the activity. That second-order validation lives server-side
+ * in Task 5.2's validate-and-correct loop, which checks every
+ * `claim` segment's `citing_events` are members of the activity's
+ * `clustered_events` set (drawn from the parent activity's
+ * `ACTIVITY_REGISTER_DRAFTED` cluster) and rejects (or asks the
+ * model to retry) any segment that cites events outside the
+ * cluster. Splitting structural and semantic validation this way
+ * keeps the wire schema cheap to deploy on the client + agent side
+ * while reserving the hard-error semantic check for the server
+ * persistence path.
+ *
+ * Field meanings:
+ * - `type` — `'prose'` for narrative framing, `'claim'` for any
+ *   factual statement that needs an audit anchor.
+ * - `text` — the segment body (1–2000 chars). The 2000-char cap is
+ *   intentionally tight: long claims are fragile under audit, so
+ *   the prompt nudges the model to split run-on assertions into
+ *   discrete segments each anchored to its own evidence subset.
+ * - `citing_events` — `claim` only; non-empty array of `event.id`s.
+ *   Used by the assurance report to render the evidence drawer
+ *   under each claim and by Task 5.2 to enforce in-cluster
+ *   citations.
+ *
+ * Reused at TWO sites:
+ *   1. **`narrative_draft.segments`** (Task 1.4 jsonb column) —
+ *      the live working copy the consultant edits.
+ *   2. **`narrative_draft_version.segments`** (Task 1.5 append-
+ *      only history) — the immutable per-version snapshot the
+ *      auditor verifies via `content_hash`.
+ */
+export const NarrativeSegment = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('prose'), text: z.string().min(1).max(2000) }),
+  z.object({
+    type: z.literal('claim'),
+    text: z.string().min(1).max(2000),
+    citing_events: z.array(Uuid).min(1),
+  }),
+]);
+export type NarrativeSegment = z.infer<typeof NarrativeSegment>;
+
+/**
+ * NARRATIVE_DRAFTED — emitted by the future Agent C streaming
+ * narrative drafter ONCE per persisted narrative-section draft;
+ * one event per (activity_id, section_kind, version) tuple. The
+ * agent streams `emit_segment` tool calls during generation, the
+ * server validates the segments (Task 5.2), persists them to
+ * `narrative_draft` (Task 1.4) + `narrative_draft_version`
+ * (Task 1.5), and only then appends THIS event to the chain.
+ *
+ * METADATA-ONLY by design: the segments themselves are large
+ * (up to ~hundreds of {prose|claim} blocks per section across the
+ * four AusIndustry submission fields) and persisting them inline
+ * on every draft would bloat the per-claimant hash chain to
+ * megabytes. Instead, the chain carries the `content_hash`
+ * (lowercase hex sha256 of the canonicalised segments — see Task
+ * 5.3 for the canonicalisation helper) and segment counts. The
+ * auditor verifies storage integrity by recomputing the hash from
+ * the persisted `narrative_draft.segments` and comparing it
+ * byte-for-byte against the chain event's `content_hash`; any
+ * tampering with the live working copy fails the comparison.
+ *
+ * Field meanings:
+ * - `narrative_draft_id` — points at the `narrative_draft` row
+ *   (Task 1.4) holding the live segments. Stable across versions
+ *   for a given (activity_id, section_kind) pair.
+ * - `activity_id` — the activity this section narrates. Combined
+ *   with `section_kind` to form the per-pair uniqueness key on
+ *   `narrative_draft`.
+ * - `section_kind` — one of the four AusIndustry submission
+ *   narrative fields per design doc Section 5: `new_knowledge`,
+ *   `hypothesis`, `uncertainty`, `experiments_and_results`. Each
+ *   activity has exactly four narrative_draft rows (one per
+ *   section).
+ * - `version` — monotonically increasing positive integer; bumps
+ *   on every regeneration (Task 5.6's per-section regen flow).
+ *   The `narrative_draft_version` table holds the full history
+ *   indexed by (narrative_draft_id, version).
+ * - `content_hash` — lowercase hex sha256 (`^[a-f0-9]{64}$`) of
+ *   the canonicalised segments. Matches the existing `event.hash`
+ *   convention. The auditor recomputes from persisted segments
+ *   and compares byte-for-byte.
+ * - `segment_count` / `claim_segment_count` — counts surfaced for
+ *   the consultant review UI ("3 of 12 segments are claims") and
+ *   the assurance report; both are non-negative (an empty section
+ *   is allowed but unusual).
+ * - `model` / `prompt_version` — pin the exact agent version
+ *   (replay / reproducibility).
+ * - `idempotency_key` — the SDK side dedupes on this key before
+ *   appending to the chain, so the agent can retry safely across
+ *   worker crashes.
+ *
+ * `_v: 1` is the payload-shape version stamp; bumping it whenever
+ * fields change keeps reads safe across rolling deploys.
+ */
+export const NarrativeDraftedPayload = z.object({
+  _v: z.literal(1),
+  narrative_draft_id: Uuid,
+  activity_id: Uuid,
+  section_kind: z.enum(['new_knowledge', 'hypothesis', 'uncertainty', 'experiments_and_results']),
+  version: z.number().int().positive(),
+  content_hash: z.string().regex(/^[a-f0-9]{64}$/),
+  model: z.string().min(1),
+  prompt_version: z.string().min(1),
+  segment_count: z.number().int().nonnegative(),
+  claim_segment_count: z.number().int().nonnegative(),
+  idempotency_key: z.string().min(1),
+});
+export type NarrativeDraftedPayload = z.infer<typeof NarrativeDraftedPayload>;

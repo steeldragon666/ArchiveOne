@@ -132,6 +132,19 @@ export const EVIDENCE_KINDS = [
   // to admit it by 0027_activity_register_drafted_kind.sql; this
   // list tracks the CHECK byte-for-byte.
   'ACTIVITY_REGISTER_DRAFTED',
+  // P6 Task 1.3 — emitted by the future Agent C streaming narrative
+  // drafter; one event per persisted narrative-section draft (one
+  // (activity_id, section_kind, version) tuple per emit). Carries
+  // metadata only — `narrative_draft_id` + `content_hash` (lowercase
+  // hex sha256 of the canonicalised segments) + segment counts;
+  // the actual segments live in the `narrative_draft` table created
+  // by migration 0029 (and the append-only `narrative_draft_version`
+  // history in 0030). Auditor verifies storage integrity by
+  // recomputing the hash from persisted segments and comparing
+  // against this chain event. The `event_kind_valid` CHECK is
+  // rebuilt to admit it by 0028_narrative_drafted_kind.sql; this
+  // list tracks the CHECK byte-for-byte.
+  'NARRATIVE_DRAFTED',
 ] as const;
 export type EvidenceKind = (typeof EVIDENCE_KINDS)[number];
 

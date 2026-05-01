@@ -63,8 +63,12 @@ const EVENT_26_ID = '00000000-0000-4000-8000-00006a000026';
 // Reuses the same suite-wide TENANT/USER/SUBJECT.
 const EVENT_27_ID = '00000000-0000-4000-8000-00006a000027';
 
+// P6 Task 1.3 — migration 0028 NARRATIVE_DRAFTED CHECK round-trip.
+// Reuses the same suite-wide TENANT/USER/SUBJECT.
+const EVENT_28_ID = '00000000-0000-4000-8000-00006a000028';
+
 const cleanup = async (): Promise<void> => {
-  await privilegedSql`DELETE FROM event WHERE id IN (${EVENT_26_ID}, ${EVENT_27_ID})`;
+  await privilegedSql`DELETE FROM event WHERE id IN (${EVENT_26_ID}, ${EVENT_27_ID}, ${EVENT_28_ID})`;
   await privilegedSql`DELETE FROM expenditure_line WHERE expenditure_id IN (${EXPENDITURE_2_ID}, ${EXPENDITURE_3_ID})`;
   await privilegedSql`DELETE FROM expenditure WHERE id IN (${EXPENDITURE_2_ID}, ${EXPENDITURE_3_ID})`;
   await privilegedSql`DELETE FROM activity WHERE id IN (${ACTIVITY_1_ID})`;
@@ -446,5 +450,83 @@ test('migration 0027: event_kind_valid CHECK admits ACTIVITY_REGISTER_DRAFTED', 
     rows[0]!.payload.proposed_activities[0]!.proposed_id,
     proposedActivityId,
     'nested ProposedActivity.proposed_id must round-trip via jsonb',
+  );
+});
+
+// ---------------------------------------------------------------------------
+// P6 Task 1.3 — migration 0028 NARRATIVE_DRAFTED kind
+// Round-trip: a raw INSERT with kind='NARRATIVE_DRAFTED' must succeed
+// post-migration. Pre-migration the same row would fail the
+// `event_kind_valid` CHECK with a 23514 violation. Same privilegedSql /
+// jsonb-double-cast pattern as the 0026 / 0027 tests above. The payload
+// follows `NarrativeDraftedPayload` in @cpa/schemas/event.ts and carries
+// METADATA ONLY (narrative_draft_id + content_hash + segment counts) —
+// the actual segments live in the narrative_draft table created by 0029
+// (Task 1.4), not inline on the chain.
+// ---------------------------------------------------------------------------
+
+test('migration 0028: event_kind_valid CHECK admits NARRATIVE_DRAFTED', async () => {
+  await privilegedSql`SELECT set_config('app.current_tenant_id', ${TENANT_ID}, true)`;
+  // The narrative_draft_id and activity_id are sentinels — they do
+  // NOT need to refer to real rows for the CHECK round-trip; the
+  // payload is jsonb so referential integrity is not enforced here.
+  // They exist just so the inserted row exercises the metadata-only
+  // shape of NarrativeDraftedPayload.
+  const narrativeDraftId = '00000000-0000-4000-8000-000000abf101';
+  const activityId = '00000000-0000-4000-8000-000000abf102';
+
+  await privilegedSql`
+    INSERT INTO event (
+      id, tenant_id, subject_tenant_id, kind, payload,
+      hash, captured_at, captured_by_user_id
+    ) VALUES (
+      ${EVENT_28_ID}, ${TENANT_ID}, ${SUBJECT_ID}, 'NARRATIVE_DRAFTED',
+      ${{
+        _v: 1,
+        narrative_draft_id: narrativeDraftId,
+        activity_id: activityId,
+        section_kind: 'new_knowledge',
+        version: 1,
+        // Lowercase hex sha256 sentinel — matches the
+        // ^[a-f0-9]{64}$ regex on NarrativeDraftedPayload.content_hash.
+        content_hash: 'a'.repeat(64),
+        model: 'claude-sonnet-4-5',
+        prompt_version: 'draft-narrative@1.0.0',
+        segment_count: 7,
+        claim_segment_count: 4,
+        idempotency_key: 'fixture-key-28',
+      }}::text::jsonb,
+      ${'a8'.padEnd(64, '0')}, '2026-05-01T00:00:00Z', ${USER_ID}
+    )
+  `;
+  const rows = await privilegedSql<
+    {
+      id: string;
+      kind: string;
+      payload: { narrative_draft_id: string; content_hash: string; section_kind: string };
+    }[]
+  >`
+    SELECT id, kind, payload FROM event WHERE id = ${EVENT_28_ID}
+  `;
+  assert.equal(rows.length, 1, 'NARRATIVE_DRAFTED row must be admitted by the CHECK');
+  assert.equal(rows[0]!.kind, 'NARRATIVE_DRAFTED');
+  // Sanity-check the metadata-only payload round-tripped through
+  // jsonb intact — confirms the chain stores narrative_draft_id and
+  // content_hash (the auditor's two anchors into the persisted
+  // narrative_draft row) verbatim.
+  assert.equal(
+    rows[0]!.payload.narrative_draft_id,
+    narrativeDraftId,
+    'payload.narrative_draft_id must round-trip via jsonb',
+  );
+  assert.equal(
+    rows[0]!.payload.content_hash,
+    'a'.repeat(64),
+    'payload.content_hash must round-trip via jsonb',
+  );
+  assert.equal(
+    rows[0]!.payload.section_kind,
+    'new_knowledge',
+    'payload.section_kind must round-trip via jsonb',
   );
 });
