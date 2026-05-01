@@ -178,6 +178,73 @@ test('AgentName type accepts A, B, C as the documented identifiers', () => {
   assert.equal(names.length, 3);
 });
 
+test('rateLimitedAnthropicCall: contended waiters are bounded by cumulative maxWaitMs', async () => {
+  // Discriminating test for the cumulative-wait bound. Pre-fix, recursion
+  // re-checked `maxWaitMs` against a fresh clock on every wake-up, so a
+  // single contended call could wait through *multiple* refill cycles, far
+  // exceeding the documented `maxWaitMs` budget. Post-fix, an absolute
+  // deadline is captured at entry and the iteration honors it.
+  //
+  // Setup: capacity=1, windowMs=100ms => refill 0.01 tok/ms (one token per
+  // 100ms). maxWaitMs=150ms — enough budget for one refill cycle, but not
+  // two (two cycles would need ≥200ms cumulative).
+  //
+  // Sequence under load:
+  //   * Pre-consume the only token (bucket empty, fresh window).
+  //   * Two concurrent waiters arrive: both compute waitMs≈100ms ≤ 150ms,
+  //     both `delay(100)`.
+  //   * At T≈100ms both wake. Refill produces ~1 token; one waiter wins
+  //     (bucket.tokens decrements to 0). The losing waiter sees tokens<1.
+  //   * PRE-FIX: loser recurses into a *fresh* `consume()` that re-checks
+  //     `waitMs(≈100) > config.maxWaitMs(150)` — passes — and `delay(100)`s
+  //     again. At T≈200ms it finally acquires. Total wait ≈ 200ms,
+  //     exceeding the documented maxWaitMs=150ms by ~33%.
+  //   * POST-FIX: loser hits the deadline check. `remaining = deadline - now
+  //     ≈ 50ms`, `waitMs ≈ 100ms > remaining` → RateLimitExceededError thrown
+  //     promptly. Total elapsed ≈ 100ms (one refill cycle), bounded.
+  //
+  // Discriminator: assert at least one waiter rejects with
+  // RateLimitExceededError, AND total elapsed < ~maxWaitMs + small slack.
+  // Pre-fix, both waiters succeed (the loser silently waits ~200ms — twice
+  // the contracted budget).
+  reset({ capacity: 1, windowMs: 100, maxWaitMs: 150 });
+  await rateLimitedAnthropicCall('tenant-contend', 'A', () => Promise.resolve());
+
+  const start = Date.now();
+  const results = await Promise.allSettled([
+    rateLimitedAnthropicCall('tenant-contend', 'A', () => Promise.resolve('w1')),
+    rateLimitedAnthropicCall('tenant-contend', 'A', () => Promise.resolve('w2')),
+  ]);
+  const elapsed = Date.now() - start;
+
+  const rejections = results.filter((r) => r.status === 'rejected');
+
+  // Cumulative-wait bound: the original deadline (start + maxWaitMs ≈
+  // start + 150ms) must be honored. Pre-fix, the losing waiter would have
+  // taken ~200ms cumulative, putting `elapsed` ≥ 200ms.
+  assert.ok(
+    elapsed < 250,
+    `contended waiters should be bounded by cumulative maxWaitMs (~150ms+slack), got ${elapsed}ms`,
+  );
+
+  // At least one waiter must reject — pre-fix, the buggy recursion would
+  // have let *both* eventually succeed (one at T≈100, the other at T≈200,
+  // after a second `delay(100)` cycle that escaped the per-call check).
+  assert.ok(
+    rejections.length >= 1,
+    `expected at least one RateLimitExceededError under contention, got 0 (results: ${JSON.stringify(results.map((r) => r.status))})`,
+  );
+
+  // All rejections must be the typed RateLimitExceededError (not some other
+  // surprise error from the runtime).
+  for (const r of rejections) {
+    assert.ok(
+      r.status === 'rejected' && r.reason instanceof RateLimitExceededError,
+      `expected RateLimitExceededError, got ${r.status === 'rejected' ? r.reason : '<resolved>'}`,
+    );
+  }
+});
+
 test('_configureForTests + module load: capacity override is observed', async () => {
   // Demonstrate the config override path tests use to simulate
   // P6_AGENT_RATE_LIMIT_PER_MIN. The env var itself is read once at module

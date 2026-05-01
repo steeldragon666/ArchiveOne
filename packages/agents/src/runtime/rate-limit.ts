@@ -24,6 +24,15 @@ export type AgentName = 'A' | 'B' | 'C';
 export class RateLimitExceededError extends Error {
   public readonly tenantId: string;
   public readonly agent: AgentName;
+  /**
+   * Milliseconds until the next token would be available given the bucket's
+   * current refill rate, regardless of `maxWaitMs`. The HTTP layer translates
+   * this into a `Retry-After` header — that header tells the client when it
+   * is genuinely safe to retry, which is "after the bucket has refilled",
+   * not "after our caller-side deadline elapses". The two are distinct:
+   * `maxWaitMs` bounds how long *this* call is willing to block; `retryAfterMs`
+   * tells the *next* call how long to back off.
+   */
   public readonly retryAfterMs: number;
 
   constructor(tenantId: string, agent: AgentName, retryAfterMs: number) {
@@ -134,7 +143,7 @@ function getOrCreateBucket(tenantId: string, agent: AgentName): Bucket {
  * Core token-bucket consume operation. Subtracts 1 token if available;
  * otherwise computes how long we'd need to wait for 1 token's worth of
  * refill, and either blocks-with-`setTimeout` (no busy poll) or throws
- * `RateLimitExceededError` if that wait exceeds `maxWaitMs`.
+ * `RateLimitExceededError` if that wait exceeds the *cumulative* deadline.
  *
  * Using `node:timers/promises` `setTimeout` gives a typed promise that is
  * cancellable via AbortSignal in future iterations — and crucially, it
@@ -146,38 +155,50 @@ function getOrCreateBucket(tenantId: string, agent: AgentName): Bucket {
  * up-front and refund on failure — this matches the design intent that the
  * Anthropic call probably went out and counted against the upstream quota
  * even when the wrapped `fn()` later rejects.
+ *
+ * Cumulative-wait bound: an absolute deadline is captured **once** at entry
+ * and the iteration checks it every loop. Under sustained contention
+ * (multiple concurrent consumers losing the race after wake-up) an individual
+ * call therefore cannot exceed `maxWaitMs` of total wall-clock wait — the
+ * earlier recursion-based version reset the budget on every wake-up, which
+ * could let a single call wait far longer than `maxWaitMs`. Iteration is
+ * preferred over recursion-with-deadline-arg here for the conventional
+ * reasons (no stack-depth concern, easier to reason about loop invariants).
  */
 async function consume(tenantId: string, agent: AgentName): Promise<void> {
+  const deadline = Date.now() + config.maxWaitMs;
   const bucket = getOrCreateBucket(tenantId, agent);
-  const now = Date.now();
-  refill(bucket, now);
 
-  if (bucket.tokens >= 1) {
-    bucket.tokens -= 1;
-    return;
+  // Loop until we either acquire a token or run out of cumulative budget.
+  // Termination: every iteration either returns, throws, or awaits at least
+  // 1ms of progress toward `deadline`; the deadline check above the await
+  // guarantees we cannot loop past it.
+  for (;;) {
+    refill(bucket, Date.now());
+
+    if (bucket.tokens >= 1) {
+      bucket.tokens -= 1;
+      return;
+    }
+
+    // Need to wait for `1 - bucket.tokens` worth of refill. Convert to ms.
+    const refillRatePerMs = config.capacity / config.windowMs;
+    const tokensNeeded = 1 - bucket.tokens;
+    const waitMs = tokensNeeded / refillRatePerMs;
+
+    const remaining = deadline - Date.now();
+    if (waitMs > remaining) {
+      // `waitMs` (not `remaining`) is what the *next* caller should back off
+      // for — see the Retry-After commentary on `RateLimitExceededError`.
+      throw new RateLimitExceededError(tenantId, agent, waitMs);
+    }
+
+    // Sleep at most until the deadline. If a concurrent consumer wins the
+    // post-wake race, the next loop iteration recomputes `waitMs` against
+    // the (now smaller) `remaining` and may throw — the cumulative bound
+    // is preserved.
+    await delay(Math.min(waitMs, remaining));
   }
-
-  // Need to wait for `1 - bucket.tokens` worth of refill. Convert to ms.
-  const refillRatePerMs = config.capacity / config.windowMs;
-  const tokensNeeded = 1 - bucket.tokens;
-  const waitMs = tokensNeeded / refillRatePerMs;
-
-  if (waitMs > config.maxWaitMs) {
-    throw new RateLimitExceededError(tenantId, agent, waitMs);
-  }
-
-  await delay(waitMs);
-  // Re-read clock, recompute, and consume — another concurrent caller may
-  // have raced us, in which case we recurse via tail-call to wait again.
-  refill(bucket, Date.now());
-  if (bucket.tokens >= 1) {
-    bucket.tokens -= 1;
-    return;
-  }
-  // Lost the race; try again with what's left of our budget. In practice
-  // contention is rare (one in-flight Anthropic call dominates the wait
-  // time) and this loop terminates because `maxWaitMs` is checked above.
-  return consume(tenantId, agent);
 }
 
 /**
