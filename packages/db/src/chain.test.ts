@@ -249,6 +249,110 @@ test('insertEventWithChain stores payload as jsonb object (not scalar string) un
   );
 });
 
+// P6 Task 0.1 — discriminating regression guard for the actual bug.
+//
+// The test above is a useful sql-path positive control, but it does NOT
+// actually fail if chain.ts is reverted to single-cast `${...}::jsonb`.
+// Reason: the global `sql` client (used by insertEventWithChain via
+// `sql.begin → tx`) has been mutated by `drizzle(sql)` in client.ts,
+// which overwrites postgres-js's serializers[114] (json) and
+// serializers[3802] (jsonb) with identity passthroughs. Under that
+// mutated client, both `${JSON.stringify(p)}::jsonb` (single-cast,
+// pre-fix) and `${JSON.stringify(p)}::text::jsonb` (double-cast,
+// post-fix) produce a jsonb OBJECT — single-cast was a no-op
+// happy-accident under sql, not actually broken.
+//
+// The bug only surfaces under `privilegedSql`, which is NOT fed to
+// drizzle (see client.ts lines 12-13 vs 31). privilegedSql therefore
+// retains postgres-js's DEFAULT serializer for OID 3802, which is
+// JSON.stringify. Under that path:
+//
+//   * Single-cast `${JSON.stringify(p)}::jsonb` (pre-fix):
+//     app stringifies `p` → text "{...}". postgres-js sees ::jsonb
+//     hint, runs the default jsonb serializer = JSON.stringify("{...}")
+//     → "\"{...}\"" (DOUBLE-encoded). Server casts text "\"{...}\""
+//     to jsonb → a jsonb SCALAR STRING. jsonb_typeof = 'string'. BUG.
+//
+//   * Double-cast `${JSON.stringify(p)}::text::jsonb` (post-fix):
+//     postgres-js sees ::text hint, sends the param as TEXT (oid 25,
+//     no serializer mutation). Server: text "{...}" → cast to jsonb
+//     → a jsonb OBJECT. jsonb_typeof = 'object'. CORRECT.
+//
+// This test replicates the chain.ts INSERT pattern inline under
+// privilegedSql.begin so the discriminating wire path is actually
+// exercised. If someone reverts chain.ts to single-cast AND a future
+// caller wires the chain through privilegedSql (or audit-log writers
+// regress the same way), this test fails red. Pre-fix typeof = 'string';
+// post-fix typeof = 'object'. The existing test above stays as the
+// sql-path positive control.
+//
+// We do NOT modify insertEventWithChain to take a client parameter —
+// the production code currently only writes via `sql.begin → tx`, and
+// the goal here is a discriminating regression guard against a revert
+// of the chain.ts SQL template, not refactoring the production API.
+test('chain.ts text::jsonb pattern survives privilegedSql client (regression guard for the actual bug)', async () => {
+  const { privilegedSql } = await import('./client.js');
+  // Use a dedicated scratch subject_tenant so a placeholder event-hash
+  // (we don't compute a real chain hash here — we only care about the
+  // jsonb_typeof of payload) doesn't pollute the SUBJECT_ID chain that
+  // later verifyChain tests in this file walk.
+  const SCRATCH_SUBJECT_ID = '00000000-0000-4000-8000-00006a000031';
+  const eventId = '00000000-0000-4000-8000-00006a0000aa';
+  // 64-char lowercase-hex placeholder satisfies event_hash_format CHECK.
+  // Not a real chain hash — that's intentional: this test exercises the
+  // SQL serialisation path, not the chain semantics. Cleanup at end of
+  // test removes both the event and the scratch subject_tenant row.
+  const eventHash = 'a6'.padEnd(64, '0');
+  const payload = { _v: 1, source: 'priv-sql-regression-test', text: 'fixture text' };
+  await privilegedSql`SELECT set_config('app.current_tenant_id', ${TENANT_ID}, true)`;
+  await privilegedSql`INSERT INTO subject_tenant (id, tenant_id, name, kind)
+                       VALUES (${SCRATCH_SUBJECT_ID}, ${TENANT_ID}, 'Priv-SQL Regression Scratch', 'claimant')`;
+  try {
+    await privilegedSql.begin(async (tx) => {
+      // Mirror the chain.ts INSERT exactly — same column order, same
+      // ::text::jsonb double-cast on payload (and a NULL classification
+      // because we're not testing classification serialisation here).
+      // We bypass insertEventWithChain because it's hard-wired to the
+      // global sql client; the point of this test is to exercise the
+      // double-cast SQL pattern under the OTHER client.
+      await tx`
+        INSERT INTO event (
+          id, tenant_id, subject_tenant_id, project_id, milestone_id, kind,
+          payload, classification,
+          override_of_event_id, override_new_kind, override_reason,
+          prev_hash, hash, idempotency_key,
+          captured_at, captured_by_user_id, captured_by_employee_id
+        ) VALUES (
+          ${eventId}, ${TENANT_ID}, ${SCRATCH_SUBJECT_ID},
+          ${null}, ${null}, 'HYPOTHESIS',
+          ${JSON.stringify(payload)}::text::jsonb, ${null},
+          ${null}, ${null}, ${null},
+          ${null}, ${eventHash}, ${null},
+          '2026-05-01T00:00:01Z'::timestamptz,
+          ${USER_ID}, ${null}
+        )
+      `;
+    });
+    const rows = await privilegedSql<{ typeof_payload: string }[]>`
+      SELECT jsonb_typeof(payload) AS typeof_payload
+        FROM event
+       WHERE id = ${eventId}
+    `;
+    assert.equal(rows.length, 1, 'priv-sql-inserted event must be findable');
+    assert.equal(
+      rows[0]!.typeof_payload,
+      'object',
+      'double-cast under privilegedSql must produce a jsonb object — if this fails, the chain.ts pattern was reverted to single-cast and is silently broken under any future privilegedSql writer',
+    );
+  } finally {
+    // Defensive cleanup so this test leaves no rows behind regardless of
+    // assertion outcome — keeps subsequent verifyChain tests on SUBJECT_ID
+    // unaffected and lets the suite re-run cleanly.
+    await privilegedSql`DELETE FROM event WHERE id = ${eventId}`;
+    await privilegedSql`DELETE FROM subject_tenant WHERE id = ${SCRATCH_SUBJECT_ID}`;
+  }
+});
+
 test('insertEventWithChain: first event has prev_hash=null', async () => {
   const e = await insertEventWithChain({
     tenant_id: TENANT_ID,
