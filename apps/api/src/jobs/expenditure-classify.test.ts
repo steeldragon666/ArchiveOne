@@ -384,21 +384,18 @@ test('threshold downgrade: low-confidence eligible→needs_review forced server-
 });
 
 test('threshold downgrade: forced downgrade path increments counter', async () => {
-  // Drive the FORCE-downgrade branch by stubbing the classifier factory
-  // with a one-off impl that returns eligible@0.55 (below the 0.70
-  // threshold). We do this by re-importing the module with a custom
-  // EXPENDITURE_CLASSIFIER_IMPL that the factory honors. Since the
-  // factory only knows 'stub'/'haiku', we can't slot in a third impl
-  // without changing the factory — instead, we monkey-patch the stub
-  // pattern table via re-import.
+  // Drive the FORCE-downgrade branch by injecting a one-off classifier
+  // impl that returns eligible@0.55 (below the 0.70 threshold). The
+  // production stub's regex table never naturally returns sub-threshold
+  // non-needs_review output, so the test seam is required.
   //
-  // The simpler path is to add a synthetic row whose vendor_name +
-  // description triggers the regex-based stub at low confidence. The
-  // stub never returns < 0.70 with a non-needs_review decision today,
-  // so we drive the path through `mock.method` on the classifier
-  // factory's exported instance.
-  const { mock } = await import('node:test');
-  const factory = await import('@cpa/agents/classifier-expenditure');
+  // Why not `mock.method`: ES module exports are non-configurable
+  // bindings. node:test's `mock.method` uses Object.defineProperty
+  // under the hood and throws "Cannot redefine property". The factory
+  // module exposes `_setExpenditureClassifierForTests` for this exact
+  // case (mirrors `_resetAnthropicClientForTests` /
+  // `_resetBucketsForTests` from the runtime).
+  const { _setExpenditureClassifierForTests } = await import('@cpa/agents/classifier-expenditure');
 
   const stubLowConfidence = {
     classify: () =>
@@ -416,7 +413,7 @@ test('threshold downgrade: forced downgrade path increments counter', async () =
         tokens_out: 0,
       }),
   };
-  const restoreFactory = mock.method(factory, 'makeExpenditureClassifier', () => stubLowConfidence);
+  _setExpenditureClassifierForTests(stubLowConfidence);
 
   try {
     // E2 has no prior classify event in this beforeEach reset.
@@ -436,7 +433,7 @@ test('threshold downgrade: forced downgrade path increments counter', async () =
     assert.equal(rows[0]!.payload.eligibility_probability, 0.55);
     assert.match(rows[0]!.payload.uncertainty_reason as string, /below threshold 0.7/);
   } finally {
-    restoreFactory.mock.restore();
+    _setExpenditureClassifierForTests(undefined);
   }
 });
 

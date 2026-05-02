@@ -1,4 +1,4 @@
-export { makeExpenditureClassifier } from './factory.js';
+export { makeExpenditureClassifier, _setExpenditureClassifierForTests } from './factory.js';
 export { HaikuExpenditureClassifier } from './haiku.js';
 export { StubExpenditureClassifier } from './stub.js';
 export { EXPENDITURE_CONFIDENCE_THRESHOLDS } from './thresholds.js';
