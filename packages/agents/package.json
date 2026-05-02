@@ -17,6 +17,10 @@
     "./classifier": {
       "types": "./dist/classifier/index.d.ts",
       "import": "./dist/classifier/index.js"
+    },
+    "./synthesizer-register": {
+      "types": "./dist/synthesizer-register/index.d.ts",
+      "import": "./dist/synthesizer-register/index.js"
     }
   },
   "scripts": {
