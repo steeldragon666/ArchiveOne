@@ -129,7 +129,30 @@ type ProjectRow = {
   subject_tenant_id: string;
   name: string;
   started_at: Date;
+  // Joined from `claim` (LEFT JOIN; nullable for projects pre-claim-creation).
+  fiscal_year: number | null;
 };
+
+/**
+ * Derive the Australian fiscal year (FY ending 30 June) from a project
+ * `started_at` date. AusIndustry — and the rest of the codebase, see
+ * `packages/db/src/schema/claim.ts` — uses the convention that
+ * `fiscal_year = 2025` means the FY 1 July 2024 → 30 June 2025.
+ *
+ * July (month index 6) onward rolls into the NEXT calendar year's FY:
+ *   - `2024-07-01` → 2025
+ *   - `2024-06-30` → 2024
+ *
+ * Used as a fallback when no `claim` row is yet associated with the
+ * project (e.g. a fresh project the consultant hasn't yet linked to a
+ * claim). The primary source is `claim.fiscal_year` via the LEFT JOIN
+ * in the project load step.
+ */
+export function deriveAuFiscalYear(startedAt: Date): number {
+  const month = startedAt.getUTCMonth(); // 0-indexed; 6 = July
+  const year = startedAt.getUTCFullYear();
+  return month >= 6 ? year + 1 : year;
+}
 
 type ActivityRow = {
   id: string;
@@ -237,11 +260,36 @@ export async function runActivityRegisterSynthesizeJob(
     // no request-scoped tenant GUC; the explicit tenant_id bind scopes
     // the read. RLS would also catch a cross-tenant id, but failing
     // fast at the bind layer is clearer.
+    //
+    // LEFT JOIN claim to pick up `fiscal_year` (Australian FY semantics —
+    // `2025` = FY ending 30 June 2025). The synthesizer's typed input
+    // expects the AusIndustry reckoning; deriving it inline from
+    // `started_at` would be wrong for July–December starts. Falls back
+    // to `deriveAuFiscalYear(started_at)` if no claim row exists yet
+    // (e.g. a freshly-created project pre-claim-creation).
+    //
+    // Multi-claim caveat: `claim.(subject_tenant_id, fiscal_year)` is
+    // unique, but `claim.project_id` is not — a project that spans
+    // multiple FYs gets a claim row per year. Picking the lowest
+    // `fiscal_year` (closest to the project's start) is consistent with
+    // the synthesizer's "what year is this project's evidence being
+    // captured under" intent. ORDER BY + LIMIT 1 keeps the row
+    // deterministic.
     const projectRows = await privilegedSql<ProjectRow[]>`
-      SELECT id, tenant_id, subject_tenant_id, name, started_at
-        FROM project
-       WHERE id = ${input.project_id}
-         AND tenant_id = ${input.tenant_id}
+      SELECT p.id,
+             p.tenant_id,
+             p.subject_tenant_id,
+             p.name,
+             p.started_at,
+             c.fiscal_year
+        FROM project p
+   LEFT JOIN claim c
+          ON c.project_id = p.id
+         AND c.tenant_id = p.tenant_id
+       WHERE p.id = ${input.project_id}
+         AND p.tenant_id = ${input.tenant_id}
+    ORDER BY c.fiscal_year ASC NULLS LAST
+       LIMIT 1
     `;
     const project = projectRows[0];
     if (!project) {
@@ -286,18 +334,21 @@ export async function runActivityRegisterSynthesizeJob(
     const compressed: CompressedEvent[] = events.map(compressEvent);
 
     // Step 7: build the synthesizer input bundle.
+    //
+    // `industry_sector` isn't a first-class column on the project table
+    // today — leave it null. `fiscal_year` uses the Australian
+    // convention (`2025` = FY ending 30 June 2025), sourced from the
+    // joined `claim.fiscal_year`; falls back to deriving from
+    // `started_at` for projects that don't yet have a claim row. The
+    // synthesizer prompt accepts the FY as a typed input so the
+    // narrative phrasing matches the consultant's expectation.
     const inputBundle: SynthesizerInput = {
       project: {
         id: project.id,
         name: project.name,
-        // `industry_sector` and `fiscal_year` aren't first-class columns
-        // on the project table today; we leave the sector null and fall
-        // back to the started_at calendar year for fiscal_year. A future
-        // task can join `claim.fiscal_year` if the synthesizer needs the
-        // exact ATO reckoning (`2025` = FY ending June 2025).
         industry_sector: null,
         started_at: project.started_at.toISOString(),
-        fiscal_year: project.started_at.getUTCFullYear(),
+        fiscal_year: project.fiscal_year ?? deriveAuFiscalYear(project.started_at),
       },
       events: compressed,
       existing_activities: activityRows.map((a) => ({

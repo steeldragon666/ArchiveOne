@@ -20,6 +20,7 @@ const {
   REGISTER_SYNTHESIZE_EVENT_CAP,
   buildIdempotencyKey,
   compressEvent,
+  deriveAuFiscalYear,
   runActivityRegisterSynthesizeJob,
   truncateToFiftyWords,
 } = await import('./activity-register-synthesize.js');
@@ -47,7 +48,10 @@ const cleanup = async (): Promise<void> => {
   await privilegedSql`DELETE FROM project WHERE tenant_id IN (${TENANT}, ${TENANT_OTHER})`;
   await privilegedSql`DELETE FROM subject_tenant WHERE tenant_id IN (${TENANT}, ${TENANT_OTHER})`;
   await privilegedSql`DELETE FROM tenant_user WHERE tenant_id IN (${TENANT}, ${TENANT_OTHER})`;
-  await sql`DELETE FROM "user" WHERE id IN (${ADMIN_USER}, ${AGENT_B_SYSTEM_USER_ID})`;
+  // Note: AGENT_B_SYSTEM_USER_ID is seeded by migration 0033 and persists
+  // across test runs — do NOT delete it here, or subsequent runs would
+  // miss the row the chain insert FKs against.
+  await sql`DELETE FROM "user" WHERE id = ${ADMIN_USER}`;
   await sql`DELETE FROM tenant WHERE id IN (${TENANT}, ${TENANT_OTHER})`;
 };
 
@@ -57,8 +61,14 @@ before(async () => {
             VALUES (${TENANT}, 'Firm B40', 'firm-b40', 'mixed'),
                    (${TENANT_OTHER}, 'Firm B41', 'firm-b41', 'mixed')`;
   await sql`INSERT INTO "user" (id, email, primary_idp, external_id, display_name)
-            VALUES (${ADMIN_USER}, 'b40-admin@example.com', 'microsoft', 'microsoft:b40-admin', 'B40 Admin'),
-                   (${AGENT_B_SYSTEM_USER_ID}, 'agent-b-system@example.com', 'microsoft', 'microsoft:agent-b-system', 'Agent B System')`;
+            VALUES (${ADMIN_USER}, 'b40-admin@example.com', 'microsoft', 'microsoft:b40-admin', 'B40 Admin')`;
+  // AGENT_B_SYSTEM_USER_ID is seeded by migration 0033. Insert idempotently
+  // here as a belt-and-braces guard so the test suite can also run against
+  // a fresh DB on which the migration was rolled back; ON CONFLICT keeps the
+  // migration-seeded row authoritative when both ran.
+  await sql`INSERT INTO "user" (id, email, primary_idp, external_id, display_name)
+            VALUES (${AGENT_B_SYSTEM_USER_ID}, 'system+agent-b@cpa.local', 'microsoft', 'system:agent-b', 'Agent B (Activity Register Synthesizer)')
+            ON CONFLICT (id) DO NOTHING`;
   await privilegedSql`INSERT INTO tenant_user (id, tenant_id, user_id, role, is_default)
                        VALUES (gen_random_uuid(), ${TENANT}, ${ADMIN_USER}, 'admin', true)`;
   await privilegedSql`INSERT INTO subject_tenant (id, tenant_id, name, kind)
@@ -172,6 +182,26 @@ test('buildIdempotencyKey: stable across event id ordering', () => {
     existing_activity_ids: [ACTIVITY],
   });
   assert.equal(k1, k2);
+});
+
+test('deriveAuFiscalYear: July 1 rolls into the next FY', () => {
+  // FY2025 = 1 July 2024 – 30 June 2025.
+  assert.equal(deriveAuFiscalYear(new Date('2024-07-01T00:00:00Z')), 2025);
+});
+
+test('deriveAuFiscalYear: June 30 stays in the current FY', () => {
+  // 30 June 2024 is the last day of FY2024.
+  assert.equal(deriveAuFiscalYear(new Date('2024-06-30T23:59:59Z')), 2024);
+});
+
+test('deriveAuFiscalYear: January is in the FY ending that calendar year', () => {
+  // 15 Jan 2025 is FY2025 (the FY ending 30 June 2025).
+  assert.equal(deriveAuFiscalYear(new Date('2025-01-15T00:00:00Z')), 2025);
+});
+
+test('deriveAuFiscalYear: December rolls into next-calendar-year FY', () => {
+  // 31 Dec 2024 is FY2025 (the FY ending 30 June 2025).
+  assert.equal(deriveAuFiscalYear(new Date('2024-12-31T00:00:00Z')), 2025);
 });
 
 test('buildIdempotencyKey: differs when project changes', () => {
