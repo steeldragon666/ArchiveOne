@@ -258,7 +258,7 @@ test('POST /v1/expenditures/:id/reclassify: 202 happy path admin → classify ev
 
   const events = await privilegedSql<{ payload: { decision: string } }[]>`
     SELECT payload FROM event
-     WHERE tenant_id = ${TENANT_A} AND kind = 'EXPENDITURE_CLASSIFIED'
+     WHERE subject_tenant_id = ${SUBJECT_A} AND kind = 'EXPENDITURE_CLASSIFIED'
        AND payload->>'expenditure_id' = ${E1}
   `;
   assert.equal(events.length, 1);
@@ -305,7 +305,7 @@ test('enqueueExpenditureClassify: gate disabled → zero-result, NO classify eve
     assert.equal(result.skipped_idempotent, 0);
     assert.equal(result.failed, 0);
     const events = await privilegedSql`
-      SELECT id FROM event WHERE tenant_id = ${TENANT_A} AND kind = 'EXPENDITURE_CLASSIFIED'
+      SELECT id FROM event WHERE subject_tenant_id = ${SUBJECT_A} AND kind = 'EXPENDITURE_CLASSIFIED'
     `;
     assert.equal(events.length, 0);
   } finally {
@@ -324,7 +324,7 @@ test('enqueueExpenditureClassify: tenant outside allowlist → zero-result', asy
     });
     assert.equal(result.classified, 0);
     const events = await privilegedSql`
-      SELECT id FROM event WHERE tenant_id = ${TENANT_A} AND kind = 'EXPENDITURE_CLASSIFIED'
+      SELECT id FROM event WHERE subject_tenant_id = ${SUBJECT_A} AND kind = 'EXPENDITURE_CLASSIFIED'
     `;
     assert.equal(events.length, 0);
   } finally {
@@ -356,7 +356,7 @@ test('enqueueExpenditureClassify: enabled tenant + ids → classify event lands'
 
   const events = await privilegedSql<{ payload: { decision: string } }[]>`
     SELECT payload FROM event
-     WHERE tenant_id = ${TENANT_A} AND kind = 'EXPENDITURE_CLASSIFIED'
+     WHERE subject_tenant_id = ${SUBJECT_A} AND kind = 'EXPENDITURE_CLASSIFIED'
        AND payload->>'expenditure_id' = ${E1}
   `;
   assert.equal(events.length, 1);
@@ -392,7 +392,7 @@ test('enqueueExpenditureClassify: failure does NOT block parent — error logged
     // written, and parent operations would not have been blocked.
     assert.equal(caught, undefined, 'per-row errors are isolated; shim does not throw');
     const events = await privilegedSql`
-      SELECT id FROM event WHERE tenant_id = ${TENANT_A} AND kind = 'EXPENDITURE_CLASSIFIED'
+      SELECT id FROM event WHERE subject_tenant_id = ${SUBJECT_A} AND kind = 'EXPENDITURE_CLASSIFIED'
         AND payload->>'expenditure_id' = ${E1}
     `;
     assert.equal(events.length, 0);
