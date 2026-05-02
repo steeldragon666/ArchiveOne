@@ -4,5 +4,6 @@
     "noEmit": true,
     "rootDir": "./src"
   },
+  "references": [{ "path": "../db" }, { "path": "../schemas" }],
   "include": ["src/**/*.test.ts"]
 }

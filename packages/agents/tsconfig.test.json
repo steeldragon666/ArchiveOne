@@ -4,5 +4,6 @@
     "noEmit": true,
     "rootDir": "."
   },
+  "references": [{ "path": "../db" }, { "path": "../observability" }, { "path": "../schemas" }],
   "include": ["src/**/*.test.ts", "eval/**/*.test.ts"]
 }
