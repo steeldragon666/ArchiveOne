@@ -18,6 +18,7 @@ import { registerHostnameTenantResolver } from './middleware/hostname-tenant-res
 import { registerActivities } from './routes/activities.js';
 import { registerActivityPdf } from './routes/activity-pdf.js';
 import { registerActivityRegister } from './routes/activity-register.js';
+import { registerNarrative } from './routes/narrative.js';
 import { registerApplyRules } from './routes/apply-rules.js';
 import { registerArtefactLinks } from './routes/artefact-links.js';
 import { registerGoogleAuth } from './routes/auth/google.js';
@@ -254,6 +255,10 @@ export function buildApp(): App {
   });
   app.register((instance, _opts, done) => {
     registerActivityRegister(instance);
+    done();
+  });
+  app.register((instance, _opts, done) => {
+    registerNarrative(instance);
     done();
   });
   app.register((instance, _opts, done) => {
