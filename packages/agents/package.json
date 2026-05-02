@@ -18,6 +18,10 @@
       "types": "./dist/classifier/index.d.ts",
       "import": "./dist/classifier/index.js"
     },
+    "./classifier-expenditure": {
+      "types": "./dist/classifier-expenditure/index.d.ts",
+      "import": "./dist/classifier-expenditure/index.js"
+    },
     "./synthesizer-register": {
       "types": "./dist/synthesizer-register/index.d.ts",
       "import": "./dist/synthesizer-register/index.js"

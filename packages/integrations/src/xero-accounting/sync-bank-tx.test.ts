@@ -441,6 +441,7 @@ test('empty response → 0 inserts, 0 events, 0 lines, no DB calls', async () =>
     updated: 0,
     lines: 0,
     events_written: 0,
+    inserted_expenditure_ids: [],
   });
   assert.equal(sqlStub.queries.length, 0);
   assert.equal(chainStub.calls.length, 0);

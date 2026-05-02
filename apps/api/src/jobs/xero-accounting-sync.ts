@@ -12,6 +12,7 @@ import {
   type SyncContactsResult,
   type SyncAccountsResult,
 } from '@cpa/integrations/xero-accounting';
+import { enqueueExpenditureClassify } from '../lib/enqueue-classify.js';
 
 /**
  * Xero Accounting periodic sync job (T-B6).
@@ -251,6 +252,34 @@ export async function runOneConnection(
              last_error = NULL
        WHERE id = ${conn.id}
     `;
+
+    // Task 3.4 — Agent A trigger hook. Fan the newly-inserted expenditure
+    // ids into the expenditure-classify job. Fire-and-forget: the chain
+    // insert has already committed, classification is downstream and
+    // best-effort. Errors are logged inside the shim and the parent
+    // sync run still reports success. The shim short-circuits when
+    // `P6_AGENT_A_ENABLED=false` or the tenant is outside the allowlist.
+    //
+    // We collect ids from all three expenditure-emitting sync functions
+    // (invoices, bank-tx, receipts) and dispatch in a SINGLE shim call so
+    // the per-row batching inside `runExpenditureClassifyJob` can still
+    // chunk according to `EXPENDITURE_CLASSIFY_BATCH_SIZE` if needed in
+    // a future iteration. Today the shim runs the whole list inline.
+    const newIds = [
+      ...(result.invoices?.inserted_expenditure_ids ?? []),
+      ...(result.bank_transactions?.inserted_expenditure_ids ?? []),
+      ...(result.receipts?.inserted_expenditure_ids ?? []),
+    ];
+    if (newIds.length > 0) {
+      void enqueueExpenditureClassify({
+        tenant_id: conn.tenant_id,
+        expenditure_ids: newIds,
+      }).catch(() => {
+        // Already logged inside the shim. Catching here just prevents
+        // an unhandled-rejection warning when the orchestrator continues
+        // to the next connection in the loop.
+      });
+    }
 
     return result;
   } catch (e) {
