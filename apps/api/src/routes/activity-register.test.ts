@@ -416,6 +416,394 @@ test("GET latest: status='pending' when draft exists with no acceptances", async
   await app.close();
 });
 
+test("GET latest: status='complete' when all proposed accepted (via accept endpoint)", async () => {
+  const proposedA = makeProposed({ name: 'Proposal A' });
+  const proposedB = makeProposed({
+    name: 'Proposal B',
+    kind: 'supporting',
+    statutory_anchor: 's.355-30',
+  });
+  await seedDraftEvent({
+    tenantId: TENANT_A,
+    subjectTenantId: SUBJECT_A,
+    projectId: PROJECT_A,
+    proposedActivities: [proposedA, proposedB],
+  });
+
+  const app = buildApp();
+  const acceptRes = await app.inject({
+    method: 'POST',
+    url: `/v1/projects/${PROJECT_A}/activity-register/accept`,
+    cookies: { cpa_session: await consultantJwt() },
+    payload: {
+      acceptances: [{ proposed_id: proposedA.proposed_id }, { proposed_id: proposedB.proposed_id }],
+    },
+  });
+  assert.equal(acceptRes.statusCode, 200);
+
+  const getRes = await app.inject({
+    method: 'GET',
+    url: `/v1/projects/${PROJECT_A}/activity-register/latest`,
+    cookies: { cpa_session: await consultantJwt() },
+  });
+  assert.equal(getRes.statusCode, 200);
+  const body = getRes.json<{
+    status: string;
+    accepted_count: number;
+    total_proposed: number;
+  }>();
+  assert.equal(body.status, 'complete');
+  assert.equal(body.accepted_count, 2);
+  assert.equal(body.total_proposed, 2);
+  await app.close();
+});
+
+// ===========================================================================
+// Task 4.5 — POST /v1/projects/:id/activity-register/accept
+// ===========================================================================
+
+test('POST accept: 401 without session', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'POST',
+    url: `/v1/projects/${PROJECT_A}/activity-register/accept`,
+    payload: { acceptances: [{ proposed_id: crypto.randomUUID() }] },
+  });
+  assert.equal(res.statusCode, 401);
+  await app.close();
+});
+
+test('POST accept: 403 for viewer role', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'POST',
+    url: `/v1/projects/${PROJECT_A}/activity-register/accept`,
+    cookies: { cpa_session: await viewerJwt() },
+    payload: { acceptances: [{ proposed_id: crypto.randomUUID() }] },
+  });
+  assert.equal(res.statusCode, 403);
+  await app.close();
+});
+
+test('POST accept: 404 for unknown project', async () => {
+  const app = buildApp();
+  const unknown = '00000000-0000-4000-8000-0000000b44fd';
+  const res = await app.inject({
+    method: 'POST',
+    url: `/v1/projects/${unknown}/activity-register/accept`,
+    cookies: { cpa_session: await adminJwt() },
+    payload: { acceptances: [{ proposed_id: crypto.randomUUID() }] },
+  });
+  assert.equal(res.statusCode, 404);
+  await app.close();
+});
+
+test('POST accept: 400 invalid body (missing acceptances)', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'POST',
+    url: `/v1/projects/${PROJECT_A}/activity-register/accept`,
+    cookies: { cpa_session: await consultantJwt() },
+    payload: {},
+  });
+  assert.equal(res.statusCode, 400);
+  await app.close();
+});
+
+test('POST accept: 404 when no draft register exists yet', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'POST',
+    url: `/v1/projects/${PROJECT_A}/activity-register/accept`,
+    cookies: { cpa_session: await consultantJwt() },
+    payload: { acceptances: [{ proposed_id: crypto.randomUUID() }] },
+  });
+  assert.equal(res.statusCode, 404);
+  const body = res.json<{ error: string }>();
+  assert.equal(body.error, 'no_draft_register');
+  await app.close();
+});
+
+test('POST accept: 200 all-success — 2 proposed → 2 activities + 2 ACTIVITY_CREATED events', async () => {
+  const proposedA = makeProposed({ name: 'Alpha' });
+  const proposedB = makeProposed({
+    name: 'Beta',
+    kind: 'supporting',
+    statutory_anchor: 's.355-30',
+  });
+  await seedDraftEvent({
+    tenantId: TENANT_A,
+    subjectTenantId: SUBJECT_A,
+    projectId: PROJECT_A,
+    proposedActivities: [proposedA, proposedB],
+  });
+
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'POST',
+    url: `/v1/projects/${PROJECT_A}/activity-register/accept`,
+    cookies: { cpa_session: await consultantJwt() },
+    payload: {
+      acceptances: [{ proposed_id: proposedA.proposed_id }, { proposed_id: proposedB.proposed_id }],
+    },
+  });
+  assert.equal(res.statusCode, 200);
+  const body = res.json<{
+    accepted: Array<{
+      proposed_id: string;
+      activity_id: string;
+      code: string;
+      skipped_idempotent: boolean;
+    }>;
+    rejected: Array<{ proposed_id: string; reason: string }>;
+  }>();
+  assert.equal(body.accepted.length, 2);
+  assert.equal(body.rejected.length, 0);
+  // Both unique codes — one CA-NN and one SA-NN since one is core, one supporting.
+  const codes = body.accepted.map((a) => a.code).sort();
+  assert.ok(codes[0]!.startsWith('CA-'), `expected core code, got ${codes[0]}`);
+  assert.ok(codes[1]!.startsWith('SA-'), `expected supporting code, got ${codes[1]}`);
+  body.accepted.forEach((a) => assert.equal(a.skipped_idempotent, false));
+
+  // Two activity rows in the DB.
+  const activityRows = await privilegedSql<{ id: string; code: string; title: string }[]>`
+    SELECT id, code, title FROM activity WHERE project_id = ${PROJECT_A} ORDER BY code
+  `;
+  assert.equal(activityRows.length, 2);
+  const titles = activityRows.map((r) => r.title).sort();
+  assert.deepEqual(titles, ['Alpha', 'Beta']);
+
+  // Two ACTIVITY_CREATED events with proposed_id correlation.
+  const eventRows = await privilegedSql<
+    { payload: { activity_id: string; proposed_id: string; title: string } }[]
+  >`
+    SELECT payload FROM event
+     WHERE project_id = ${PROJECT_A}
+       AND kind = 'ACTIVITY_CREATED'
+  `;
+  assert.equal(eventRows.length, 2);
+  const proposedIdsFromEvents = eventRows.map((r) => r.payload.proposed_id).sort();
+  assert.deepEqual(proposedIdsFromEvents, [proposedA.proposed_id, proposedB.proposed_id].sort());
+  await app.close();
+});
+
+test('POST accept: 200 with edits — name + kind+anchor flipped', async () => {
+  const proposed = makeProposed({
+    name: 'Original Name',
+    kind: 'core',
+    statutory_anchor: 's.355-25',
+  });
+  await seedDraftEvent({
+    tenantId: TENANT_A,
+    subjectTenantId: SUBJECT_A,
+    projectId: PROJECT_A,
+    proposedActivities: [proposed],
+  });
+
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'POST',
+    url: `/v1/projects/${PROJECT_A}/activity-register/accept`,
+    cookies: { cpa_session: await consultantJwt() },
+    payload: {
+      acceptances: [
+        {
+          proposed_id: proposed.proposed_id,
+          edits: {
+            name: 'Edited Name',
+            kind: 'supporting',
+            statutory_anchor: 's.355-30',
+          },
+        },
+      ],
+    },
+  });
+  assert.equal(res.statusCode, 200);
+  const body = res.json<{
+    accepted: Array<{ activity_id: string; code: string; skipped_idempotent: boolean }>;
+    rejected: unknown[];
+  }>();
+  assert.equal(body.accepted.length, 1);
+  assert.equal(body.rejected.length, 0);
+  assert.ok(body.accepted[0]!.code.startsWith('SA-'), 'kind=supporting → SA-NN');
+
+  const activityRows = await privilegedSql<{ kind: string; title: string }[]>`
+    SELECT kind, title FROM activity WHERE id = ${body.accepted[0]!.activity_id}
+  `;
+  assert.equal(activityRows[0]?.kind, 'supporting');
+  assert.equal(activityRows[0]?.title, 'Edited Name');
+  await app.close();
+});
+
+test('POST accept: 200 partial — bogus proposed_id rejected, valid ones accepted', async () => {
+  const goodA = makeProposed({ name: 'GoodA' });
+  const goodB = makeProposed({ name: 'GoodB' });
+  await seedDraftEvent({
+    tenantId: TENANT_A,
+    subjectTenantId: SUBJECT_A,
+    projectId: PROJECT_A,
+    proposedActivities: [goodA, goodB],
+  });
+  const bogus = crypto.randomUUID();
+
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'POST',
+    url: `/v1/projects/${PROJECT_A}/activity-register/accept`,
+    cookies: { cpa_session: await consultantJwt() },
+    payload: {
+      acceptances: [
+        { proposed_id: goodA.proposed_id },
+        { proposed_id: bogus },
+        { proposed_id: goodB.proposed_id },
+      ],
+    },
+  });
+  assert.equal(res.statusCode, 200);
+  const body = res.json<{
+    accepted: Array<{ proposed_id: string }>;
+    rejected: Array<{ proposed_id: string; reason: string }>;
+  }>();
+  assert.equal(body.accepted.length, 2);
+  assert.equal(body.rejected.length, 1);
+  assert.equal(body.rejected[0]?.proposed_id, bogus);
+  assert.match(body.rejected[0]?.reason ?? '', /not in latest/);
+  await app.close();
+});
+
+test('POST accept: 200 idempotency — second accept returns skipped_idempotent', async () => {
+  const proposed = makeProposed({ name: 'Idempotent target' });
+  await seedDraftEvent({
+    tenantId: TENANT_A,
+    subjectTenantId: SUBJECT_A,
+    projectId: PROJECT_A,
+    proposedActivities: [proposed],
+  });
+
+  const app = buildApp();
+  const first = await app.inject({
+    method: 'POST',
+    url: `/v1/projects/${PROJECT_A}/activity-register/accept`,
+    cookies: { cpa_session: await consultantJwt() },
+    payload: { acceptances: [{ proposed_id: proposed.proposed_id }] },
+  });
+  assert.equal(first.statusCode, 200);
+  const firstBody = first.json<{
+    accepted: Array<{ activity_id: string; skipped_idempotent: boolean }>;
+  }>();
+  assert.equal(firstBody.accepted[0]?.skipped_idempotent, false);
+  const firstActivityId = firstBody.accepted[0]?.activity_id;
+  assert.ok(firstActivityId, 'first call should populate activity_id');
+
+  const second = await app.inject({
+    method: 'POST',
+    url: `/v1/projects/${PROJECT_A}/activity-register/accept`,
+    cookies: { cpa_session: await consultantJwt() },
+    payload: { acceptances: [{ proposed_id: proposed.proposed_id }] },
+  });
+  assert.equal(second.statusCode, 200);
+  const secondBody = second.json<{
+    accepted: Array<{ activity_id: string; skipped_idempotent: boolean }>;
+  }>();
+  assert.equal(secondBody.accepted[0]?.skipped_idempotent, true);
+  assert.equal(secondBody.accepted[0]?.activity_id, firstActivityId);
+
+  // Only ONE activity row + ONE ACTIVITY_CREATED event despite two calls.
+  const activityRows = await privilegedSql<{ id: string }[]>`
+    SELECT id FROM activity WHERE project_id = ${PROJECT_A}
+  `;
+  assert.equal(activityRows.length, 1);
+  const eventRows = await privilegedSql<{ id: string }[]>`
+    SELECT id FROM event
+     WHERE project_id = ${PROJECT_A}
+       AND kind = 'ACTIVITY_CREATED'
+  `;
+  assert.equal(eventRows.length, 1);
+  await app.close();
+});
+
+test('POST accept: 200 with bad kind+anchor pairing rejects per-row but keeps batch 200', async () => {
+  const ok = makeProposed({ name: 'OK row' });
+  const bad = makeProposed({ name: 'Bad row' });
+  await seedDraftEvent({
+    tenantId: TENANT_A,
+    subjectTenantId: SUBJECT_A,
+    projectId: PROJECT_A,
+    proposedActivities: [ok, bad],
+  });
+
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'POST',
+    url: `/v1/projects/${PROJECT_A}/activity-register/accept`,
+    cookies: { cpa_session: await consultantJwt() },
+    payload: {
+      acceptances: [
+        { proposed_id: ok.proposed_id },
+        // Edit flips kind to supporting WITHOUT flipping anchor.
+        // Canonical pairing requires supporting ↔ s.355-30.
+        {
+          proposed_id: bad.proposed_id,
+          edits: { kind: 'supporting', statutory_anchor: 's.355-25' },
+        },
+      ],
+    },
+  });
+  assert.equal(res.statusCode, 200);
+  const body = res.json<{
+    accepted: Array<{ proposed_id: string }>;
+    rejected: Array<{ proposed_id: string; reason: string }>;
+  }>();
+  assert.equal(body.accepted.length, 1);
+  assert.equal(body.accepted[0]?.proposed_id, ok.proposed_id);
+  assert.equal(body.rejected.length, 1);
+  assert.equal(body.rejected[0]?.proposed_id, bad.proposed_id);
+  assert.match(body.rejected[0]?.reason ?? '', /must pair with anchor/);
+  await app.close();
+});
+
+test('POST accept: 409 when project has no open claim', async () => {
+  const proposed = makeProposed();
+  await seedDraftEvent({
+    tenantId: TENANT_A,
+    subjectTenantId: SUBJECT_A,
+    projectId: PROJECT_NO_CLAIM,
+    proposedActivities: [proposed],
+  });
+
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'POST',
+    url: `/v1/projects/${PROJECT_NO_CLAIM}/activity-register/accept`,
+    cookies: { cpa_session: await consultantJwt() },
+    payload: { acceptances: [{ proposed_id: proposed.proposed_id }] },
+  });
+  assert.equal(res.statusCode, 409);
+  const body = res.json<{ error: string }>();
+  assert.equal(body.error, 'no_open_claim');
+  await app.close();
+});
+
+test('POST accept: cross-firm RLS — firm-A admin cannot accept a firm-B draft (404)', async () => {
+  const proposed = makeProposed();
+  await seedDraftEvent({
+    tenantId: TENANT_B,
+    subjectTenantId: SUBJECT_B,
+    projectId: PROJECT_B,
+    proposedActivities: [proposed],
+  });
+
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'POST',
+    url: `/v1/projects/${PROJECT_B}/activity-register/accept`,
+    cookies: { cpa_session: await adminJwt() }, // firm-A session
+    payload: { acceptances: [{ proposed_id: proposed.proposed_id }] },
+  });
+  assert.equal(res.statusCode, 404);
+  await app.close();
+});
+
 // Positive control — firm B's session DOES see firm B's draft.
 test('GET latest: positive control — firm B admin sees firm B draft', async () => {
   await seedDraftEvent({
