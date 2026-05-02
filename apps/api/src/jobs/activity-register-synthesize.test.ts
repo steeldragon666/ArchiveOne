@@ -241,7 +241,10 @@ test('tenant not in allowlist: returns skipped_disabled', async () => {
     project_id: PROJECT,
   });
   assert.equal(result.status, 'skipped_disabled');
-  assert.match(result.reason ?? '', /allowlist/);
+  // Case-insensitive — production reason string mentions
+  // `P6_AGENT_TENANT_ALLOWLIST` (uppercased env-var name); we just want to
+  // assert the concept, not exact casing.
+  assert.match(result.reason ?? '', /allowlist/i);
 });
 
 test('project not found: returns failed with reason', async () => {
