@@ -711,3 +711,98 @@ test('B7 stub: runOneConnection completes 5-sync sequence via factory + fixtures
     }
   }
 });
+
+// ---------------------------------------------------------------------------
+// Task 3.4 — Agent A trigger hook propagation.
+//
+// The orchestrator collects `inserted_expenditure_ids` from each
+// expenditure-emitting sync (invoices, bank-tx, receipts) and dispatches
+// them via `enqueueExpenditureClassify` (apps/api/src/lib/enqueue-classify.ts).
+// We can't easily exercise the shim's internal classifier path here
+// (that needs the full DB harness — covered by routes/expenditures.test.ts),
+// but we CAN verify the orchestrator forwards inserted ids through
+// per-connection results and tolerates absence of ids without errors.
+// ---------------------------------------------------------------------------
+
+test('Task 3.4: inserted_expenditure_ids flow through per_connection result', async () => {
+  // Default the agent flag OFF so the shim short-circuits without
+  // touching the real DB. The orchestrator must still propagate the
+  // ids on the result object regardless of the trigger outcome.
+  const ORIG_FLAG = process.env.P6_AGENT_A_ENABLED;
+  process.env.P6_AGENT_A_ENABLED = 'false';
+  try {
+    const newInvId = '00000000-0000-4000-8000-0000000b3401';
+    const newBtId = '00000000-0000-4000-8000-0000000b3402';
+    const newRcptId = '00000000-0000-4000-8000-0000000b3403';
+    const { deps } = baseDeps(
+      { connections: [baseConn(CONN_A, TENANT_A, null)] },
+      {
+        sync_invoices: () =>
+          Promise.resolve({
+            fetched: 1,
+            inserted: 1,
+            updated: 0,
+            lines: 1,
+            events_written: 1,
+            inserted_expenditure_ids: [newInvId],
+          }),
+        sync_bank_transactions: () =>
+          Promise.resolve({
+            fetched: 1,
+            inserted: 1,
+            updated: 0,
+            lines: 1,
+            events_written: 1,
+            inserted_expenditure_ids: [newBtId],
+          }),
+        sync_receipts: () =>
+          Promise.resolve({
+            fetched: 1,
+            inserted: 1,
+            updated: 0,
+            lines: 1,
+            events_written: 1,
+            reimbursee_matched: 0,
+            inserted_expenditure_ids: [newRcptId],
+          }),
+      },
+    );
+
+    const result = await runXeroAccountingSyncForAllConnections(deps);
+    assert.equal(result.failed, 0);
+    assert.equal(result.ran, 1);
+    const r0 = result.per_connection[0]!;
+    assert.deepEqual(r0.invoices?.inserted_expenditure_ids, [newInvId]);
+    assert.deepEqual(r0.bank_transactions?.inserted_expenditure_ids, [newBtId]);
+    assert.deepEqual(r0.receipts?.inserted_expenditure_ids, [newRcptId]);
+  } finally {
+    if (ORIG_FLAG === undefined) {
+      delete process.env.P6_AGENT_A_ENABLED;
+    } else {
+      process.env.P6_AGENT_A_ENABLED = ORIG_FLAG;
+    }
+  }
+});
+
+test('Task 3.4: empty inserted_expenditure_ids does not error orchestrator', async () => {
+  // Re-confirm the existing happy-path stubs (no `inserted_expenditure_ids`
+  // field at all) still produce a successful run — the orchestrator
+  // coalesces undefined to `[]` before calling the shim.
+  const { deps } = baseDeps(
+    { connections: [baseConn(CONN_A, TENANT_A, null)] },
+    {
+      sync_invoices: () =>
+        Promise.resolve({
+          fetched: 0,
+          inserted: 0,
+          updated: 0,
+          lines: 0,
+          events_written: 0,
+        }),
+    },
+  );
+
+  const result = await runXeroAccountingSyncForAllConnections(deps);
+  assert.equal(result.failed, 0);
+  assert.equal(result.ran, 1);
+});

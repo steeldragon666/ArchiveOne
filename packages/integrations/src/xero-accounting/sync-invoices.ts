@@ -113,6 +113,18 @@ export interface SyncInvoicesResult {
   lines: number;
   /** Number of EXPENDITURE_INGESTED events written (= inserted, never on update). */
   events_written: number;
+  /**
+   * IDs of the newly-inserted expenditure rows (parallel to `inserted` /
+   * `events_written` counters). Caller (the Xero sync orchestrator)
+   * forwards these to the Agent A classifier trigger — see
+   * `apps/api/src/lib/enqueue-classify.ts`. Empty for incremental
+   * runs that match only pre-existing rows.
+   *
+   * Optional in the type so existing test stubs that synthesise a
+   * result object don't have to enumerate it; the orchestrator coalesces
+   * undefined to `[]`. The real `syncInvoices` always sets it.
+   */
+  inserted_expenditure_ids?: string[];
 }
 
 const PAGE_SIZE = 100;
@@ -201,6 +213,7 @@ export async function syncInvoices(
     updated: 0,
     lines: 0,
     events_written: 0,
+    inserted_expenditure_ids: [],
   };
 
   // Resolve the HTTP client once via the factory. Returns the real
@@ -372,6 +385,16 @@ export async function syncInvoices(
           override_reason: null,
         });
         result.events_written++;
+        // Track the new id so the orchestrator can fan out the Agent A
+        // classifier trigger (apps/api/src/lib/enqueue-classify.ts).
+        // Pushed AFTER the chain insert succeeds so a thrown chain write
+        // doesn't leave a phantom id pointing at a row that the next sync
+        // run would re-insert (UNIQUE on source_external_id prevents a
+        // duplicate, but the trigger would dispatch on a stale id).
+        // Non-null assertion because we always seed the field at result
+        // init (line ~204); the optional `?` on the type is purely so
+        // test-stub callers don't have to enumerate it.
+        result.inserted_expenditure_ids!.push(expenditureId);
       }
 
       // Lines — full-replace. Delete first (no-op on insert; expected on
