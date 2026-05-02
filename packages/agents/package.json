@@ -25,6 +25,10 @@
     "./synthesizer-register": {
       "types": "./dist/synthesizer-register/index.d.ts",
       "import": "./dist/synthesizer-register/index.js"
+    },
+    "./narrative-drafter": {
+      "types": "./dist/narrative-drafter/index.d.ts",
+      "import": "./dist/narrative-drafter/index.js"
     }
   },
   "scripts": {
