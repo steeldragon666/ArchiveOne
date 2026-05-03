@@ -4,6 +4,7 @@ import { use } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AuthGuard } from '@/components/auth-guard';
 import { Button } from '@/components/ui/button';
+import { MultiCycleTimelineSection } from '@/components/multi-cycle-timeline-section';
 import { getActivity, listActivityArtefacts } from '../_lib/api';
 import { ActivityEditor } from './_components/activity-editor';
 
@@ -117,6 +118,14 @@ function Inner({ claimId, activityId }: { claimId: string; activityId: string })
           </Button>
         </div>
       </div>
+
+      {/*
+        Multi-cycle citation-graph timeline (P7 Task A.5). Self-gates on
+        the activity having a `proposed_id` chain with 2+ FYs; renders
+        nothing otherwise. The supporting API endpoint is added in a
+        follow-up task — until it lands, the section silently no-ops.
+      */}
+      <MultiCycleTimelineSection activityId={activityId} />
 
       <section className="space-y-4">
         <h2 className="text-lg font-semibold">Edit narrative</h2>
