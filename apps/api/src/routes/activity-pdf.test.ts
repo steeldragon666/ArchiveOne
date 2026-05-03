@@ -76,7 +76,8 @@ before(async () => {
   await privilegedSql`
     INSERT INTO activity (id, tenant_id, project_id, claim_id, code, kind, title,
                           description, hypothesis, technical_uncertainty,
-                          expected_outcome, actual_outcome)
+                          expected_outcome, actual_outcome,
+                          fy_label, hypothesis_formed_at)
     VALUES
       (${ACTIVITY_A}, ${TENANT_A}, ${PROJECT_A}, ${CLAIM_A},
        'CA-001', 'core', 'Catalyst longevity test',
@@ -84,9 +85,11 @@ before(async () => {
        'Catalyst will retain >85% activity at 200 hours.',
        'No published longevity data for this catalyst class.',
        'Establish whether the catalyst meets the design target.',
-       'Confirmed degradation mechanism is sintering-driven.'),
+       'Confirmed degradation mechanism is sintering-driven.',
+       'FY27', '2027-01-01T00:00:00Z'),
       (${ACTIVITY_B}, ${TENANT_B}, ${PROJECT_B}, ${CLAIM_B},
-       'CA-001', 'core', 'B-firm activity', null, null, null, null, null)
+       'CA-001', 'core', 'B-firm activity', null, null, null, null, null,
+       'FY27', '2027-01-01T00:00:00Z')
   `;
 
   // Seed an ARTEFACT_LINKED + an UNCERTAINTY event so the PDF has

@@ -63,11 +63,13 @@ test('nextActivityCode: empty claim returns SA-01 (supporting)', async () => {
 test('nextActivityCode: with CA-01 only returns CA-02', async () => {
   // Insert CA-01 first
   await privilegedSql`
-    INSERT INTO activity (id, tenant_id, project_id, claim_id, code, kind, title)
+    INSERT INTO activity (id, tenant_id, project_id, claim_id, code, kind, title,
+                         fy_label, hypothesis_formed_at)
     VALUES (
       ${'00000000-0000-4000-8000-0000ac007701'},
       ${TENANT_ID}, ${PROJECT_ID}, ${CLAIM_ID},
-      'CA-01', 'core', 'First core activity'
+      'CA-01', 'core', 'First core activity',
+      'FY25', '2025-01-01T00:00:00Z'
     )
   `;
   const code = await nextActivityCode({ claim_id: CLAIM_ID, kind: 'core' });
@@ -77,11 +79,13 @@ test('nextActivityCode: with CA-01 only returns CA-02', async () => {
 test('nextActivityCode: gap-fill (CA-01 + CA-03 exist) returns CA-02', async () => {
   // Insert CA-03 (CA-01 already inserted in previous test); skip CA-02
   await privilegedSql`
-    INSERT INTO activity (id, tenant_id, project_id, claim_id, code, kind, title)
+    INSERT INTO activity (id, tenant_id, project_id, claim_id, code, kind, title,
+                         fy_label, hypothesis_formed_at)
     VALUES (
       ${'00000000-0000-4000-8000-0000ac007703'},
       ${TENANT_ID}, ${PROJECT_ID}, ${CLAIM_ID},
-      'CA-03', 'core', 'Third core activity'
+      'CA-03', 'core', 'Third core activity',
+      'FY25', '2025-01-01T00:00:00Z'
     )
   `;
   const code = await nextActivityCode({ claim_id: CLAIM_ID, kind: 'core' });

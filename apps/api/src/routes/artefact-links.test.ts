@@ -131,14 +131,18 @@ before(async () => {
       (${CLAIM_B_OPEN}, ${TENANT_B}, ${SUBJECT_B1}, 2026, 'engagement')
   `;
   await privilegedSql`
-    INSERT INTO activity (id, tenant_id, project_id, claim_id, code, kind, title)
+    INSERT INTO activity (id, tenant_id, project_id, claim_id, code, kind, title,
+                          fy_label, hypothesis_formed_at)
     VALUES
       (${ACTIVITY_A_OPEN}, ${TENANT_A}, ${PROJECT_A_OPEN}, ${CLAIM_A_OPEN},
-       'CA-01', 'core', 'A4 Activity A Open'),
+       'CA-01', 'core', 'A4 Activity A Open',
+       'FY26', '2026-01-01T00:00:00Z'),
       (${ACTIVITY_A_LOCKED}, ${TENANT_A}, ${PROJECT_A_OPEN}, ${CLAIM_A_AUDIT},
-       'CA-02', 'core', 'A4 Activity A Locked'),
+       'CA-02', 'core', 'A4 Activity A Locked',
+       'FY23', '2023-01-01T00:00:00Z'),
       (${ACTIVITY_B_OPEN}, ${TENANT_B}, ${PROJECT_B_OPEN}, ${CLAIM_B_OPEN},
-       'CA-01', 'core', 'A4 Activity B Open')
+       'CA-01', 'core', 'A4 Activity B Open',
+       'FY26', '2026-01-01T00:00:00Z')
   `;
 
   // Artefact fixtures — minimal valid rows of each kind in each tenant.

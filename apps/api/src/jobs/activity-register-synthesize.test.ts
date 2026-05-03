@@ -78,8 +78,10 @@ before(async () => {
                               (${PROJECT_OTHER_TENANT}, ${TENANT_OTHER}, ${SUBJECT}, 'Wrong tenant project', '2024-07-01T00:00:00Z')`;
   await privilegedSql`INSERT INTO claim (id, tenant_id, subject_tenant_id, project_id, fiscal_year, stage)
                        VALUES (${CLAIM}, ${TENANT}, ${SUBJECT}, ${PROJECT}, 2025, 'engagement')`;
-  await privilegedSql`INSERT INTO activity (id, tenant_id, project_id, claim_id, code, kind, title, description)
-                       VALUES (${ACTIVITY}, ${TENANT}, ${PROJECT}, ${CLAIM}, 'CA-01', 'core', 'Existing accepted activity', 'pre-baked')`;
+  await privilegedSql`INSERT INTO activity (id, tenant_id, project_id, claim_id, code, kind, title, description,
+                                            fy_label, hypothesis_formed_at)
+                       VALUES (${ACTIVITY}, ${TENANT}, ${PROJECT}, ${CLAIM}, 'CA-01', 'core', 'Existing accepted activity', 'pre-baked',
+                               'FY25', '2025-01-01T00:00:00Z')`;
 });
 
 // Per-test isolation: clear events + cache, but keep tenant/user/project/activity

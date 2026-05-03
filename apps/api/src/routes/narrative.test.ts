@@ -253,8 +253,10 @@ async function seedActivityWithCluster(args: {
 
   // 3) activity row + ACTIVITY_CREATED event with proposed_id correlation
   await privilegedSql`
-    INSERT INTO activity (id, tenant_id, project_id, claim_id, code, kind, title)
-    VALUES (${activityId}, ${tenantId}, ${projectId}, ${claimId}, 'CA-01', 'core', 'Activity under test')
+    INSERT INTO activity (id, tenant_id, project_id, claim_id, code, kind, title,
+                          fy_label, hypothesis_formed_at)
+    VALUES (${activityId}, ${tenantId}, ${projectId}, ${claimId}, 'CA-01', 'core', 'Activity under test',
+            'FY25', '2025-01-01T00:00:00Z')
   `;
   await insertEventWithChain({
     tenant_id: tenantId,
@@ -286,8 +288,10 @@ async function seedActivityWithCluster(args: {
 async function seedActivityWithoutProposedId(): Promise<string> {
   const activityId = crypto.randomUUID();
   await privilegedSql`
-    INSERT INTO activity (id, tenant_id, project_id, claim_id, code, kind, title)
-    VALUES (${activityId}, ${TENANT_A}, ${PROJECT_A}, ${CLAIM_A}, 'CA-99', 'core', 'No-history activity')
+    INSERT INTO activity (id, tenant_id, project_id, claim_id, code, kind, title,
+                          fy_label, hypothesis_formed_at)
+    VALUES (${activityId}, ${TENANT_A}, ${PROJECT_A}, ${CLAIM_A}, 'CA-99', 'core', 'No-history activity',
+            'FY25', '2025-01-01T00:00:00Z')
   `;
   return activityId;
 }

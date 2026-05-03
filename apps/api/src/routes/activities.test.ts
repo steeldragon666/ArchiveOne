@@ -123,16 +123,21 @@ before(async () => {
   // Pre-seed CA-01 and CA-03 under CLAIM_A_OPEN — gap-fill test asserts
   // that the next CA code is CA-02 (not CA-04).
   await privilegedSql`
-    INSERT INTO activity (id, tenant_id, project_id, claim_id, code, kind, title)
+    INSERT INTO activity (id, tenant_id, project_id, claim_id, code, kind, title,
+                          fy_label, hypothesis_formed_at)
     VALUES
       (${ACTIVITY_PRESEED_CA01}, ${TENANT_A}, ${PROJECT_A_OPEN}, ${CLAIM_A_OPEN},
-       'CA-01', 'core', 'Preseed CA-01'),
+       'CA-01', 'core', 'Preseed CA-01',
+       'FY26', '2026-01-01T00:00:00Z'),
       (${ACTIVITY_PRESEED_CA03}, ${TENANT_A}, ${PROJECT_A_OPEN}, ${CLAIM_A_OPEN},
-       'CA-03', 'core', 'Preseed CA-03'),
+       'CA-03', 'core', 'Preseed CA-03',
+       'FY26', '2026-01-01T00:00:00Z'),
       (${ACTIVITY_B_PRESEED}, ${TENANT_B}, ${PROJECT_B_OPEN}, ${CLAIM_B_OPEN},
-       'CA-01', 'core', 'Firm B preseed'),
+       'CA-01', 'core', 'Firm B preseed',
+       'FY26', '2026-01-01T00:00:00Z'),
       (${ACTIVITY_PRESEED_LOCKED}, ${TENANT_A}, ${PROJECT_A_OPEN}, ${CLAIM_A_AUDIT},
-       'CA-01', 'core', 'Locked-claim activity')
+       'CA-01', 'core', 'Locked-claim activity',
+       'FY23', '2023-01-01T00:00:00Z')
   `;
 });
 
@@ -538,9 +543,11 @@ test('PATCH /v1/activities/:id: 200 + ACTIVITY_UPDATED event with fields_changed
   // Seed a fresh activity row so this test owns its event-chain mutation.
   const ACTIVITY_FOR_PATCH = '00000000-0000-4000-8000-0000000a3061';
   await privilegedSql`
-    INSERT INTO activity (id, tenant_id, project_id, claim_id, code, kind, title, description)
+    INSERT INTO activity (id, tenant_id, project_id, claim_id, code, kind, title, description,
+                          fy_label, hypothesis_formed_at)
     VALUES (${ACTIVITY_FOR_PATCH}, ${TENANT_A}, ${PROJECT_A_OPEN}, ${CLAIM_A_OPEN},
-            'CA-50', 'core', 'Old Title', 'Old description')
+            'CA-50', 'core', 'Old Title', 'Old description',
+            'FY26', '2026-01-01T00:00:00Z')
   `;
   // Defensively clear any prior ACTIVITY_UPDATED events for this activity
   // so the assertion below is unambiguous (per A2 fix #4 pattern).
@@ -622,9 +629,11 @@ test('PATCH /v1/activities/:id: 200 same-value patch (title -> existing title) e
   // ACTIVITY_UPDATED should land.
   const ACTIVITY_FOR_NOOP = '00000000-0000-4000-8000-0000000a3062';
   await privilegedSql`
-    INSERT INTO activity (id, tenant_id, project_id, claim_id, code, kind, title)
+    INSERT INTO activity (id, tenant_id, project_id, claim_id, code, kind, title,
+                          fy_label, hypothesis_formed_at)
     VALUES (${ACTIVITY_FOR_NOOP}, ${TENANT_A}, ${PROJECT_A_OPEN}, ${CLAIM_A_OPEN},
-            'CA-51', 'core', 'Stable Title')
+            'CA-51', 'core', 'Stable Title',
+            'FY26', '2026-01-01T00:00:00Z')
   `;
   await privilegedSql`
     DELETE FROM event WHERE payload ->> 'activity_id' = ${ACTIVITY_FOR_NOOP}
@@ -661,9 +670,11 @@ test('PATCH /v1/activities/:id: 200 partial-same — fields_changed contains onl
   // (assurance report renderer reads this map verbatim).
   const ACTIVITY_FOR_PARTIAL = '00000000-0000-4000-8000-0000000a3063';
   await privilegedSql`
-    INSERT INTO activity (id, tenant_id, project_id, claim_id, code, kind, title, description)
+    INSERT INTO activity (id, tenant_id, project_id, claim_id, code, kind, title, description,
+                          fy_label, hypothesis_formed_at)
     VALUES (${ACTIVITY_FOR_PARTIAL}, ${TENANT_A}, ${PROJECT_A_OPEN}, ${CLAIM_A_OPEN},
-            'CA-52', 'core', 'Original', 'KeepThis')
+            'CA-52', 'core', 'Original', 'KeepThis',
+            'FY26', '2026-01-01T00:00:00Z')
   `;
   await privilegedSql`
     DELETE FROM event WHERE payload ->> 'activity_id' = ${ACTIVITY_FOR_PARTIAL}

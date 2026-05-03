@@ -277,9 +277,11 @@ test('migration 0019: backfill populates claim.project_id from activity.project_
                                'P5A T1.1 Project', '2026-01-01T00:00:00Z')`;
   await privilegedSql`INSERT INTO claim (id, tenant_id, subject_tenant_id, fiscal_year, project_id)
                        VALUES (${CLAIM_1_WITH_ACTIVITY}, ${TENANT_ID}, ${SUBJECT_ID}, 2030, NULL)`;
-  await privilegedSql`INSERT INTO activity (id, tenant_id, project_id, claim_id, code, kind, title)
+  await privilegedSql`INSERT INTO activity (id, tenant_id, project_id, claim_id, code, kind, title,
+                                            fy_label, hypothesis_formed_at)
                        VALUES (${ACTIVITY_1_ID}, ${TENANT_ID}, ${PROJECT_1_ID},
-                               ${CLAIM_1_WITH_ACTIVITY}, 'CA-01', 'core', 'P5A T1.1 Activity')`;
+                               ${CLAIM_1_WITH_ACTIVITY}, 'CA-01', 'core', 'P5A T1.1 Activity',
+                               'FY30', '2030-01-01T00:00:00Z')`;
 
   // Re-run the backfill expression to simulate the migration's UPDATE
   // (the migration ran once at deploy; this confirms the SQL is
@@ -736,18 +738,22 @@ test('migration 0029: narrative_draft table exists with expected columns and RLS
                                'P6 T1.4 Tenant A Project', '2026-01-01T00:00:00Z')`;
   await privilegedSql`INSERT INTO claim (id, tenant_id, subject_tenant_id, fiscal_year, project_id)
                        VALUES (${CLAIM_4A_ID}, ${TENANT_ID}, ${SUBJECT_ID}, 2034, ${PROJECT_4A_ID})`;
-  await privilegedSql`INSERT INTO activity (id, tenant_id, project_id, claim_id, code, kind, title)
+  await privilegedSql`INSERT INTO activity (id, tenant_id, project_id, claim_id, code, kind, title,
+                                            fy_label, hypothesis_formed_at)
                        VALUES (${ACTIVITY_4A_ID}, ${TENANT_ID}, ${PROJECT_4A_ID},
-                               ${CLAIM_4A_ID}, 'CA-01', 'core', 'P6 T1.4 Tenant A Activity')`;
+                               ${CLAIM_4A_ID}, 'CA-01', 'core', 'P6 T1.4 Tenant A Activity',
+                               'FY34', '2034-01-01T00:00:00Z')`;
   await privilegedSql`SELECT set_config('app.current_tenant_id', ${TENANT_B_ID}, true)`;
   await privilegedSql`INSERT INTO project (id, tenant_id, subject_tenant_id, name, started_at)
                        VALUES (${PROJECT_4B_ID}, ${TENANT_B_ID}, ${SUBJECT_B_ID},
                                'P6 T1.4 Tenant B Project', '2026-01-01T00:00:00Z')`;
   await privilegedSql`INSERT INTO claim (id, tenant_id, subject_tenant_id, fiscal_year, project_id)
                        VALUES (${CLAIM_4B_ID}, ${TENANT_B_ID}, ${SUBJECT_B_ID}, 2034, ${PROJECT_4B_ID})`;
-  await privilegedSql`INSERT INTO activity (id, tenant_id, project_id, claim_id, code, kind, title)
+  await privilegedSql`INSERT INTO activity (id, tenant_id, project_id, claim_id, code, kind, title,
+                                            fy_label, hypothesis_formed_at)
                        VALUES (${ACTIVITY_4B_ID}, ${TENANT_B_ID}, ${PROJECT_4B_ID},
-                               ${CLAIM_4B_ID}, 'CA-01', 'core', 'P6 T1.4 Tenant B Activity')`;
+                               ${CLAIM_4B_ID}, 'CA-01', 'core', 'P6 T1.4 Tenant B Activity',
+                               'FY34', '2034-01-01T00:00:00Z')`;
 
   // Each draft is one segment for brevity — the RLS positive control
   // doesn't care about segment shape, it cares about tenant isolation.

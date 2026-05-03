@@ -288,14 +288,22 @@ export interface SeedActivityInput {
   experimentationLog?: string | null;
   expectedOutcome?: string | null;
   actualOutcome?: string | null;
+  // P7 Theme A: required NOT NULL with no DEFAULT — explicit values
+  // ensure tests document the FY context and the contemporaneous
+  // hypothesis-formation timestamp rather than relying on `now()`.
+  fyLabel?: string;
+  hypothesisFormedAt?: string;
 }
 
 export async function seedActivity(input: SeedActivityInput): Promise<string> {
   const id = crypto.randomUUID();
+  const fyLabel = input.fyLabel ?? 'FY25';
+  const hypothesisFormedAt = input.hypothesisFormedAt ?? '2025-01-01T00:00:00Z';
   await privilegedSql`
     INSERT INTO activity (id, tenant_id, project_id, claim_id, code, kind, title,
                           description, hypothesis, technical_uncertainty,
-                          experimentation_log, expected_outcome, actual_outcome)
+                          experimentation_log, expected_outcome, actual_outcome,
+                          fy_label, hypothesis_formed_at)
     VALUES (
       ${id}, ${input.tenantId}, ${input.projectId}, ${input.claimId},
       ${input.code}, ${input.kind}, ${input.title},
@@ -304,7 +312,8 @@ export async function seedActivity(input: SeedActivityInput): Promise<string> {
       ${input.technicalUncertainty ?? null},
       ${input.experimentationLog ?? null},
       ${input.expectedOutcome ?? null},
-      ${input.actualOutcome ?? null}
+      ${input.actualOutcome ?? null},
+      ${fyLabel}, ${hypothesisFormedAt}
     )
   `;
   return id;

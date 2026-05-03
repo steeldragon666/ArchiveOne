@@ -76,22 +76,21 @@ export const activity = pgTable(
     // walk via (tenant_id, proposed_id, fy_label) for prior-cycle lookup.
     proposedId: uuid('proposed_id'),
     // P7 Theme A — fiscal-year label, e.g. 'FY25' for fiscal_year=2025
-    // (Q-Fix3=A locked decision). NOT NULL — backfilled from
-    // claim.fiscal_year in migration 0037. The migration sets
-    // `DEFAULT ''` so existing application-code INSERT paths that
-    // pre-date Theme A keep working; Theme A's activity writers should
-    // set an explicit FY label.
-    fyLabel: text('fy_label').notNull().default(''),
+    // (Q-Fix3=A locked decision). NOT NULL with NO DEFAULT — application
+    // writers MUST provide an explicit FY label at INSERT time. An empty
+    // default would group all unset rows under the same FY in the
+    // chain-walk index, defeating its purpose.
+    fyLabel: text('fy_label').notNull(),
     // P7 Theme A — first-known-hypothesis timestamp (Q-Fix4=B locked
     // decision). Immutable post-insert: BEFORE UPDATE trigger
     // `activity_hypothesis_formed_at_immutable` raises check_violation
     // on any DISTINCT-FROM update. Backfilled from MIN(narrative_draft
     // .created_at) per activity, falling back to activity.created_at
-    // when no drafts exist yet. `DEFAULT now()` covers paths that
-    // INSERT without specifying the column.
-    hypothesisFormedAt: timestamp('hypothesis_formed_at', { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    // when no drafts exist yet. NO DEFAULT — a DEFAULT now() would let
+    // INSERTs that omit the column silently capture wall-clock time as
+    // the "hypothesis date", defeating the Body by Michael compliance
+    // argument. Application writers MUST provide an explicit timestamp.
+    hypothesisFormedAt: timestamp('hypothesis_formed_at', { withTimezone: true }).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true })
       .notNull()

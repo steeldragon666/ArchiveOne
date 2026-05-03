@@ -75,14 +75,18 @@ before(async () => {
       (${CLAIM_B}, ${TENANT_B}, ${SUBJECT_B1}, 2026, 'engagement')
   `;
   await privilegedSql`
-    INSERT INTO activity (id, tenant_id, project_id, claim_id, code, kind, title)
+    INSERT INTO activity (id, tenant_id, project_id, claim_id, code, kind, title,
+                          fy_label, hypothesis_formed_at)
     VALUES
       (${ACTIVITY_A}, ${TENANT_A}, ${PROJECT_A}, ${CLAIM_A},
-       'CA-01', 'core', 'EV Activity A'),
+       'CA-01', 'core', 'EV Activity A',
+       'FY26', '2026-01-01T00:00:00Z'),
       (${ACTIVITY_A_OTHER}, ${TENANT_A}, ${PROJECT_A}, ${CLAIM_A},
-       'CA-02', 'core', 'EV Activity A Other'),
+       'CA-02', 'core', 'EV Activity A Other',
+       'FY26', '2026-01-01T00:00:00Z'),
       (${ACTIVITY_B}, ${TENANT_B}, ${PROJECT_B}, ${CLAIM_B},
-       'CA-01', 'core', 'EV Activity B')
+       'CA-01', 'core', 'EV Activity B',
+       'FY26', '2026-01-01T00:00:00Z')
   `;
 });
 

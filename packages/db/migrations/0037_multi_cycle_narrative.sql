@@ -102,11 +102,10 @@ UPDATE "activity" a
 
 -- 3. activity.fy_label (Q-Fix3=A)
 -- 'FY' || two-digit year, e.g. fiscal_year=2025 → 'FY25'. Backfilled
--- from claim.fiscal_year then made NOT NULL with a DEFAULT '' fallback
--- so future application INSERTs that haven't yet been updated to
--- include fy_label keep working; the empty string is structurally
--- discouraged by the application layer (Theme A's activity writers set
--- a real label) but the column constraint itself stays NOT NULL.
+-- from claim.fiscal_year then made NOT NULL. NO DEFAULT — application
+-- writers MUST provide an explicit FY label at INSERT time. An empty
+-- string would defeat the chain-walk index (all empty rows would group
+-- as "same FY"); requiring an explicit label is the correctness gate.
 ALTER TABLE "activity" ADD COLUMN "fy_label" text;
 --> statement-breakpoint
 
@@ -117,17 +116,17 @@ UPDATE "activity" a
    AND a."fy_label" IS NULL;
 --> statement-breakpoint
 
-ALTER TABLE "activity" ALTER COLUMN "fy_label" SET DEFAULT '';
---> statement-breakpoint
 ALTER TABLE "activity" ALTER COLUMN "fy_label" SET NOT NULL;
 --> statement-breakpoint
 
 -- 4. activity.hypothesis_formed_at + immutability (Q-Fix4=B)
 -- Backfill: earliest narrative_draft.created_at for each activity, falling
--- back to activity.created_at if no drafts exist yet. Set DEFAULT now()
--- so future inserts that omit the column get a sensible "row creation
--- time IS hypothesis-formation time" semantic; Theme A's activity
--- writers set an explicit timestamp from the proposal flow.
+-- back to activity.created_at if no drafts exist yet. NO DEFAULT — a
+-- DEFAULT now() would defeat the Body by Michael compliance argument:
+-- the column exists to capture the contemporaneous, consultant-authored
+-- formation timestamp, and an implicit now() would silently stamp every
+-- INSERT with wall-clock time. Application writers MUST provide an
+-- explicit timestamp at INSERT time.
 ALTER TABLE "activity" ADD COLUMN "hypothesis_formed_at" timestamptz;
 --> statement-breakpoint
 
@@ -139,8 +138,6 @@ UPDATE "activity" a
  WHERE a."hypothesis_formed_at" IS NULL;
 --> statement-breakpoint
 
-ALTER TABLE "activity" ALTER COLUMN "hypothesis_formed_at" SET DEFAULT now();
---> statement-breakpoint
 ALTER TABLE "activity" ALTER COLUMN "hypothesis_formed_at" SET NOT NULL;
 --> statement-breakpoint
 
