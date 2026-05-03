@@ -4,6 +4,8 @@ export {
   type ChainWalkExecutor,
 } from './walk-proposed-id.js';
 
+export { buildPriorFyContext, type BuildPriorFyContextOptions } from './build-prior-fy-context.js';
+
 export {
   MULTI_CYCLE_SECTION_KINDS,
   MULTI_CYCLE_TRANSITION_KINDS,
