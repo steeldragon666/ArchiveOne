@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { Sha256Hash } from '@cpa/schemas';
 import { registerPrompt } from '../../runtime/prompt-registry.js';
 import { MULTI_CYCLE_SECTION_KINDS, MULTI_CYCLE_TRANSITION_KINDS } from '../types.js';
 
@@ -44,6 +45,14 @@ import { MULTI_CYCLE_SECTION_KINDS, MULTI_CYCLE_TRANSITION_KINDS } from '../type
 const Uuid = z.string().uuid();
 
 /**
+ * Australian R&DTI financial-year label. Two-digit form ('FY24', 'FY25')
+ * matches the codebase convention used throughout `activity.fy_label`,
+ * `narrative_draft.fy_label`, and the multi-cycle walker test fixtures.
+ * Rejects 'FY2024' (four-digit), 'fy24' (lowercase), 'FY' alone, etc.
+ */
+const FyLabel = z.string().regex(/^FY\d{2}$/, 'must be FYNN format (two digits)');
+
+/**
  * One entry in the citation graph — a single (FY, draft, section, segments,
  * transition) reference. The `transition_rationale` field is the ONLY
  * free-text surface in the entire output, and is hard-capped at 500 chars.
@@ -56,11 +65,19 @@ const Uuid = z.string().uuid();
  */
 const CitationGraphEntry = z
   .object({
-    fy_label: z.string().min(1),
+    fy_label: FyLabel,
     narrative_draft_id: Uuid,
     section_kind: z.enum(MULTI_CYCLE_SECTION_KINDS),
-    content_hash: z.string().min(1),
-    cited_segment_indices: z.array(z.number().int().nonnegative()).min(1),
+    // Canonical Sha256Hash from @cpa/schemas — 64 lowercase hex chars,
+    // matches narrative_draft.content_hash. Rejects truncated values
+    // (e.g. 'abc') and wrong-charset values (e.g. 'g'.repeat(64)).
+    content_hash: Sha256Hash,
+    cited_segment_indices: z
+      .array(z.number().int().nonnegative())
+      .min(1)
+      .refine((arr) => new Set(arr).size === arr.length, {
+        message: 'cited_segment_indices must be unique',
+      }),
     transition_kind: z.enum(MULTI_CYCLE_TRANSITION_KINDS),
     transition_rationale: z.string().min(20).max(500),
   })
@@ -76,15 +93,49 @@ const CitationGraphEntry = z
  * register convention: the tool schema describes ONLY what the model
  * is responsible for emitting.
  */
-export const multiCycleSummarizeToolSchema = z
+/**
+ * Cross-field invariant shared by the tool schema and the full output
+ * schema:
+ *   - `total_fys_covered` must equal `fy_labels.length`
+ *   - `fy_labels` must be unique
+ *
+ * The system prompt promises both invariants; this `.superRefine()`
+ * enforces them at parse time so the schema is the single source of truth.
+ */
+const multiCycleCrossFieldRefine = (
+  d: { total_fys_covered: number; fy_labels: readonly string[] },
+  ctx: z.RefinementCtx,
+): void => {
+  if (d.total_fys_covered !== d.fy_labels.length) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `total_fys_covered (${d.total_fys_covered}) must equal fy_labels.length (${d.fy_labels.length})`,
+      path: ['total_fys_covered'],
+    });
+  }
+  const unique = new Set(d.fy_labels);
+  if (unique.size !== d.fy_labels.length) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'fy_labels must be unique',
+      path: ['fy_labels'],
+    });
+  }
+};
+
+const multiCycleSummarizeToolBase = z
   .object({
     proposed_id: Uuid,
-    fy_labels: z.array(z.string().min(1)).min(1),
+    fy_labels: z.array(FyLabel).min(1),
     citation_graph: z.array(CitationGraphEntry),
     total_fys_covered: z.number().int().nonnegative(),
     earliest_hypothesis_formed_at: z.string().datetime(),
   })
   .strict();
+
+export const multiCycleSummarizeToolSchema = multiCycleSummarizeToolBase.superRefine(
+  multiCycleCrossFieldRefine,
+);
 
 export type MultiCycleSummarizeToolInput = z.infer<typeof multiCycleSummarizeToolSchema>;
 
@@ -102,22 +153,34 @@ export type MultiCycleSummarizeToolInput = z.infer<typeof multiCycleSummarizeToo
  * acceptable. Bumping the prompt requires a new module file and a new
  * registry entry.
  */
-export const MultiCycleSummaryOutput = z
+export const PROMPT_VERSION = '1.0.0' as const;
+
+const MultiCycleSummaryOutputBase = z
   .object({
     proposed_id: Uuid,
-    fy_labels: z.array(z.string().min(1)).min(1),
+    fy_labels: z.array(FyLabel).min(1),
     citation_graph: z.array(CitationGraphEntry),
     total_fys_covered: z.number().int().nonnegative(),
     earliest_hypothesis_formed_at: z.string().datetime(),
-    prompt_version: z.literal('1.0.0'),
+    prompt_version: z.literal(PROMPT_VERSION),
     model: z.string().min(1),
     idempotency_key: z.string().min(1),
   })
   .strict();
 
+export const MultiCycleSummaryOutput = MultiCycleSummaryOutputBase.superRefine(
+  multiCycleCrossFieldRefine,
+);
+
 export type MultiCycleSummaryOutputType = z.infer<typeof MultiCycleSummaryOutput>;
 
-export const PROMPT_VERSION = '1.0.0' as const;
+/**
+ * Exported `.shape` accessors for tests / introspection. After
+ * `.superRefine()`, the schema is a `ZodEffects` and no longer exposes
+ * `.shape` directly; these point back at the underlying `ZodObject`.
+ */
+export const multiCycleSummarizeToolBaseShape = multiCycleSummarizeToolBase.shape;
+export const MultiCycleSummaryOutputShape = MultiCycleSummaryOutputBase.shape;
 
 export const SYSTEM_PROMPT = `You are an R&D Tax Incentive (R&DTI) MULTI-CYCLE CONTINUITY auditor for
 the Australian Income Tax Assessment Act 1997, Division 355. You read the

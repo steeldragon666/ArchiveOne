@@ -5,6 +5,8 @@ import { z } from 'zod';
 
 import {
   MultiCycleSummaryOutput,
+  MultiCycleSummaryOutputShape,
+  multiCycleSummarizeToolBaseShape,
   multiCycleSummarizeToolSchema,
   PROMPT_VERSION,
   SYSTEM_PROMPT,
@@ -16,11 +18,16 @@ import { MULTI_CYCLE_TRANSITION_KINDS } from '../types.js';
 /* Fixtures                                                            */
 /* ------------------------------------------------------------------ */
 
+// Canonical 64-char lowercase hex sha256 (matches Sha256Hash from
+// @cpa/schemas — see narrative_draft.content_hash).
+const SHA256_FIXTURE_A = 'a'.repeat(64);
+const SHA256_FIXTURE_B = 'b'.repeat(64);
+
 const okCitation = (overrides: Record<string, unknown> = {}) => ({
   fy_label: 'FY24',
   narrative_draft_id: randomUUID(),
   section_kind: 'hypothesis' as const,
-  content_hash: 'abc123def456',
+  content_hash: SHA256_FIXTURE_A,
   cited_segment_indices: [0, 1],
   transition_kind: 'continuation' as const,
   transition_rationale:
@@ -39,7 +46,7 @@ const okToolPayload = (overrides: Record<string, unknown> = {}) => ({
 
 const okFullOutput = (overrides: Record<string, unknown> = {}) => ({
   ...okToolPayload(),
-  prompt_version: '1.0.0' as const,
+  prompt_version: PROMPT_VERSION,
   model: 'claude-sonnet-4-5',
   idempotency_key: 'idem-key-1',
   ...overrides,
@@ -86,7 +93,10 @@ test('system prompt explicitly forbids paraphrase', () => {
 /* ------------------------------------------------------------------ */
 
 test('multi-cycle-summarize output schema has no fields capable of carrying prior-year prose', () => {
-  const shape = MultiCycleSummaryOutput.shape;
+  // After `.superRefine()`, MultiCycleSummaryOutput is a ZodEffects and
+  // no longer exposes `.shape` directly — introspect the underlying base
+  // ZodObject via the explicit shape export.
+  const shape = MultiCycleSummaryOutputShape;
   // Whitelist of fields that may be ZodStrings, all constrained:
   //   - `transition_rationale` is nested in citation_graph entries (not at
   //     the top level the iteration walks), capped at 500 chars, and
@@ -128,17 +138,18 @@ test('multi-cycle-summarize tool schema rejects paraphrased content even if mode
         fy_label: 'FY24',
         narrative_draft_id: randomUUID(),
         section_kind: 'hypothesis',
-        content_hash: 'abc',
+        content_hash: SHA256_FIXTURE_A,
         cited_segment_indices: [0],
         transition_kind: 'continuation',
-        transition_rationale: 'In FY24, the team hypothesized that...' /* PARAPHRASE */,
+        transition_rationale:
+          'Selected continuation because the chain re-states the same uncertainty across FYs.',
         // attempting to inject extra prose field at the citation level
         additional_summary: 'Long paraphrased summary of prior year',
       },
     ],
     total_fys_covered: 2,
     earliest_hypothesis_formed_at: new Date().toISOString(),
-    prompt_version: '1.0.0',
+    prompt_version: PROMPT_VERSION,
     model: 'claude-sonnet-4-5',
     idempotency_key: 'k1',
   };
@@ -206,8 +217,9 @@ test('tool schema does NOT advertise runtime-stamped metadata fields', () => {
   // Defence-in-depth: the runtime stamps `prompt_version`, `model`, and
   // `idempotency_key` after the model returns. The TOOL schema must NOT
   // declare them — otherwise the model could fabricate them.
-  const shape = (multiCycleSummarizeToolSchema as unknown as { shape: Record<string, unknown> })
-    .shape;
+  // `multiCycleSummarizeToolBaseShape` is the underlying ZodObject's
+  // `.shape` (the wrapped schema is a ZodEffects after `.superRefine`).
+  const shape = multiCycleSummarizeToolBaseShape;
   for (const forbidden of ['prompt_version', 'model', 'idempotency_key']) {
     assert.equal(
       Object.prototype.hasOwnProperty.call(shape, forbidden),
@@ -330,4 +342,124 @@ test('citation entry rejects an extra field at the citation level (strict)', () 
     }),
   );
   assert.equal(result.success, false);
+});
+
+/* ------------------------------------------------------------------ */
+/* IMP1 — content_hash must be a 64-char lowercase hex sha256          */
+/* ------------------------------------------------------------------ */
+
+test('citation entry rejects a content_hash that is too short', () => {
+  const result = MultiCycleSummaryOutput.safeParse(
+    okFullOutput({ citation_graph: [okCitation({ content_hash: 'abc' })] }),
+  );
+  assert.equal(result.success, false);
+});
+
+test('citation entry rejects a content_hash with the right length but wrong charset', () => {
+  // 64 chars but 'g' is not a hex digit.
+  const result = MultiCycleSummaryOutput.safeParse(
+    okFullOutput({ citation_graph: [okCitation({ content_hash: 'g'.repeat(64) })] }),
+  );
+  assert.equal(result.success, false);
+});
+
+test('citation entry accepts a valid 64-char lowercase hex content_hash', () => {
+  const result = MultiCycleSummaryOutput.safeParse(
+    okFullOutput({ citation_graph: [okCitation({ content_hash: SHA256_FIXTURE_B })] }),
+  );
+  assert.equal(result.success, true);
+});
+
+/* ------------------------------------------------------------------ */
+/* IMP2 — total_fys_covered === fy_labels.length AND fy_labels unique  */
+/* ------------------------------------------------------------------ */
+
+test('output schema rejects a total_fys_covered that does not match fy_labels.length', () => {
+  const result = MultiCycleSummaryOutput.safeParse(
+    okFullOutput({ fy_labels: ['FY24', 'FY25'], total_fys_covered: 99 }),
+  );
+  assert.equal(result.success, false);
+});
+
+test('output schema rejects duplicate fy_labels', () => {
+  const result = MultiCycleSummaryOutput.safeParse(
+    // Two 'FY24' entries with total_fys_covered set to 2 so the
+    // count-mismatch refinement passes and the uniqueness refinement
+    // is the one that fires.
+    okFullOutput({ fy_labels: ['FY24', 'FY24'], total_fys_covered: 2 }),
+  );
+  assert.equal(result.success, false);
+});
+
+test('tool schema rejects total_fys_covered / fy_labels.length mismatch', () => {
+  const result = multiCycleSummarizeToolSchema.safeParse({
+    ...okToolPayload(),
+    fy_labels: ['FY24', 'FY25'],
+    total_fys_covered: 5,
+  });
+  assert.equal(result.success, false);
+});
+
+test('tool schema rejects duplicate fy_labels', () => {
+  const result = multiCycleSummarizeToolSchema.safeParse({
+    ...okToolPayload(),
+    fy_labels: ['FY24', 'FY24'],
+    total_fys_covered: 2,
+  });
+  assert.equal(result.success, false);
+});
+
+/* ------------------------------------------------------------------ */
+/* IMP3 — cited_segment_indices must be unique                          */
+/* ------------------------------------------------------------------ */
+
+test('citation entry rejects duplicate cited_segment_indices', () => {
+  const result = MultiCycleSummaryOutput.safeParse(
+    okFullOutput({ citation_graph: [okCitation({ cited_segment_indices: [0, 0] })] }),
+  );
+  assert.equal(result.success, false);
+});
+
+/* ------------------------------------------------------------------ */
+/* IMP4 — fy_label / fy_labels must match /^FY\d{2}$/                  */
+/* ------------------------------------------------------------------ */
+
+test('citation entry rejects fy_label "FY2024" (four-digit form)', () => {
+  const result = MultiCycleSummaryOutput.safeParse(
+    okFullOutput({ citation_graph: [okCitation({ fy_label: 'FY2024' })] }),
+  );
+  assert.equal(result.success, false);
+});
+
+test('citation entry rejects fy_label "fy24" (lowercase)', () => {
+  const result = MultiCycleSummaryOutput.safeParse(
+    okFullOutput({ citation_graph: [okCitation({ fy_label: 'fy24' })] }),
+  );
+  assert.equal(result.success, false);
+});
+
+test('top-level fy_labels rejects a four-digit form', () => {
+  const result = MultiCycleSummaryOutput.safeParse(
+    okFullOutput({
+      fy_labels: ['FY2024', 'FY2025'],
+      total_fys_covered: 2,
+    }),
+  );
+  assert.equal(result.success, false);
+});
+
+/* ------------------------------------------------------------------ */
+/* MIN9 — schema is parse-able with a valid input (JSON-Schema          */
+/* convertibility proxy; zod-to-json-schema is not a dev dep)           */
+/* ------------------------------------------------------------------ */
+
+test('tool schema is parse-able with a valid input (JSON Schema convertibility proxy)', () => {
+  // The Anthropic SDK serialises tool input schemas to JSON Schema. A
+  // direct `zodToJsonSchema(...)` call would be ideal, but that package
+  // is not currently a dev dep here. As a lighter proxy that still
+  // catches `.superRefine()`-introduced regressions, we confirm the
+  // schema accepts a valid payload (the `safeParse` walks every branch
+  // including the cross-field refinement).
+  const ok = multiCycleSummarizeToolSchema.safeParse(okToolPayload());
+  assert.equal(ok.success, true, JSON.stringify(ok));
 });
