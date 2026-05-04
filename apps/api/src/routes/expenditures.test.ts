@@ -35,7 +35,8 @@ const SESSION_SECRET = process.env['SESSION_JWT_SECRET'] ?? 'dev-only-32-bytes-o
 const { sql, privilegedSql } = await import('@cpa/db/client');
 const { _reloadEnvForTests } = await import('@cpa/agents/runtime');
 const { buildApp } = await import('../app.js');
-const { enqueueExpenditureClassify } = await import('../lib/enqueue-classify.js');
+const { enqueueExpenditureClassify, drainPendingClassifyJobs } =
+  await import('../lib/enqueue-classify.js');
 
 _reloadEnvForTests();
 
@@ -107,6 +108,14 @@ before(async () => {
 beforeEach(async () => {
   // Per-test reset: clear classify events + cache so each test starts
   // fresh. The expenditure rows + tenants persist.
+  //
+  // CRITICAL: drain in-flight enqueue jobs from prior tests BEFORE the
+  // DELETE. The reclassify-route (line ~268) does `void enqueueExpenditureClassify(...)`
+  // and returns 202 before the classifier's INSERT lands. Without the
+  // drain, that INSERT can land AFTER our DELETE, leaving a stale
+  // EXPENDITURE_CLASSIFIED row visible to the current test's assertions.
+  // See enqueue-classify.ts header for the full race description.
+  await drainPendingClassifyJobs();
   await privilegedSql`DELETE FROM event WHERE subject_tenant_id = ${SUBJECT_A} AND kind = 'EXPENDITURE_CLASSIFIED'`;
   await privilegedSql`DELETE FROM agent_call_cache WHERE agent_name = 'expenditure-classifier'`;
   process.env.P6_AGENT_A_ENABLED = 'true';

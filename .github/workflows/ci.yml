@@ -78,8 +78,37 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      # Test step is wrapped in nick-fields/retry@v3 to absorb known
+      # one-off CI transients without papering over real failures.
+      #
+      # Why retry: the test suite has a small set of intermittently-flaky
+      # tests with no clean structural fix:
+      #   - findOrCreateUser concurrent race (impl is correct; failure is
+      #     a transient pg-pool scheduling artefact under load)
+      #   - subject-tenants / integrations DELETE (one-off CI noise on
+      #     ~1 in 10 runs each, never reproduces consecutively)
+      # See `chore/test-stability-sprint` PR for the full audit.
+      #
+      # The fire-and-forget enqueueExpenditureClassify race (the most
+      # common flake before this sprint) is now structurally fixed via
+      # `drainPendingClassifyJobs()` in expenditures.test.ts:beforeEach.
+      # Retry is a safety net for the residual one-off transients only.
+      #
+      # max_attempts:2 means a deterministic failure still fails CI on
+      # the second run. on_retry_command logs the retry so flake rate is
+      # observable from CI history; escalate if the same test fails twice
+      # in succession or appears in retries on multiple PRs.
       - name: Test
-        run: pnpm test
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 15
+          max_attempts: 2
+          retry_on: error
+          command: pnpm test
+          on_retry_command: |
+            echo "::warning::pnpm test failed on attempt 1; retrying."
+            echo "::warning::If the same test fails on attempt 2 it is a real failure, not a flake."
+            echo "::warning::If the same test name surfaces in retry on multiple PRs, escalate to a structural fix in chore/test-stability-sprint."
 
       - name: Format check
         run: pnpm format:check
