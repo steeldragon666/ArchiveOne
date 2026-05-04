@@ -288,3 +288,24 @@ export function parseSourcePayload(text: string): Record<string, unknown> {
   }
   return parsed as Record<string, unknown>;
 }
+
+// =============================================================================
+// Generate-PR gate — pinned to the API state machine.
+//
+// POST /v1/suggestions/:id/generate-pr's preflight in
+// `apps/api/src/routes/prompt-suggestions.ts` returns 409 unless
+// `suggestion.status === 'triaged'`. The UI button must hide on every
+// other status to keep the affordance honest.
+// =============================================================================
+
+/**
+ * Returns `true` only when the Generate-PR CTA should be visible.
+ *
+ * Drift guard: this list is the SAME shape as the API's state-machine
+ * preflight in `prompt-suggestions.ts` (line ~789). If the API ever
+ * widens the allowed-from list (e.g. allow regenerating from
+ * `pr_drafted` after a closed PR), update both.
+ */
+export function canGeneratePr(status: SuggestionStatus): boolean {
+  return status === 'triaged';
+}

@@ -22,6 +22,7 @@ import { apiFetch } from '@/lib/api';
 import type {
   ListSuggestionsResponse,
   PromptSuggestion,
+  PromptSuggestionPr,
   PromptSuggestionReview,
   SuggestionDetailResponse,
   SuggestionReviewDisposition,
@@ -145,4 +146,37 @@ export async function reviewSuggestion(
     body: JSON.stringify(body),
     signal,
   });
+}
+
+// ============================================================================
+// POST /v1/suggestions/:id/generate-pr — Task B.5 choreography
+// ============================================================================
+
+/**
+ * Wire shape returned by POST /v1/suggestions/:id/generate-pr (HTTP 202).
+ *
+ * Mirrors the route handler in `apps/api/src/routes/prompt-suggestions.ts`
+ * which returns `{ pr, suggestion }` after the GitHub App opens a draft
+ * PR and the parent `prompt_suggestion.status` flips to `pr_drafted`.
+ *
+ * Error mapping (from the same handler):
+ *   - 422 contract_test_failed     → evaluator output failed contract tests
+ *   - 502 github_upstream_failure  → GitHub App / token errors
+ *   - 503 evaluator_not_configured → evaluator dep not wired in this env
+ *   - 503 github_app_not_configured → required GITHUB_APP_* env vars missing
+ *   - 409 invalid_state_transition → suggestion not in `triaged` (race)
+ */
+export interface GeneratePullRequestResponse {
+  pr: PromptSuggestionPr;
+  suggestion: PromptSuggestion;
+}
+
+export async function generatePullRequest(
+  id: string,
+  signal?: AbortSignal,
+): Promise<GeneratePullRequestResponse> {
+  return apiFetch<GeneratePullRequestResponse>(
+    `/v1/suggestions/${encodeURIComponent(id)}/generate-pr`,
+    { method: 'POST', signal },
+  );
 }

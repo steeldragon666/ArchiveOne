@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { ApiError } from '@/lib/api';
+import { ApiError, ConflictError } from '@/lib/api';
 import { triageSuggestion } from '../_lib/api';
 import {
   SUGGESTION_TRIAGE_CLASSIFICATION_LABELS,
@@ -67,6 +67,11 @@ export function TriageForm({ suggestionId }: TriageFormProps): React.ReactElemen
       setValues(DEFAULT_VALUES);
     },
     onError: (err) => {
+      // 409 — stale state. Refresh the detail query so the form-gating
+      // updates (the user sees the correct state instead of a stale form).
+      if (err instanceof ConflictError) {
+        void qc.invalidateQueries({ queryKey: ['suggestion-detail', suggestionId] });
+      }
       const message =
         err instanceof ApiError
           ? `${err.errorCode}: ${err.message}`
@@ -136,6 +141,9 @@ export function TriageForm({ suggestionId }: TriageFormProps): React.ReactElemen
           rows={3}
           maxLength={1000}
         />
+        <p className="text-xs text-muted-foreground" data-testid="triage-notes-caveat">
+          Notes are not yet persisted (P7 follow-up).
+        </p>
       </div>
 
       {formError ? (

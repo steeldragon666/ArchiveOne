@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  canGeneratePr,
   formatRelativeTime,
   ISSUE_SUMMARY_MAX,
   ISSUE_SUMMARY_MIN,
@@ -335,4 +336,42 @@ test('parseSourcePayload: scalar → throws', () => {
 
 test('parseSourcePayload: malformed JSON → throws with parse error', () => {
   assert.throws(() => parseSourcePayload('{not valid'), /must be valid JSON/);
+});
+
+// =============================================================================
+// canGeneratePr — Generate-PR button visibility gate.
+//
+// The button must be visible only when status === 'triaged'. Drift between
+// the UI gate and the API state-machine in `prompt-suggestions.ts` would
+// either:
+//   (a) show a button that 409s on click (bad UX), or
+//   (b) hide a button when the API would accept the request (workflow gap —
+//       the very Concern this fix closes).
+// =============================================================================
+
+test('canGeneratePr: returns true only for triaged', () => {
+  assert.equal(canGeneratePr('triaged'), true);
+});
+
+test('canGeneratePr: hides on every non-triaged status', () => {
+  // Exhaustively check every status in the union except `triaged`.
+  // If a future status is added to SUGGESTION_STATUSES, this test fails
+  // until the author decides whether the button should appear there.
+  const nonTriaged = SUGGESTION_STATUSES.filter((s) => s !== 'triaged');
+  for (const status of nonTriaged) {
+    assert.equal(
+      canGeneratePr(status),
+      false,
+      `Generate-PR button must be hidden for status=${status}`,
+    );
+  }
+});
+
+test('canGeneratePr: matches API state-machine preflight (drift guard)', () => {
+  // The API's POST /v1/suggestions/:id/generate-pr returns 409 unless
+  // suggestion.status === 'triaged' (see prompt-suggestions.ts ~line 789).
+  // The set of statuses the UI shows the button for must equal the set
+  // the API accepts.
+  const uiAccepts = SUGGESTION_STATUSES.filter(canGeneratePr);
+  assert.deepEqual(uiAccepts, ['triaged']);
 });

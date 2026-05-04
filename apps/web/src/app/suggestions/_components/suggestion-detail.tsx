@@ -8,7 +8,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ApiError } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { getSuggestion } from '../_lib/api';
-import { formatRelativeTime, STATUS_BADGE_BASE, statusBadgeClasses } from '../_lib/helpers';
+import {
+  canGeneratePr,
+  formatRelativeTime,
+  STATUS_BADGE_BASE,
+  statusBadgeClasses,
+} from '../_lib/helpers';
 import {
   SUGGESTION_REVIEW_DISPOSITION_LABELS,
   SUGGESTION_SOURCE_KIND_LABELS,
@@ -16,6 +21,7 @@ import {
   SUGGESTION_TRIAGE_CLASSIFICATION_LABELS,
   type SuggestionDetailResponse,
 } from '../_lib/types';
+import { GeneratePrButton } from './generate-pr-button';
 import { ReviewForm } from './review-form';
 import { TriageForm } from './triage-form';
 
@@ -235,6 +241,17 @@ export function SuggestionDetail({ suggestionId }: SuggestionDetailProps): React
               </CardHeader>
               <CardContent>
                 <ReviewForm suggestionId={suggestion.id} />
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {canGeneratePr(suggestion.status) ? (
+            <Card>
+              <CardHeader>
+                <CardTitle className="font-display text-base">Generate pull request</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <GeneratePrButton suggestionId={suggestion.id} />
               </CardContent>
             </Card>
           ) : null}

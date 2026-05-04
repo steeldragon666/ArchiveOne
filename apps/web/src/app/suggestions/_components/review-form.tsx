@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { ApiError } from '@/lib/api';
+import { ApiError, ConflictError } from '@/lib/api';
 import { reviewSuggestion } from '../_lib/api';
 import {
   SUGGESTION_REVIEW_DISPOSITION_LABELS,
@@ -59,6 +59,11 @@ export function ReviewForm({ suggestionId }: ReviewFormProps): React.ReactElemen
       setValues(DEFAULT_VALUES);
     },
     onError: (err) => {
+      // 409 — stale state. Refresh the detail query so the form-gating
+      // updates (the user sees the correct state instead of a stale form).
+      if (err instanceof ConflictError) {
+        void qc.invalidateQueries({ queryKey: ['suggestion-detail', suggestionId] });
+      }
       const message =
         err instanceof ApiError
           ? `${err.errorCode}: ${err.message}`
