@@ -318,13 +318,27 @@ test('enqueueExpenditureClassify: tenant outside allowlist → zero-result', asy
   process.env.P6_AGENT_TENANT_ALLOWLIST = TENANT_B;
   _reloadEnvForTests();
   try {
+    // Time-window the row count check so we ignore any in-flight write
+    // leaked from a prior test. The reclassify-route test (line ~268)
+    // does a fire-and-forget enqueue inside the route handler — the
+    // 202 returns before the classifier's INSERT lands. Even with the
+    // explicit barrier on line ~283, idempotency-cache short-circuit
+    // can let the route's call complete its DB write AFTER beforeEach
+    // ran for the NEXT test. Filtering by captured_at >= startedAt
+    // makes this assertion robust to that race regardless of the
+    // settle order — the leaked row's captured_at is set before this
+    // test started and is therefore excluded from the count.
+    const startedAt = new Date();
     const result = await enqueueExpenditureClassify({
       tenant_id: TENANT_A,
       expenditure_ids: [E1],
     });
     assert.equal(result.classified, 0);
     const events = await privilegedSql`
-      SELECT id FROM event WHERE subject_tenant_id = ${SUBJECT_A} AND kind = 'EXPENDITURE_CLASSIFIED'
+      SELECT id FROM event
+       WHERE subject_tenant_id = ${SUBJECT_A}
+         AND kind = 'EXPENDITURE_CLASSIFIED'
+         AND captured_at >= ${startedAt}
     `;
     assert.equal(events.length, 0);
   } finally {
