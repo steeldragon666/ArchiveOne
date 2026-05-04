@@ -1,4 +1,5 @@
 import { index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import { claim } from './claim.js';
 import { project } from './project.js';
 import { tenant } from './tenant.js';
@@ -70,6 +71,26 @@ export const activity = pgTable(
     experimentationLog: text('experimentation_log'),
     expectedOutcome: text('expected_outcome'),
     actualOutcome: text('actual_outcome'),
+    // P7 Theme A — multi-cycle chain walk (Q-Fix2=A locked decision).
+    // Nullable: pre-P7 activities had no Agent B proposal step. Chain
+    // walk via (tenant_id, proposed_id, fy_label) for prior-cycle lookup.
+    proposedId: uuid('proposed_id'),
+    // P7 Theme A — fiscal-year label, e.g. 'FY25' for fiscal_year=2025
+    // (Q-Fix3=A locked decision). NOT NULL with NO DEFAULT — application
+    // writers MUST provide an explicit FY label at INSERT time. An empty
+    // default would group all unset rows under the same FY in the
+    // chain-walk index, defeating its purpose.
+    fyLabel: text('fy_label').notNull(),
+    // P7 Theme A — first-known-hypothesis timestamp (Q-Fix4=B locked
+    // decision). Immutable post-insert: BEFORE UPDATE trigger
+    // `activity_hypothesis_formed_at_immutable` raises check_violation
+    // on any DISTINCT-FROM update. Backfilled from MIN(narrative_draft
+    // .created_at) per activity, falling back to activity.created_at
+    // when no drafts exist yet. NO DEFAULT — a DEFAULT now() would let
+    // INSERTs that omit the column silently capture wall-clock time as
+    // the "hypothesis date", defeating the Body by Michael compliance
+    // argument. Application writers MUST provide an explicit timestamp.
+    hypothesisFormedAt: timestamp('hypothesis_formed_at', { withTimezone: true }).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true })
       .notNull()
@@ -81,5 +102,10 @@ export const activity = pgTable(
     projectIdx: index('activity_project_idx').on(t.projectId),
     claimIdx: index('activity_claim_idx').on(t.claimId),
     claimCodeUnique: uniqueIndex('activity_claim_code_unique').on(t.claimId, t.code),
+    // Partial index: chain-walk lookup ignores rows without proposed_id
+    // (pre-P7 activities). Migration 0037 declares the matching SQL.
+    proposedIdFyIdx: index('activity_proposed_id_fy_idx')
+      .on(t.tenantId, t.proposedId, t.fyLabel, t.hypothesisFormedAt)
+      .where(sql`${t.proposedId} IS NOT NULL`),
   }),
 );

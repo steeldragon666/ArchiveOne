@@ -83,8 +83,10 @@ before(async () => {
              VALUES (${PROJECT_A_ID}, ${TENANT_A_ID}, ${SUBJECT_A1_ID}, 'Project A1', '2024-07-01T00:00:00Z')`;
     await tx`INSERT INTO claim (id, tenant_id, subject_tenant_id, fiscal_year, stage)
              VALUES (${CLAIM_A_ID}, ${TENANT_A_ID}, ${SUBJECT_A1_ID}, 2025, 'engagement')`;
-    await tx`INSERT INTO activity (id, tenant_id, project_id, claim_id, code, kind, title)
-             VALUES (${ACTIVITY_A_ID}, ${TENANT_A_ID}, ${PROJECT_A_ID}, ${CLAIM_A_ID}, 'CA-01', 'core', 'Activity A1')`;
+    await tx`INSERT INTO activity (id, tenant_id, project_id, claim_id, code, kind, title,
+                                   fy_label, hypothesis_formed_at)
+             VALUES (${ACTIVITY_A_ID}, ${TENANT_A_ID}, ${PROJECT_A_ID}, ${CLAIM_A_ID}, 'CA-01', 'core', 'Activity A1',
+                     'FY25', '2025-01-01T00:00:00Z')`;
     await tx`INSERT INTO expenditure (id, tenant_id, subject_tenant_id, source, vendor_name, expenditure_date, total_amount, currency)
              VALUES (${EXPENDITURE_A_ID}, ${TENANT_A_ID}, ${SUBJECT_A1_ID}, 'manual', 'Vendor A', '2025-01-15', '1000.00', 'AUD')`;
     await tx`INSERT INTO expenditure_line (id, expenditure_id, description, amount)
@@ -98,8 +100,10 @@ before(async () => {
              VALUES (${PROJECT_B_ID}, ${TENANT_B_ID}, ${SUBJECT_B1_ID}, 'Project B1', '2024-07-01T00:00:00Z')`;
     await tx`INSERT INTO claim (id, tenant_id, subject_tenant_id, fiscal_year, stage)
              VALUES (${CLAIM_B_ID}, ${TENANT_B_ID}, ${SUBJECT_B1_ID}, 2025, 'engagement')`;
-    await tx`INSERT INTO activity (id, tenant_id, project_id, claim_id, code, kind, title)
-             VALUES (${ACTIVITY_B_ID}, ${TENANT_B_ID}, ${PROJECT_B_ID}, ${CLAIM_B_ID}, 'CA-01', 'core', 'Activity B1')`;
+    await tx`INSERT INTO activity (id, tenant_id, project_id, claim_id, code, kind, title,
+                                   fy_label, hypothesis_formed_at)
+             VALUES (${ACTIVITY_B_ID}, ${TENANT_B_ID}, ${PROJECT_B_ID}, ${CLAIM_B_ID}, 'CA-01', 'core', 'Activity B1',
+                     'FY25', '2025-01-01T00:00:00Z')`;
     await tx`INSERT INTO expenditure (id, tenant_id, subject_tenant_id, source, vendor_name, expenditure_date, total_amount, currency)
              VALUES (${EXPENDITURE_B_ID}, ${TENANT_B_ID}, ${SUBJECT_B1_ID}, 'manual', 'Vendor B', '2025-01-15', '2000.00', 'AUD')`;
     await tx`INSERT INTO expenditure_line (id, expenditure_id, description, amount)
@@ -377,8 +381,10 @@ test('RLS: activity — cross-tenant INSERT rejected', async () => {
   try {
     await sql.begin(async (tx) => {
       await tx`SELECT set_config('app.current_tenant_id', ${TENANT_A_ID}, true)`;
-      await tx`INSERT INTO "activity" (id, tenant_id, project_id, claim_id, code, kind, title)
-               VALUES (${ACTIVITY_SMUGGLED_ID}, ${TENANT_B_ID}, ${PROJECT_B_ID}, ${CLAIM_B_ID}, 'CA-99', 'core', 'Smuggled Activity')`;
+      await tx`INSERT INTO "activity" (id, tenant_id, project_id, claim_id, code, kind, title,
+                                       fy_label, hypothesis_formed_at)
+               VALUES (${ACTIVITY_SMUGGLED_ID}, ${TENANT_B_ID}, ${PROJECT_B_ID}, ${CLAIM_B_ID}, 'CA-99', 'core', 'Smuggled Activity',
+                       'FY25', '2025-01-01T00:00:00Z')`;
     });
   } catch (err) {
     caught = err;

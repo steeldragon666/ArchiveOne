@@ -64,8 +64,10 @@ before(async () => {
   await privilegedSql`INSERT INTO claim (id, tenant_id, subject_tenant_id, fiscal_year, stage)
                        VALUES (${CLAIM_A}, ${TENANT_A}, ${SUBJECT_A}, 2027, 'narrative_drafting'),
                               (${CLAIM_B}, ${TENANT_B}, ${SUBJECT_B}, 2027, 'narrative_drafting')`;
-  await privilegedSql`INSERT INTO activity (id, tenant_id, project_id, claim_id, code, kind, title)
-                       VALUES (${ACTIVITY_A}, ${TENANT_A}, ${PROJECT_A}, ${CLAIM_A}, 'CA-001', 'core', 'Adaptive scaffolding')`;
+  await privilegedSql`INSERT INTO activity (id, tenant_id, project_id, claim_id, code, kind, title,
+                                            fy_label, hypothesis_formed_at)
+                       VALUES (${ACTIVITY_A}, ${TENANT_A}, ${PROJECT_A}, ${CLAIM_A}, 'CA-001', 'core', 'Adaptive scaffolding',
+                               'FY27', '2027-01-01T00:00:00Z')`;
 });
 
 after(async () => {

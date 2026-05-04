@@ -188,8 +188,10 @@ export function registerActivities(app: FastifyInstance): void {
       if (!project) return { kind: 'project_not_found' as const };
       if (project.archived_at !== null) return { kind: 'project_archived' as const };
 
-      const claimRows = await tx<{ id: string; subject_tenant_id: string; stage: string }[]>`
-        SELECT id, subject_tenant_id, stage
+      const claimRows = await tx<
+        { id: string; subject_tenant_id: string; stage: string; fiscal_year: number }[]
+      >`
+        SELECT id, subject_tenant_id, stage, fiscal_year
           FROM claim
          WHERE id = ${claim_id}
            AND tenant_id = ${tenantId}
@@ -206,6 +208,7 @@ export function registerActivities(app: FastifyInstance): void {
       return {
         kind: 'ok' as const,
         subject_tenant_id: claim.subject_tenant_id,
+        fiscal_year: claim.fiscal_year,
       };
     });
 
@@ -272,6 +275,18 @@ export function registerActivities(app: FastifyInstance): void {
       });
     }
 
+    // P7 Theme A: fy_label and hypothesis_formed_at are NOT NULL with no
+    // DEFAULT — both must be set explicitly. fy_label is derived from
+    // claim.fiscal_year (e.g. 2025 → 'FY25'); hypothesis_formed_at is
+    // captured at insert time as the contemporaneous formation timestamp.
+    // postgres.js needs an ISO string for timestamptz parameters.
+    const fyLabel = `FY${(guard.fiscal_year - 2000).toString().padStart(2, '0')}`;
+    // TODO(p7-narrative-ui): replace `new Date()` with consultant-authored
+    // timestamp from UI form. Per migration 0037 commentary + Body by Michael
+    // compliance, this should reflect when the consultant *formed* the hypothesis,
+    // not when the row was created. See docs/plans/2026-05-03-p7-design.md §2.
+    const hypothesisFormedAt = new Date().toISOString();
+
     let inserted: RawActivityRow | null;
     try {
       inserted = await sql.begin(async (tx) => {
@@ -279,7 +294,8 @@ export function registerActivities(app: FastifyInstance): void {
         const rows = await tx<RawActivityRow[]>`
           INSERT INTO activity (
             id, tenant_id, project_id, claim_id, code, kind, title,
-            description, hypothesis, technical_uncertainty, expected_outcome
+            description, hypothesis, technical_uncertainty, expected_outcome,
+            fy_label, hypothesis_formed_at
           )
           VALUES (
             ${crypto.randomUUID()}, ${tenantId}, ${project_id}, ${claim_id},
@@ -287,7 +303,8 @@ export function registerActivities(app: FastifyInstance): void {
             ${description ?? null},
             ${hypothesis ?? null},
             ${technical_uncertainty ?? null},
-            ${expected_outcome ?? null}
+            ${expected_outcome ?? null},
+            ${fyLabel}, ${hypothesisFormedAt}
           )
           RETURNING id, tenant_id, project_id, claim_id, code, kind, title,
                     description, hypothesis, technical_uncertainty,

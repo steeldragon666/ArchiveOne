@@ -67,9 +67,11 @@ before(async () => {
                                '2024-07-01T00:00:00Z'::timestamptz)`;
   await privilegedSql`INSERT INTO claim (id, tenant_id, subject_tenant_id, project_id, fiscal_year, stage)
                        VALUES (${CLAIM}, ${TENANT}, ${SUBJECT}, ${PROJECT}, 2025, 'engagement')`;
-  await privilegedSql`INSERT INTO activity (id, tenant_id, project_id, claim_id, code, kind, title)
+  await privilegedSql`INSERT INTO activity (id, tenant_id, project_id, claim_id, code, kind, title,
+                                            fy_label, hypothesis_formed_at)
                        VALUES (${ACTIVITY}, ${TENANT}, ${PROJECT}, ${CLAIM},
-                               'CA-01', 'core', 'C5701 Activity')`;
+                               'CA-01', 'core', 'C5701 Activity',
+                               'FY25', '2025-01-01T00:00:00Z')`;
 });
 
 beforeEach(async () => {

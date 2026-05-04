@@ -397,8 +397,8 @@ export function registerActivityRegister(app: FastifyInstance): void {
       // none of the rows can land without it.
       const claimRows = await sql.begin(async (tx) => {
         await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
-        return await tx<{ id: string }[]>`
-          SELECT id
+        return await tx<{ id: string; fiscal_year: number }[]>`
+          SELECT id, fiscal_year
             FROM claim
            WHERE tenant_id = ${tenantId}
              AND project_id = ${projectId}
@@ -417,6 +417,9 @@ export function registerActivityRegister(app: FastifyInstance): void {
         });
       }
       const claimId = claim.id;
+      // P7 Theme A: fy_label is derived from claim.fiscal_year and is
+      // shared by every activity accepted in this batch.
+      const fyLabel = `FY${(claim.fiscal_year - 2000).toString().padStart(2, '0')}`;
 
       const accepted: Array<{
         proposed_id: string;
@@ -487,19 +490,32 @@ export function registerActivityRegister(app: FastifyInstance): void {
         // proposed_id correlation. Wrapped per-row so a failure on
         // row N doesn't roll back rows 1..N-1.
         try {
+          // P7 Theme A: hypothesis_formed_at is the contemporaneous,
+          // consultant-authored formation timestamp. Captured here at
+          // accept time (when the consultant promotes the proposal into
+          // a real activity row) — that IS the moment of hypothesis
+          // formation in the Body by Michael compliance argument.
+          // postgres.js needs an ISO string for timestamptz parameters.
+          // TODO(p7-narrative-ui): replace `new Date()` with consultant-authored
+          // timestamp from UI form. Per migration 0037 commentary + Body by Michael
+          // compliance, this should reflect when the consultant *formed* the hypothesis,
+          // not when the row was created. See docs/plans/2026-05-03-p7-design.md §2.
+          const hypothesisFormedAt = new Date().toISOString();
           const inserted = await sql.begin(async (tx) => {
             await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
             const rows = await tx<{ id: string }[]>`
               INSERT INTO activity (
                 id, tenant_id, project_id, claim_id, code, kind, title,
-                description, hypothesis, technical_uncertainty
+                description, hypothesis, technical_uncertainty,
+                fy_label, hypothesis_formed_at
               )
               VALUES (
                 ${crypto.randomUUID()}, ${tenantId}, ${projectId}, ${claimId},
                 ${code}, ${effectiveKind}, ${effectiveName},
                 ${proposed.rationale ?? null},
                 ${proposed.proposed_hypothesis ?? null},
-                ${proposed.proposed_uncertainty ?? null}
+                ${proposed.proposed_uncertainty ?? null},
+                ${fyLabel}, ${hypothesisFormedAt}
               )
               RETURNING id
             `;
