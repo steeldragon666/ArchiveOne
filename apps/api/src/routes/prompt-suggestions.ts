@@ -4,6 +4,15 @@ import { z } from 'zod';
 import { requireSession } from '@cpa/auth';
 import { sql } from '@cpa/db/client';
 import { Uuid } from '@cpa/schemas';
+import {
+  generatePullRequest,
+  ChoreographyError,
+  type ChoreographyOptions,
+  type ChoreographyResult,
+  type PromptSuggestionForChoreography,
+  type ContractTestRunner,
+} from '@cpa/integrations/github-app';
+import type { PromptSuggestionEvaluation } from '@cpa/agents';
 
 /**
  * P7 Theme B Task B.3 — prompt-suggestion REST surface.
@@ -243,7 +252,51 @@ function decodeCursor(s: string): CursorTuple | null {
 // Routes.
 // ---------------------------------------------------------------------------
 
-export function registerPromptSuggestions(app: FastifyInstance): void {
+/**
+ * Dependency-injection seam for the generate-pr endpoint (Task B.5).
+ *
+ * Tests pass mocks here so the test suite never makes real calls to
+ * Anthropic or GitHub. Production callers can omit `evaluate` and
+ * `choreograph` to get the default wiring (the B.4 evaluator + the B.5
+ * GitHub App choreography); `env` lets the production caller inject the
+ * env-var bundle without us reading `process.env` from inside the
+ * handler (and re-reading on every request).
+ *
+ * The `runContractTest` field is the contract-test runner forwarded
+ * into the choreography. Production callers should pass
+ * `runContractTestSubprocess` from `@cpa/agents` (B.4); tests pass
+ * a noop or scripted runner. If omitted entirely, the choreography
+ * skips the contract-test stage — appropriate for tests that mock the
+ * choreography wholesale, NOT for production.
+ */
+export interface PromptSuggestionsRouteDeps {
+  /** Evaluate a suggestion and return its change-set proposal. */
+  evaluate?: (input: {
+    suggestion: PromptSuggestionForChoreography;
+    repoRoot: string;
+  }) => Promise<PromptSuggestionEvaluation>;
+  /** Run the multi-file PR choreography. Test seam — production callers
+   *  let this default to {@link generatePullRequest} from
+   *  `@cpa/integrations/github-app`. */
+  choreograph?: (opts: ChoreographyOptions) => Promise<ChoreographyResult>;
+  /** Contract-test runner forwarded into the choreography. */
+  runContractTest?: ContractTestRunner;
+  /** Env bundle. Defaults to read from `process.env` lazily. */
+  env?: {
+    GITHUB_APP_ID?: string;
+    GITHUB_APP_PRIVATE_KEY?: string;
+    GITHUB_APP_INSTALLATION_ID?: string;
+    GITHUB_APP_OWNER?: string;
+    GITHUB_APP_REPO?: string;
+    GITHUB_BOT_EMAIL?: string;
+    REPO_ROOT?: string;
+  };
+}
+
+export function registerPromptSuggestions(
+  app: FastifyInstance,
+  deps: PromptSuggestionsRouteDeps = {},
+): void {
   // -------------------------------------------------------------------
   // POST /v1/suggestions — flag a new suggestion (any authenticated role)
   // -------------------------------------------------------------------
@@ -647,36 +700,51 @@ export function registerPromptSuggestions(app: FastifyInstance): void {
   );
 
   // -------------------------------------------------------------------
-  // POST /v1/suggestions/:id/generate-pr — STUB
+  // POST /v1/suggestions/:id/generate-pr — Task B.5
   //
-  // Per Task B.3 spec: this endpoint MUST return 501 NotImplemented.
-  // The full choreography (GitHub branch creation, prompt diff, PR open,
-  // status flip to pr_drafted, prompt_suggestion_pr row insert) lands in
-  // Task B.5. The placeholder exists today so:
+  // Pre-flight (synchronous, fast):
+  //   1. Auth: requireSession + admin/consultant role
+  //   2. Path validation: uuid-shape on :id
+  //   3. Load suggestion (RLS-scoped tx); 404 if not found
+  //   4. State-machine guard: status === 'triaged'; 409 otherwise
+  //   5. Env-var presence: GITHUB_APP_ID + private key + installation +
+  //      owner + repo. 503 if any missing (route registered but cannot
+  //      reach GitHub yet).
   //
-  //   1. The Task B.7 admin-UI work can wire up the button without a 404
-  //      breaking the flow before B.5 lands.
-  //   2. Auth + path-validation gating is exercised end-to-end now,
-  //      meaning B.5 only has to fill in the body — the surface area is
-  //      reviewed.
+  // Choreography (slow — calls Anthropic + 8 GitHub API calls):
+  //   6. Run B.4 evaluator (deps.evaluate). Yields a
+  //      PromptSuggestionEvaluation with files[] change set.
+  //   7. Call B.5 choreography (deps.choreograph). Atomic-or-rollback:
+  //      branch + tree + commit + ref + contract-test + draft PR.
   //
-  // We DELIBERATELY do NOT consult the database here: no row lookup, no
-  // state-machine check, no review-disposition gate. Those are part of
-  // B.5's contract; doing any of it now would either (a) duplicate work
-  // B.5 will redo with the right semantics, or (b) leak partial state
-  // (e.g. an optimistic status flip with no PR to back it). The spec is
-  // explicit: "Do NOT call into Task B.5's choreography (it doesn't exist
-  // yet)."
+  // Post-flight (synchronous, fast — single tx):
+  //   8. INSERT prompt_suggestion_pr row.
+  //   9. UPDATE prompt_suggestion: status='pr_drafted', resolved_at=NOW().
+  //  10. Return 202 with PR info.
   //
-  // Auth IS gated here (requireSession + admin/consultant role) so the
-  // 501 surface doesn't double as a tenant-existence oracle for
-  // unauthenticated callers, and a uuid-shape check fires before the 501
-  // so a malformed path returns the same 400 the other endpoints would.
+  // Error mapping (ChoreographyError.stage → HTTP):
+  //   - 'contract_test'      → 422 + structured failure detail (stdout/stderr)
+  //   - 'pr_create' | 'auth' → 502 (upstream)
+  //   - 'unknown' | other    → 500
+  //
+  // Latency: the evaluator + choreography may take 30-120 s on a real
+  // run. Fastify's default request timeout is 30 s; we widen to 5 min via
+  // `request.raw.setTimeout` below. If real-world latency demands an
+  // async path with a polling URL, the follow-up (B.5.1) can wrap this
+  // handler with pg-boss as outlined in the design doc; for B.5's first
+  // version we keep the simpler synchronous shape.
   // -------------------------------------------------------------------
+  const FIVE_MINUTES_MS = 5 * 60 * 1000;
+
   app.post<{ Params: { id: string } }>(
     '/v1/suggestions/:id/generate-pr',
     { preHandler: requireSession },
     async (req, reply) => {
+      // 5-minute request timeout for the slow path (evaluator + GitHub
+      // round trips). The Fastify default is 30s; that's not enough for
+      // a real evaluator call, so we extend.
+      req.raw.setTimeout(FIVE_MINUTES_MS);
+
       const role = req.user!.role;
       if (role !== 'admin' && role !== 'consultant') {
         return reply.status(403).send({
@@ -695,9 +763,242 @@ export function registerPromptSuggestions(app: FastifyInstance): void {
         });
       }
 
-      return reply.status(501).send({
-        message: 'PR generation lands in Task B.5; this endpoint is a placeholder.',
+      const tenantId = req.user!.tenantId!;
+      const reviewerUserId = req.user!.id;
+
+      // 3-4: load + state-machine guard.
+      const suggestion = await sql.begin(async (tx) => {
+        await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+        const rows = await tx<SuggestionRow[]>`
+          SELECT id, tenant_id, flagged_by_user_id, flagged_at, source_kind,
+                 source_payload, affected_prompt_module, affected_section_kind,
+                 issue_summary, status, triage_classification, resolved_at,
+                 first_recorded_at
+            FROM prompt_suggestion
+           WHERE id = ${id} AND tenant_id = ${tenantId}
+        `;
+        return rows[0] ?? null;
       });
+      if (!suggestion) {
+        return reply.status(404).send({
+          error: 'suggestion_not_found',
+          message: 'No suggestion with that id in this firm',
+          requestId: req.id,
+        });
+      }
+      if (suggestion.status !== 'triaged') {
+        return reply.status(409).send({
+          error: 'invalid_state_transition',
+          message: `cannot generate PR from status=${suggestion.status}; suggestion must be 'triaged'`,
+          requestId: req.id,
+        });
+      }
+
+      // 5: env presence. We read once per request (cheap) so test-only
+      // overrides via deps.env still take precedence at request time.
+      const env = deps.env ?? process.env;
+      const appId = env['GITHUB_APP_ID'];
+      const privateKey = env['GITHUB_APP_PRIVATE_KEY'];
+      const installationId = env['GITHUB_APP_INSTALLATION_ID'];
+      const owner = env['GITHUB_APP_OWNER'];
+      const repo = env['GITHUB_APP_REPO'];
+      if (!appId || !privateKey || !installationId || !owner || !repo) {
+        return reply.status(503).send({
+          error: 'github_app_not_configured',
+          message:
+            'GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY, GITHUB_APP_INSTALLATION_ID, GITHUB_APP_OWNER, and GITHUB_APP_REPO must all be set on the server.',
+          requestId: req.id,
+        });
+      }
+
+      const choreoSuggestion: PromptSuggestionForChoreography = {
+        id: suggestion.id,
+        tenant_id: suggestion.tenant_id,
+        flagged_by_user_id: suggestion.flagged_by_user_id,
+        source_kind: suggestion.source_kind,
+        affected_prompt_module: suggestion.affected_prompt_module,
+        affected_section_kind: suggestion.affected_section_kind,
+        issue_summary: suggestion.issue_summary,
+      };
+
+      // 6: evaluate. The default evaluator (B.4) calls Anthropic; for
+      // the first cut of B.5 we require dep-injection (the dep test
+      // suite uses a mock; the production wiring lands in a follow-up
+      // when the evaluator's Anthropic-client wrapper is exposed).
+      // Without an injected evaluator we can't proceed — return 503.
+      if (!deps.evaluate) {
+        return reply.status(503).send({
+          error: 'evaluator_not_configured',
+          message:
+            'Suggestion-evaluator is not wired into the API yet. Pass deps.evaluate when registering the route.',
+          requestId: req.id,
+        });
+      }
+
+      let evaluation: PromptSuggestionEvaluation;
+      try {
+        const repoRoot = env['REPO_ROOT'] ?? process.cwd();
+        evaluation = await deps.evaluate({
+          suggestion: choreoSuggestion,
+          repoRoot,
+        });
+      } catch (err) {
+        req.log.error({ err, suggestionId: id }, 'evaluator failed');
+        return reply.status(502).send({
+          error: 'evaluator_failed',
+          message: `Evaluator failed: ${(err as Error).message}`,
+          requestId: req.id,
+        });
+      }
+
+      // 7: choreograph. Defaults to the production B.5 implementation.
+      const choreographFn = deps.choreograph ?? generatePullRequest;
+      let result: ChoreographyResult;
+      try {
+        const choreoOpts: ChoreographyOptions = {
+          appId,
+          privateKey,
+          installationId,
+          owner,
+          repo,
+          suggestion: choreoSuggestion,
+          evaluation,
+          reviewerUserId,
+          logger: {
+            warn: (msg, meta) => req.log.warn({ ...(meta ?? {}), suggestionId: id }, msg),
+          },
+        };
+        if (deps.runContractTest) {
+          choreoOpts.runContractTest = deps.runContractTest;
+        }
+        if (env['GITHUB_BOT_EMAIL']) {
+          choreoOpts.botEmail = env['GITHUB_BOT_EMAIL'];
+        }
+        result = await choreographFn(choreoOpts);
+      } catch (err) {
+        if (err instanceof ChoreographyError) {
+          req.log.error({ err, stage: err.stage, suggestionId: id }, 'PR choreography failed');
+          // Map stage → HTTP. Contract-test failures get extra detail
+          // so the UI can show the stdout/stderr of the failed test.
+          if (err.stage === 'contract_test') {
+            const cause = err.cause as
+              | { exitCode?: number; stdout?: string; stderr?: string }
+              | undefined;
+            return reply.status(422).send({
+              error: 'contract_test_failed',
+              message: err.message,
+              stage: err.stage,
+              detail: {
+                exitCode: cause?.exitCode,
+                stdout: cause?.stdout?.slice(0, 8000),
+                stderr: cause?.stderr?.slice(0, 8000),
+              },
+              requestId: req.id,
+            });
+          }
+          if (err.stage === 'pr_create' || err.stage === 'auth') {
+            return reply.status(502).send({
+              error: 'github_upstream_failure',
+              message: err.message,
+              stage: err.stage,
+              requestId: req.id,
+            });
+          }
+          return reply.status(500).send({
+            error: 'choreography_failed',
+            message: err.message,
+            stage: err.stage,
+            requestId: req.id,
+          });
+        }
+        req.log.error({ err, suggestionId: id }, 'unexpected error in generate-pr');
+        return reply.status(500).send({
+          error: 'internal_error',
+          message: (err as Error).message,
+          requestId: req.id,
+        });
+      }
+
+      // 8-9: persist + flip parent status (single tx, race-safe UPDATE).
+      const prRowId = crypto.randomUUID();
+      try {
+        const persisted = await sql.begin(async (tx) => {
+          await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+
+          const inserted = await tx<PrRow[]>`
+            INSERT INTO prompt_suggestion_pr (
+              tenant_id, id, suggestion_id, github_pr_number, github_pr_url,
+              branch_name, changed_files
+            )
+            VALUES (
+              ${tenantId}, ${prRowId}, ${id},
+              ${result.pr_number}, ${result.pr_url}, ${result.branch_name},
+              ${JSON.stringify(result.changed_files)}::text::jsonb
+            )
+            RETURNING id, tenant_id, suggestion_id, github_pr_number, github_pr_url,
+                      branch_name, changed_files, created_at, merged_at, merge_commit_sha
+          `;
+          const prRow = inserted[0];
+          if (!prRow) throw new Error('generate-pr: prompt_suggestion_pr INSERT returned no row');
+
+          // Race-safe parent UPDATE: only flip if still in 'triaged'.
+          // If a concurrent worker already moved this past 'triaged',
+          // we don't fail the request — the PR row is inserted, and
+          // the parent stays at whatever the racing writer set it to.
+          const flipped = await tx<SuggestionRow[]>`
+            UPDATE prompt_suggestion
+               SET status = 'pr_drafted',
+                   resolved_at = NOW()
+             WHERE id = ${id}
+               AND tenant_id = ${tenantId}
+               AND status = 'triaged'
+            RETURNING id, tenant_id, flagged_by_user_id, flagged_at, source_kind,
+                      source_payload, affected_prompt_module, affected_section_kind,
+                      issue_summary, status, triage_classification, resolved_at,
+                      first_recorded_at
+          `;
+          if (flipped.length === 0) {
+            req.log.warn(
+              { id, tenantId },
+              'generate-pr: status flip affected 0 rows; concurrent writer raced past triaged. PR row still inserted.',
+            );
+          }
+          return { pr: prRow, suggestion: flipped[0] ?? suggestion };
+        });
+
+        return await reply.status(202).send({
+          pr: toPrApi(persisted.pr),
+          suggestion: toSuggestionApi(persisted.suggestion),
+        });
+      } catch (err) {
+        // The PR was opened on GitHub but we failed to persist locally —
+        // a partial-success state. Log loudly so the operator can clean
+        // up by hand (close the PR + delete the branch); we do NOT
+        // attempt to delete the PR programmatically because the
+        // persistence error may be transient and a follow-up retry
+        // would re-open. Surface 500 so the consultant retries; the
+        // already-open PR is harmless until manually addressed.
+        req.log.error(
+          {
+            err,
+            suggestionId: id,
+            prNumber: result.pr_number,
+            prUrl: result.pr_url,
+            branchName: result.branch_name,
+          },
+          'generate-pr: PR opened on GitHub but local persist failed; manual cleanup required',
+        );
+        return reply.status(500).send({
+          error: 'persist_failed',
+          message: `PR ${result.pr_number} opened on GitHub but local persistence failed: ${(err as Error).message}. Manual cleanup may be required.`,
+          pr: {
+            github_pr_number: result.pr_number,
+            github_pr_url: result.pr_url,
+            branch_name: result.branch_name,
+          },
+          requestId: req.id,
+        });
+      }
     },
   );
 }

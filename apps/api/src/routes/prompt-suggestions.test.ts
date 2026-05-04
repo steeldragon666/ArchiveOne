@@ -4,6 +4,9 @@ import { signSession } from '@cpa/auth';
 import { sql, privilegedSql } from '@cpa/db/client';
 import { buildApp } from '../app.js';
 import { _internals } from './prompt-suggestions.js';
+import { ChoreographyError } from '@cpa/integrations/github-app';
+import type { ChoreographyOptions, ChoreographyResult } from '@cpa/integrations/github-app';
+import type { PromptSuggestionEvaluation } from '@cpa/agents';
 
 /**
  * P7 Theme B Task B.3 — prompt-suggestion route tests.
@@ -814,24 +817,96 @@ describe('POST /v1/suggestions/:id/review', () => {
 });
 
 describe('POST /v1/suggestions/:id/generate-pr', () => {
-  // Per Task B.3 spec, generate-pr is a STUB returning 501 NotImplemented.
-  // The full choreography lands in Task B.5. These tests pin down (a)
-  // the auth + path-validation gates that fire BEFORE the 501 (so B.5
-  // doesn't have to re-engineer them) and (b) the exact 501 response
-  // shape the UI in Task B.7 will wire against.
+  // Task B.5 — full choreography path. The handler:
+  //   1. validates auth + role + uuid shape (no DB hit)
+  //   2. loads the suggestion (RLS-scoped) and 404s if missing
+  //   3. 409s if status !== 'triaged'
+  //   4. 503s if GitHub App env is missing
+  //   5. calls the injected evaluator (B.4) to get a change set
+  //   6. calls the injected choreography (B.5) to land branch + commit + PR
+  //   7. persists prompt_suggestion_pr + flips parent to 'pr_drafted'
+  //   8. returns 202 with PR info
   //
-  // The route handler itself doesn't touch Postgres — it's a literal
-  // 501 with a fixed body — but the framework-level `sessionPlugin`
-  // preHandler DOES hit the DB to set `app.current_tenant_id` for any
-  // request that carries a valid session cookie. That's why these
-  // tests are DB-gated: they exercise an authenticated path. The
-  // unauthenticated 401 case (no session cookie at all → sessionPlugin
-  // skips the SQL entirely) is covered above in the "auth gating
-  // (no DB)" describe block and runs unconditionally.
+  // Tests inject mocks for both `evaluate` and `choreograph` via the
+  // PromptSuggestionsRouteDeps seam (passed through `buildApp({ promptSuggestions })`).
+  // No real GitHub or Anthropic calls.
 
-  test('403 for viewer role', async (t) => {
+  /** Stub evaluator that returns a deterministic minimal change set. */
+  const fakeEvaluation = (suggestionId: string): PromptSuggestionEvaluation => ({
+    suggestion_id: suggestionId,
+    classification: 'prompt_change',
+    files: [
+      {
+        path: 'packages/agents/src/classifier-expenditure/prompts/classify-expenditure@1.0.0.ts',
+        change_kind: 'modify',
+        rationale: 'Tighten the decision tree for borderline cases per the consultant flag.',
+        diff_preview: '@@ tiny @@',
+        newContent: 'export const SYSTEM_PROMPT = "x";\n',
+      },
+    ],
+    cross_file_consistency_checks_run: ['ran subprocess tests'],
+    rationale_summary:
+      'Consultant flagged a misclassification; tightened the prompt decision tree.',
+    prompt_version: '1.0.0',
+    model: 'claude-opus-4-7',
+  });
+
+  const fakeChoreographyResult = (): ChoreographyResult => ({
+    pr_number: 42,
+    pr_url: 'https://github.com/aaron/cpa-platform/pull/42',
+    branch_name: 'prompt-suggestion/abc12345',
+    commit_sha: 'newcommitsha',
+    changed_files: [
+      {
+        path: 'packages/agents/src/classifier-expenditure/prompts/classify-expenditure@1.0.0.ts',
+        change_kind: 'modify',
+      },
+    ],
+  });
+
+  const happyDeps = (): {
+    evaluate: (input: {
+      suggestion: { id: string };
+      repoRoot: string;
+    }) => Promise<PromptSuggestionEvaluation>;
+    choreograph: (opts: ChoreographyOptions) => Promise<ChoreographyResult>;
+    env: Record<string, string | undefined>;
+  } => ({
+    evaluate: ({ suggestion }) => Promise.resolve(fakeEvaluation(suggestion.id)),
+    choreograph: () => Promise.resolve(fakeChoreographyResult()),
+    env: {
+      GITHUB_APP_ID: 'test-app',
+      GITHUB_APP_PRIVATE_KEY: 'test-private-key',
+      GITHUB_APP_INSTALLATION_ID: 'test-install',
+      GITHUB_APP_OWNER: 'aaron',
+      GITHUB_APP_REPO: 'cpa-platform',
+    },
+  });
+
+  // Helper: insert + triage a suggestion, return its id.
+  const seedTriagedSuggestion = async (
+    app: ReturnType<typeof buildApp>,
+    summary: string,
+  ): Promise<string> => {
+    const flagRes = await app.inject({
+      method: 'POST',
+      url: '/v1/suggestions',
+      cookies: { cpa_session: await consultantJwt() },
+      payload: dummyFlag({ issue_summary: summary }),
+    });
+    const id = flagRes.json<{ suggestion: { id: string } }>().suggestion.id;
+    await app.inject({
+      method: 'POST',
+      url: `/v1/suggestions/${id}/triage`,
+      cookies: { cpa_session: await consultantJwt() },
+      payload: { triage_classification: 'prompt_change', status_after: 'triaged' },
+    });
+    return id;
+  };
+
+  test('403 for viewer role (auth gate before any DB lookup)', async (t) => {
     if (skipIfNoDb(t)) return;
-    const app = buildApp();
+    const app = buildApp({ promptSuggestions: happyDeps() });
     const res = await app.inject({
       method: 'POST',
       url: '/v1/suggestions/00000000-0000-4000-8000-000000000001/generate-pr',
@@ -843,7 +918,7 @@ describe('POST /v1/suggestions/:id/generate-pr', () => {
 
   test('400 for non-uuid id', async (t) => {
     if (skipIfNoDb(t)) return;
-    const app = buildApp();
+    const app = buildApp({ promptSuggestions: happyDeps() });
     const res = await app.inject({
       method: 'POST',
       url: '/v1/suggestions/not-a-uuid/generate-pr',
@@ -855,44 +930,265 @@ describe('POST /v1/suggestions/:id/generate-pr', () => {
     await app.close();
   });
 
-  test('501 NotImplemented with placeholder message (consultant role)', async (t) => {
+  test('404 for unknown suggestion id', async (t) => {
     if (skipIfNoDb(t)) return;
-    const app = buildApp();
-    const res = await app.inject({
-      method: 'POST',
-      url: '/v1/suggestions/00000000-0000-4000-8000-000000000001/generate-pr',
-      cookies: { cpa_session: await consultantJwt() },
-    });
-    assert.equal(res.statusCode, 501);
-    const body = res.json<{ message: string }>();
-    assert.equal(body.message, 'PR generation lands in Task B.5; this endpoint is a placeholder.');
-    await app.close();
-  });
-
-  test('501 NotImplemented with placeholder message (admin role)', async (t) => {
-    if (skipIfNoDb(t)) return;
-    const app = buildApp();
-    const res = await app.inject({
-      method: 'POST',
-      url: '/v1/suggestions/00000000-0000-4000-8000-000000000001/generate-pr',
-      cookies: { cpa_session: await adminJwt() },
-    });
-    assert.equal(res.statusCode, 501);
-    await app.close();
-  });
-
-  test('501 even when the suggestion does not exist (stub does not query DB)', async (t) => {
-    if (skipIfNoDb(t)) return;
-    // Confirms the stub returns 501 unconditionally for authorized callers
-    // with a uuid-shaped path — no row lookup happens, so a non-existent
-    // id is NOT a 404 today (B.5 will add the lookup).
-    const app = buildApp();
+    const app = buildApp({ promptSuggestions: happyDeps() });
     const res = await app.inject({
       method: 'POST',
       url: '/v1/suggestions/00000000-0000-4000-8000-000000000999/generate-pr',
       cookies: { cpa_session: await consultantJwt() },
     });
-    assert.equal(res.statusCode, 501);
+    assert.equal(res.statusCode, 404);
+    await app.close();
+  });
+
+  test('409 if suggestion is not in triaged status', async (t) => {
+    if (skipIfNoDb(t)) return;
+    const app = buildApp({ promptSuggestions: happyDeps() });
+    const flagRes = await app.inject({
+      method: 'POST',
+      url: '/v1/suggestions',
+      cookies: { cpa_session: await consultantJwt() },
+      payload: dummyFlag({ issue_summary: 'open status — generate-pr should 409 here' }),
+    });
+    const id = flagRes.json<{ suggestion: { id: string } }>().suggestion.id;
+    // Status is 'open' — generate-pr requires 'triaged'.
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/suggestions/${id}/generate-pr`,
+      cookies: { cpa_session: await consultantJwt() },
+    });
+    assert.equal(res.statusCode, 409);
+    const body = res.json<{ error: string }>();
+    assert.equal(body.error, 'invalid_state_transition');
+    await app.close();
+  });
+
+  test('503 when GitHub App env vars are missing', async (t) => {
+    if (skipIfNoDb(t)) return;
+    const app = buildApp({
+      promptSuggestions: {
+        evaluate: happyDeps().evaluate,
+        choreograph: happyDeps().choreograph,
+        // env intentionally missing the GitHub app vars
+        env: {},
+      },
+    });
+    const id = await seedTriagedSuggestion(app, 'env-missing scenario for generate-pr 503');
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/suggestions/${id}/generate-pr`,
+      cookies: { cpa_session: await consultantJwt() },
+    });
+    assert.equal(res.statusCode, 503);
+    const body = res.json<{ error: string }>();
+    assert.equal(body.error, 'github_app_not_configured');
+    await app.close();
+  });
+
+  test('202 happy path — PR row persisted, suggestion flipped to pr_drafted (admin role)', async (t) => {
+    if (skipIfNoDb(t)) return;
+    const deps = happyDeps();
+    const app = buildApp({ promptSuggestions: deps });
+    const id = await seedTriagedSuggestion(app, 'happy path generate-pr issue summary');
+
+    // Exercise as admin — generate-pr is allowed for admin and consultant.
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/suggestions/${id}/generate-pr`,
+      cookies: { cpa_session: await adminJwt() },
+    });
+    assert.equal(res.statusCode, 202);
+    const body = res.json<{
+      pr: { github_pr_number: number; github_pr_url: string; branch_name: string };
+      suggestion: { status: string; resolved_at: string | null };
+    }>();
+    assert.equal(body.pr.github_pr_number, 42);
+    assert.match(body.pr.github_pr_url, /\/pull\/42$/);
+    assert.equal(body.suggestion.status, 'pr_drafted');
+    assert.notEqual(body.suggestion.resolved_at, null);
+
+    // Confirm prompt_suggestion_pr row landed.
+    const prRows = await privilegedSql<{ github_pr_number: number; suggestion_id: string }[]>`
+      SELECT github_pr_number, suggestion_id
+        FROM prompt_suggestion_pr
+       WHERE suggestion_id = ${id}
+    `;
+    assert.equal(prRows.length, 1);
+    assert.equal(prRows[0]?.github_pr_number, 42);
+
+    await app.close();
+  });
+
+  test('202 — handler invokes evaluator with the loaded suggestion', async (t) => {
+    if (skipIfNoDb(t)) return;
+    let evaluatorCalledWith: { suggestionId?: string } = {};
+    const deps = {
+      ...happyDeps(),
+      evaluate: (input: { suggestion: { id: string }; repoRoot: string }) => {
+        evaluatorCalledWith = { suggestionId: input.suggestion.id };
+        return Promise.resolve(fakeEvaluation(input.suggestion.id));
+      },
+    };
+    const app = buildApp({ promptSuggestions: deps });
+    const id = await seedTriagedSuggestion(app, 'evaluator-invocation issue summary text');
+
+    await app.inject({
+      method: 'POST',
+      url: `/v1/suggestions/${id}/generate-pr`,
+      cookies: { cpa_session: await consultantJwt() },
+    });
+    assert.equal(evaluatorCalledWith.suggestionId, id);
+    await app.close();
+  });
+
+  test('202 — handler invokes choreography with reviewerUserId from session', async (t) => {
+    if (skipIfNoDb(t)) return;
+    let choreographyOpts: { reviewerUserId?: string } = {};
+    const deps = {
+      ...happyDeps(),
+      choreograph: (opts: ChoreographyOptions) => {
+        choreographyOpts = { reviewerUserId: opts.reviewerUserId };
+        return Promise.resolve(fakeChoreographyResult());
+      },
+    };
+    const app = buildApp({ promptSuggestions: deps });
+    const id = await seedTriagedSuggestion(app, 'choreography reviewer id passthrough test');
+
+    await app.inject({
+      method: 'POST',
+      url: `/v1/suggestions/${id}/generate-pr`,
+      cookies: { cpa_session: await consultantJwt() },
+    });
+    // The session is consultantJwt() = CONSULTANT_USER.
+    assert.equal(choreographyOpts.reviewerUserId, CONSULTANT_USER);
+    await app.close();
+  });
+
+  test('502 when evaluator throws', async (t) => {
+    if (skipIfNoDb(t)) return;
+    const deps = {
+      ...happyDeps(),
+      evaluate: (): Promise<PromptSuggestionEvaluation> =>
+        Promise.reject(new Error('Anthropic 500')),
+    };
+    const app = buildApp({ promptSuggestions: deps });
+    const id = await seedTriagedSuggestion(app, 'evaluator-error generate-pr issue summary');
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/suggestions/${id}/generate-pr`,
+      cookies: { cpa_session: await consultantJwt() },
+    });
+    assert.equal(res.statusCode, 502);
+    const body = res.json<{ error: string }>();
+    assert.equal(body.error, 'evaluator_failed');
+
+    // Suggestion stays at 'triaged' — the evaluator failure is BEFORE
+    // any state transition.
+    const detail = await app.inject({
+      method: 'GET',
+      url: `/v1/suggestions/${id}`,
+      cookies: { cpa_session: await consultantJwt() },
+    });
+    const detailBody = detail.json<{ suggestion: { status: string } }>();
+    assert.equal(detailBody.suggestion.status, 'triaged');
+
+    await app.close();
+  });
+
+  test('422 when contract test fails — stage=contract_test, stdout/stderr in detail', async (t) => {
+    if (skipIfNoDb(t)) return;
+    const deps = {
+      ...happyDeps(),
+      choreograph: (): Promise<ChoreographyResult> =>
+        Promise.reject(
+          new ChoreographyError(
+            'contract_test',
+            { exitCode: 1, stdout: 'test foo: assertion failed', stderr: 'AssertionError' },
+            'pr-choreography: contract test failed (exit 1)',
+          ),
+        ),
+    };
+    const app = buildApp({ promptSuggestions: deps });
+    const id = await seedTriagedSuggestion(app, 'contract-test failure generate-pr issue ');
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/suggestions/${id}/generate-pr`,
+      cookies: { cpa_session: await consultantJwt() },
+    });
+    assert.equal(res.statusCode, 422);
+    const body = res.json<{
+      error: string;
+      stage: string;
+      detail: { exitCode?: number; stdout?: string; stderr?: string };
+    }>();
+    assert.equal(body.error, 'contract_test_failed');
+    assert.equal(body.stage, 'contract_test');
+    assert.equal(body.detail.exitCode, 1);
+    assert.match(body.detail.stdout ?? '', /assertion failed/);
+    assert.match(body.detail.stderr ?? '', /AssertionError/);
+
+    // Suggestion stays at 'triaged' — choreography failed before persist.
+    const detail = await app.inject({
+      method: 'GET',
+      url: `/v1/suggestions/${id}`,
+      cookies: { cpa_session: await consultantJwt() },
+    });
+    const detailBody = detail.json<{ suggestion: { status: string } }>();
+    assert.equal(detailBody.suggestion.status, 'triaged');
+
+    await app.close();
+  });
+
+  test('502 when choreography fails at pr_create stage', async (t) => {
+    if (skipIfNoDb(t)) return;
+    const deps = {
+      ...happyDeps(),
+      choreograph: (): Promise<ChoreographyResult> =>
+        Promise.reject(
+          new ChoreographyError(
+            'pr_create',
+            { status: 502, body: 'Bad Gateway' },
+            'pr-choreography: pulls.create failed',
+          ),
+        ),
+    };
+    const app = buildApp({ promptSuggestions: deps });
+    const id = await seedTriagedSuggestion(app, 'pr_create failure generate-pr issue 502');
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/suggestions/${id}/generate-pr`,
+      cookies: { cpa_session: await consultantJwt() },
+    });
+    assert.equal(res.statusCode, 502);
+    const body = res.json<{ error: string; stage: string }>();
+    assert.equal(body.error, 'github_upstream_failure');
+    assert.equal(body.stage, 'pr_create');
+    await app.close();
+  });
+
+  test('500 when choreography fails at unknown stage', async (t) => {
+    if (skipIfNoDb(t)) return;
+    const deps = {
+      ...happyDeps(),
+      choreograph: (): Promise<ChoreographyResult> =>
+        Promise.reject(new ChoreographyError('tree', new Error('tree error'), 'tree failed')),
+    };
+    const app = buildApp({ promptSuggestions: deps });
+    const id = await seedTriagedSuggestion(app, 'tree failure generate-pr issue summary 500');
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/suggestions/${id}/generate-pr`,
+      cookies: { cpa_session: await consultantJwt() },
+    });
+    assert.equal(res.statusCode, 500);
+    const body = res.json<{ error: string; stage: string }>();
+    assert.equal(body.error, 'choreography_failed');
+    assert.equal(body.stage, 'tree');
     await app.close();
   });
 });

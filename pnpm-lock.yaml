@@ -448,6 +448,9 @@ importers:
 
   packages/integrations:
     dependencies:
+      '@cpa/agents':
+        specifier: workspace:*
+        version: link:../agents
       '@cpa/db':
         specifier: workspace:*
         version: link:../db

@@ -45,7 +45,10 @@ import { registerSubjectTenants } from './routes/subject-tenants.js';
 import { registerTimeEntries } from './routes/time-entries.js';
 import { registerMappingRules } from './routes/mapping-rules.js';
 import { registerPreviewRules } from './routes/preview-rules.js';
-import { registerPromptSuggestions } from './routes/prompt-suggestions.js';
+import {
+  registerPromptSuggestions,
+  type PromptSuggestionsRouteDeps,
+} from './routes/prompt-suggestions.js';
 import { registerListTenants } from './routes/tenants/list.js';
 import { registerSwitchTenant } from './routes/tenants/switch.js';
 import { registerAddUser } from './routes/users/add.js';
@@ -97,7 +100,17 @@ export type App = FastifyInstance<
  * `loggerInstance`, which would otherwise leak the pino dependency
  * through our public signature.
  */
-export function buildApp(): App {
+/**
+ * Optional dependency-injection bag for buildApp. Production callers
+ * (server.ts) leave this empty and let the app read env vars at request
+ * time. Tests pass mocks here — particularly for the prompt-suggestions
+ * generate-pr endpoint (Task B.5), which calls Anthropic + GitHub.
+ */
+export interface BuildAppOptions {
+  promptSuggestions?: PromptSuggestionsRouteDeps;
+}
+
+export function buildApp(options: BuildAppOptions = {}): App {
   const logger = createLogger({ serviceName: 'api' });
 
   const app = Fastify({
@@ -287,7 +300,7 @@ export function buildApp(): App {
     done();
   });
   app.register((instance, _opts, done) => {
-    registerPromptSuggestions(instance);
+    registerPromptSuggestions(instance, options.promptSuggestions);
     done();
   });
   // DocuSign Connect webhook is registered as its own plugin so the
