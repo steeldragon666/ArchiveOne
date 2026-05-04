@@ -1967,6 +1967,8 @@ test('migration 0037: AuditKind three-way parity (Zod ↔ db AUDIT_KINDS const �
 
   assert.deepEqual([...zodKinds].sort(), [...dbKinds].sort(), 'Zod ↔ db const mismatch');
   assert.deepEqual([...zodKinds].sort(), [...sqlValues].sort(), 'Zod ↔ SQL CHECK mismatch');
+});
+
 // P7 Theme B Task B.1 — migration 0038 prompt_suggestion + prompt_suggestion_review
 // + prompt_suggestion_pr tables.
 //
@@ -2070,8 +2072,15 @@ test('migration 0038: prompt_suggestion_pr table exists with expected columns', 
 test('migration 0038: CHECK constraints exist on all three tables (three-way parity sketch)', async () => {
   // Pull each CHECK constraint's definition from pg_catalog and assert
   // the literal values match the canonical TS enum arrays. This is
-  // the SQL ↔ TS half of the three-way parity test; the third leg
-  // (Zod enums in @cpa/schemas) lands with Task B.4 / B.8.
+  // the SQL ↔ TS half of the three-way parity test.
+  //
+  // The full three-way parity (SQL ↔ `@cpa/db` const ↔ inline Zod enum
+  // in `apps/api/src/routes/prompt-suggestions.ts` exposed via
+  // `_internals`) ships in Task B.8's contract test at
+  // `apps/api/src/routes/prompt-suggestions.contract.test.ts`. Theme B
+  // deliberately did NOT promote these enums to `@cpa/schemas` (per
+  // B.3's "inline Zod" decision), so the third leg lives at the API
+  // package layer where the inline Zod schemas are defined.
   const checks = await privilegedSql<{ conname: string; pg_get_constraintdef: string }[]>`
     SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint
      WHERE conname IN (
