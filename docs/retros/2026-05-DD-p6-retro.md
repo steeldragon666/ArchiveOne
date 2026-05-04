@@ -12,18 +12,18 @@
 
 ## What landed
 
-| Theme | Tasks | PR | Merge SHA |
-| --- | --- | --- | --- |
-| 0 — Retro inheritance (chain.ts canonical pattern) | 0.1 | #14 | `e3ade56` |
-| 1 — Event taxonomy + narrative_draft tables | 1.1–1.5 | #14 | `e3ade56` |
-| 2 — Cross-cutting agent runtime | 2.1–2.5 | #14 | `e3ade56` |
-| 3 — Agent A (expenditure classifier) | 3.1–3.6 | #15 | `aceee1f` |
-| 4 — Agent B (register synthesizer) | 4.1–4.6 | #16 | `5e9d1c8` |
-| 5 — Agent C (narrative drafter, streaming) | 5.1–5.9 | #17 | `b0aa4fa` |
-| 6 — mapping_rule scalar-string backfill | 6.1 | #18 | `eed4af9` |
-| 7 — Eval framework + CI workflow | 7.1, 7.3 (7.2 deferred) | #19 | TBD |
-| 8 — Staged rollout | 8.1–8.3 | (no PR — env config only) | — |
-| 9 — Retrospective (this document) | 9.1 | TBD | — |
+| Theme                                              | Tasks                   | PR                        | Merge SHA |
+| -------------------------------------------------- | ----------------------- | ------------------------- | --------- |
+| 0 — Retro inheritance (chain.ts canonical pattern) | 0.1                     | #14                       | `e3ade56` |
+| 1 — Event taxonomy + narrative_draft tables        | 1.1–1.5                 | #14                       | `e3ade56` |
+| 2 — Cross-cutting agent runtime                    | 2.1–2.5                 | #14                       | `e3ade56` |
+| 3 — Agent A (expenditure classifier)               | 3.1–3.6                 | #15                       | `aceee1f` |
+| 4 — Agent B (register synthesizer)                 | 4.1–4.6                 | #16                       | `5e9d1c8` |
+| 5 — Agent C (narrative drafter, streaming)         | 5.1–5.9                 | #17                       | `b0aa4fa` |
+| 6 — mapping_rule scalar-string backfill            | 6.1                     | #18                       | `eed4af9` |
+| 7 — Eval framework + CI workflow                   | 7.1, 7.3 (7.2 deferred) | #19                       | TBD       |
+| 8 — Staged rollout                                 | 8.1–8.3                 | (no PR — env config only) | —         |
+| 9 — Retrospective (this document)                  | 9.1                     | TBD                       | —         |
 
 7 new migrations on main: `0026_expenditure_classified_kind` → `0034_mapping_rule_scalar_string_backfill`. Three new agent packages (`classifier-expenditure`, `synthesizer-register`, `narrative-drafter` — under `@cpa/agents`). Two new API routes (`activity-register.ts`, `narrative.ts`) plus an extension to `expenditures.ts` for the reclassify endpoint. One eval framework (`packages/agents/eval/`). One GitHub Actions workflow (`agent-eval.yml`).
 
@@ -100,15 +100,15 @@ The right way to think about Theme 7: it's the SCAFFOLDING for ongoing prompt-qu
 
 > Replace with real numbers from `cpa_*` Grafana panels.
 
-| Metric | Phase 1 (dogfood) | Phase 2 (4 firms) | Phase 3 (all firms, week 1) |
-| --- | --- | --- | --- |
-| Total `EXPENDITURE_CLASSIFIED` events | <N> | <N> | <N> |
-| Total `ACTIVITY_REGISTER_DRAFTED` events | <N> | <N> | <N> |
-| Total `NARRATIVE_DRAFTED` events | <N> | <N> | <N> |
-| Mean Anthropic cost per day | <$> | <$> | <$> |
-| Validation downgrade count (Agent C) | <N> | <N> | <N> |
-| `RateLimitExceededError` count | <N> | <N> | <N> |
-| Idempotent-skip rate (Agent A) | <%> | <%> | <%> |
+| Metric                                   | Phase 1 (dogfood) | Phase 2 (4 firms) | Phase 3 (all firms, week 1) |
+| ---------------------------------------- | ----------------- | ----------------- | --------------------------- |
+| Total `EXPENDITURE_CLASSIFIED` events    | <N>               | <N>               | <N>                         |
+| Total `ACTIVITY_REGISTER_DRAFTED` events | <N>               | <N>               | <N>                         |
+| Total `NARRATIVE_DRAFTED` events         | <N>               | <N>               | <N>                         |
+| Mean Anthropic cost per day              | <$>               | <$>               | <$>                         |
+| Validation downgrade count (Agent C)     | <N>               | <N>               | <N>                         |
+| `RateLimitExceededError` count           | <N>               | <N>               | <N>                         |
+| Idempotent-skip rate (Agent A)           | <%>               | <%>               | <%>                         |
 
 ## Open follow-ups (post-P6)
 
@@ -127,6 +127,7 @@ The right way to think about Theme 7: it's the SCAFFOLDING for ongoing prompt-qu
 ## Next phase
 
 P7 candidates surfaced during P6 (none committed yet):
+
 - Pre-clustering for Agent B (embeddings + k-means or HDBSCAN) before the LLM synthesis call — design doc §4 explicitly listed this as P7
 - Multi-claim-cycle narrative drafting (currently each draft is one fiscal year × one activity; P7 could span multiple cycles for trend narrative)
 - Consultant-facing prompt iteration UI (no code changes, but a tool for consultants to propose prompt edits + see eval results)

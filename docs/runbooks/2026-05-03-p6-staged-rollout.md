@@ -65,6 +65,7 @@ After 1 hour of dogfood-firm activity, this should show only the dogfood `tenant
 ### Step 1.2 — Deploy
 
 Trigger the deployment pipeline (or `gstack ship`). Watch the runtime-logs for the first 5 minutes for:
+
 - `[expenditure-classify]` lines — should show batch counts > 0 if dogfood ingests Xero data
 - `[activity-register-synthesize]` lines — fires when a consultant clicks "Synthesize register"
 - `narrative-drafter` SSE traffic — fires when a consultant clicks "Draft narrative"
@@ -75,6 +76,7 @@ Trigger the deployment pipeline (or `gstack ship`). Watch the runtime-logs for t
 Leave the config alone for 1 week (target: until `now() + 7 days`).
 
 Mid-soak checks (daily):
+
 - [ ] Check the Grafana cost panel each morning — alert at $50/day total.
 - [ ] Check the validation-downgrade panel — should be 0 most days.
 - [ ] Ask the dogfood consultant team for a thumbs-up / specific complaints. Solicit; don't wait for them to come to you.
@@ -86,12 +88,14 @@ Mid-soak checks (daily):
 ### Step 1.4 — Phase-1 exit gate
 
 After 7 days of clean telemetry:
+
 - [ ] Cost burn ≤ $20/day total over the window
 - [ ] Validation downgrade count = 0 (or has a documented explanation per occurrence)
 - [ ] Error rate < 1% across all three agents
 - [ ] No consultant rollback request
 
 If any gate fails: do NOT proceed to Phase 2. Triage in Slack `#p6-rollout`. Common rollback levers:
+
 - Disable a single agent: set `P6_AGENT_X_ENABLED=false`, redeploy.
 - Disable streaming only: `P6_AGENT_C_STREAMING_ENABLED=false` falls Agent C back to non-streaming response.
 - Full kill switch: empty `P6_AGENT_TENANT_ALLOWLIST` AND set all `_ENABLED=false`.
@@ -124,6 +128,7 @@ Send each friendly firm's primary contact a short heads-up:
 ### Step 2.3 — Soak
 
 Same daily checks as Phase 1. Watch especially for:
+
 - Cross-firm cost variance (one firm consuming 5× another's classifier budget likely indicates a runaway loop or unexpected data shape — investigate).
 - Per-firm validation-downgrade rate — if a firm's data systematically triggers downgrades, the prompt may need to adapt to their domain language.
 
@@ -165,13 +170,13 @@ No exit gate — Phase 3 is the steady state. After 1 week of clean Phase 3 tele
 
 ## Rollback levers (any time)
 
-| Severity | Lever | Effect |
-| --- | --- | --- |
-| Per-agent regression | `P6_AGENT_<X>_ENABLED=false` | That agent silently no-ops; existing data unaffected |
-| Per-tenant regression | Remove tenant from `P6_AGENT_TENANT_ALLOWLIST` | That tenant stops getting fresh classifications/syntheses; existing rows untouched |
-| Streaming-only issue | `P6_AGENT_C_STREAMING_ENABLED=false` | Agent C falls back to non-streaming response; SSE endpoint still works but completes only on `done` |
-| Rate-limit too tight | Bump `P6_AGENT_RATE_LIMIT_PER_MIN` (default 100) | Wider burst capacity per (tenant, agent) |
-| Full kill switch | All `P6_AGENT_*_ENABLED=false` + empty allowlist | All three agents disabled platform-wide |
+| Severity              | Lever                                            | Effect                                                                                              |
+| --------------------- | ------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| Per-agent regression  | `P6_AGENT_<X>_ENABLED=false`                     | That agent silently no-ops; existing data unaffected                                                |
+| Per-tenant regression | Remove tenant from `P6_AGENT_TENANT_ALLOWLIST`   | That tenant stops getting fresh classifications/syntheses; existing rows untouched                  |
+| Streaming-only issue  | `P6_AGENT_C_STREAMING_ENABLED=false`             | Agent C falls back to non-streaming response; SSE endpoint still works but completes only on `done` |
+| Rate-limit too tight  | Bump `P6_AGENT_RATE_LIMIT_PER_MIN` (default 100) | Wider burst capacity per (tenant, agent)                                                            |
+| Full kill switch      | All `P6_AGENT_*_ENABLED=false` + empty allowlist | All three agents disabled platform-wide                                                             |
 
 The shim's gating is the single source of truth for these levers — it lives in `apps/api/src/lib/enqueue-{classify,synthesize}.ts` and the route-level `503` checks. No DB migration required for rollback.
 
