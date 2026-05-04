@@ -41,6 +41,7 @@ import { registerExpenditures } from './routes/expenditures.js';
 import { registerIntegrations } from './routes/integrations.js';
 import { registerProjects } from './routes/projects.js';
 import { registerSigning, registerDocuSignWebhookPlugin } from './routes/signing.js';
+import { registerGithubWebhookPlugin } from './routes/webhooks/github.js';
 import { registerSubjectTenants } from './routes/subject-tenants.js';
 import { registerTimeEntries } from './routes/time-entries.js';
 import { registerMappingRules } from './routes/mapping-rules.js';
@@ -308,6 +309,13 @@ export function buildApp(options: BuildAppOptions = {}): App {
   // route (the handler needs the raw Buffer to HMAC-verify).
   app.register((instance, _opts, done) => {
     registerDocuSignWebhookPlugin(instance);
+    done();
+  });
+  // GitHub webhook receiver (Task B.6). Same encapsulation pattern as
+  // the DocuSign webhook — the application/json parser is overridden to
+  // give us the raw Buffer for HMAC-SHA256 verification.
+  app.register((instance, _opts, done) => {
+    registerGithubWebhookPlugin(instance);
     done();
   });
 
