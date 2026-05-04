@@ -31,18 +31,30 @@ const FIRM_B = '00000000-0000-4000-8000-0000000a1d02';
 const ADMIN_A = '00000000-0000-4000-8000-0000000a1da1';
 const ADMIN_B = '00000000-0000-4000-8000-0000000a1da2';
 
-// kind value for the seeded rows. Any non-empty string passes the
-// `audit_log_kind_nonempty` CHECK; we use a deliberately distinctive
-// value so the SELECTs below can scope to *just* the rows this test
-// inserted (defending against bleed from other parallel suites).
-const TEST_KIND = 'TEST_KIND_AUDIT_RLS';
+// kind value for the seeded rows. P7 Theme A migration 0037 tightened
+// `audit_log_kind_check` to a closed allowlist of four production kinds
+// (MAPPING_RULE_{CREATED,UPDATED,ARCHIVED}, HYPOTHESIS_FORMED_AT_IMMUTABILITY_VIOLATION).
+// We pick MAPPING_RULE_CREATED — the seed only needs to satisfy the
+// CHECK; the test asserts RLS visibility, not kind semantics.
+//
+// Bleed-isolation now relies on FIRM_A / FIRM_B (the `0a1d01` / `0a1d02`
+// UUIDs are exclusive to this file), not on the kind string. The
+// SELECTs and DELETEs scope by firm_id IN (FIRM_A, FIRM_B) AND kind
+// (belt + braces) so a sibling suite's MAPPING_RULE_CREATED row in a
+// different firm cannot leak into our assertions.
+const TEST_KIND = 'MAPPING_RULE_CREATED';
 
 const cleanup = async (): Promise<void> => {
   // Order: child rows first (audit_log → tenant via firm_id FK with ON
   // DELETE CASCADE), then users, then tenants. Even though CASCADE would
   // wipe audit rows when the tenant goes, scoping the DELETE on
-  // audit_log to TEST_KIND keeps unrelated rows intact between runs.
-  await privilegedSql`DELETE FROM audit_log WHERE kind = ${TEST_KIND}`;
+  // audit_log to FIRM_A / FIRM_B (and the test kind) keeps unrelated
+  // rows intact between runs.
+  await privilegedSql`
+    DELETE FROM audit_log
+     WHERE kind = ${TEST_KIND}
+       AND firm_id IN (${FIRM_A}, ${FIRM_B})
+  `;
   await privilegedSql`DELETE FROM "user" WHERE id IN (${ADMIN_A}, ${ADMIN_B})`;
   await privilegedSql`DELETE FROM tenant WHERE id IN (${FIRM_A}, ${FIRM_B})`;
 };
@@ -94,7 +106,9 @@ test('audit_log RLS: FIRM_A session cannot read FIRM_B rows', async () => {
   const rows = await sql.begin(async (tx) => {
     await tx`SELECT set_config('app.current_firm_id', ${FIRM_A}, true)`;
     return tx<{ firm_id: string }[]>`
-      SELECT firm_id FROM audit_log WHERE kind = ${TEST_KIND}
+      SELECT firm_id FROM audit_log
+       WHERE kind = ${TEST_KIND}
+         AND firm_id IN (${FIRM_A}, ${FIRM_B})
     `;
   });
 
@@ -116,7 +130,9 @@ test('audit_log RLS: GUC unset → query returns no rows (fail-safe)', async () 
     // '' (not NULL), and NULLIF('', '')::uuid → NULL → no match.
     await tx`SELECT set_config('app.current_firm_id', '', true)`;
     return tx<{ firm_id: string }[]>`
-      SELECT firm_id FROM audit_log WHERE kind = ${TEST_KIND}
+      SELECT firm_id FROM audit_log
+       WHERE kind = ${TEST_KIND}
+         AND firm_id IN (${FIRM_A}, ${FIRM_B})
     `;
   });
 
@@ -129,7 +145,10 @@ test('audit_log RLS: privilegedSql bypasses RLS — sanity check', async () => {
   // on this in the seed above — if it ever stops working, the seed
   // breaks first.
   const rows = await privilegedSql<{ firm_id: string }[]>`
-    SELECT firm_id FROM audit_log WHERE kind = ${TEST_KIND} ORDER BY firm_id
+    SELECT firm_id FROM audit_log
+     WHERE kind = ${TEST_KIND}
+       AND firm_id IN (${FIRM_A}, ${FIRM_B})
+     ORDER BY firm_id
   `;
   assert.equal(rows.length, 2, 'privilegedSql must see both firm rows');
   assert.equal(rows[0]?.firm_id, FIRM_A);
