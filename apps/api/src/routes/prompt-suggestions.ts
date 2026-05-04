@@ -743,7 +743,17 @@ export function registerPromptSuggestions(
       // 5-minute request timeout for the slow path (evaluator + GitHub
       // round trips). The Fastify default is 30s; that's not enough for
       // a real evaluator call, so we extend.
-      req.raw.setTimeout(FIVE_MINUTES_MS);
+      //
+      // NOTE: under `app.inject()` (light-my-request), `req.raw` is a
+      // synthetic IncomingMessage that does NOT implement `.setTimeout`.
+      // Calling it unconditionally throws TypeError, which Fastify's
+      // default error handler maps to 500 — every test in this describe
+      // block then fails at the auth gate even though the gate logic
+      // itself is fine. Real HTTP traffic always has the method, so guard
+      // with a typeof check rather than removing the timeout extension.
+      if (typeof req.raw.setTimeout === 'function') {
+        req.raw.setTimeout(FIVE_MINUTES_MS);
+      }
 
       const role = req.user!.role;
       if (role !== 'admin' && role !== 'consultant') {
