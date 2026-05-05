@@ -3,6 +3,10 @@
  *
  * Subpath: `@cpa/integrations/regulatory`
  */
+
+// Register all connectors (side-effect imports)
+import './connectors/index.js';
+
 export type {
   ISourceConnector,
   RawRegulatoryEvent,
