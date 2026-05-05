@@ -53,6 +53,7 @@ import {
   type PromptSuggestionsRouteDeps,
 } from './routes/prompt-suggestions.js';
 import { registerCompliance } from './routes/compliance.js';
+import { registerIntelligence } from './routes/intelligence.js';
 import { registerListTenants } from './routes/tenants/list.js';
 import { registerSwitchTenant } from './routes/tenants/switch.js';
 import { registerAddUser } from './routes/users/add.js';
@@ -313,6 +314,10 @@ export function buildApp(options: BuildAppOptions = {}): App {
   });
   app.register((instance, _opts, done) => {
     registerCompliance(instance);
+    done();
+  });
+  app.register((instance, _opts, done) => {
+    registerIntelligence(instance);
     done();
   });
   // Prompt-suggestions routes require explicit deps (esp. `runContractTest`,
