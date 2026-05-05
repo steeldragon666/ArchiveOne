@@ -23,6 +23,7 @@ export {
   type ChoreographyOptions,
   type ChoreographyResult,
   type ChoreographyChangedFile,
+  type ChoreographyChangedFileWithContent,
   type ChoreographyStage,
   type ContractTestResult,
   type ContractTestRunner,

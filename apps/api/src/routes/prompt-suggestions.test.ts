@@ -257,8 +257,22 @@ describe('prompt-suggestions: cursor codec', () => {
 // ===========================================================================
 
 describe('prompt-suggestions: auth gating (no DB)', () => {
+  // Auth-gating tests don't exercise generate-pr's slow path, but they
+  // DO need the routes registered. Provide a minimal stub deps bag so
+  // buildApp() actually mounts the routes (post-Fix-1 the route layer
+  // requires a runContractTest function).
+  const stubDeps = (): {
+    evaluate: () => Promise<PromptSuggestionEvaluation>;
+    choreograph: () => Promise<ChoreographyResult>;
+    runContractTest: () => Promise<{ exitCode: number; stdout: string; stderr: string }>;
+  } => ({
+    evaluate: () => Promise.reject(new Error('stub: should not be called in auth-gating tests')),
+    choreograph: () => Promise.reject(new Error('stub: should not be called in auth-gating tests')),
+    runContractTest: () => Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
+  });
+
   test('POST /v1/suggestions: 401 without session', async () => {
-    const app = buildApp();
+    const app = buildApp({ promptSuggestions: stubDeps() });
     const res = await app.inject({
       method: 'POST',
       url: '/v1/suggestions',
@@ -269,14 +283,14 @@ describe('prompt-suggestions: auth gating (no DB)', () => {
   });
 
   test('GET /v1/suggestions: 401 without session', async () => {
-    const app = buildApp();
+    const app = buildApp({ promptSuggestions: stubDeps() });
     const res = await app.inject({ method: 'GET', url: '/v1/suggestions' });
     assert.equal(res.statusCode, 401);
     await app.close();
   });
 
   test('GET /v1/suggestions/:id: 401 without session', async () => {
-    const app = buildApp();
+    const app = buildApp({ promptSuggestions: stubDeps() });
     const res = await app.inject({
       method: 'GET',
       url: '/v1/suggestions/00000000-0000-4000-8000-000000000001',
@@ -286,7 +300,7 @@ describe('prompt-suggestions: auth gating (no DB)', () => {
   });
 
   test('POST /v1/suggestions/:id/triage: 401 without session', async () => {
-    const app = buildApp();
+    const app = buildApp({ promptSuggestions: stubDeps() });
     const res = await app.inject({
       method: 'POST',
       url: '/v1/suggestions/00000000-0000-4000-8000-000000000001/triage',
@@ -297,7 +311,7 @@ describe('prompt-suggestions: auth gating (no DB)', () => {
   });
 
   test('POST /v1/suggestions/:id/review: 401 without session', async () => {
-    const app = buildApp();
+    const app = buildApp({ promptSuggestions: stubDeps() });
     const res = await app.inject({
       method: 'POST',
       url: '/v1/suggestions/00000000-0000-4000-8000-000000000001/review',
@@ -308,7 +322,7 @@ describe('prompt-suggestions: auth gating (no DB)', () => {
   });
 
   test('POST /v1/suggestions/:id/generate-pr: 401 without session', async () => {
-    const app = buildApp();
+    const app = buildApp({ promptSuggestions: stubDeps() });
     const res = await app.inject({
       method: 'POST',
       url: '/v1/suggestions/00000000-0000-4000-8000-000000000001/generate-pr',
@@ -870,10 +884,12 @@ describe('POST /v1/suggestions/:id/generate-pr', () => {
       repoRoot: string;
     }) => Promise<PromptSuggestionEvaluation>;
     choreograph: (opts: ChoreographyOptions) => Promise<ChoreographyResult>;
+    runContractTest: () => Promise<{ exitCode: number; stdout: string; stderr: string }>;
     env: Record<string, string | undefined>;
   } => ({
     evaluate: ({ suggestion }) => Promise.resolve(fakeEvaluation(suggestion.id)),
     choreograph: () => Promise.resolve(fakeChoreographyResult()),
+    runContractTest: () => Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
     env: {
       GITHUB_APP_ID: 'test-app',
       GITHUB_APP_PRIVATE_KEY: 'test-private-key',
@@ -970,6 +986,7 @@ describe('POST /v1/suggestions/:id/generate-pr', () => {
       promptSuggestions: {
         evaluate: happyDeps().evaluate,
         choreograph: happyDeps().choreograph,
+        runContractTest: happyDeps().runContractTest,
         // env intentionally missing the GitHub app vars
         env: {},
       },

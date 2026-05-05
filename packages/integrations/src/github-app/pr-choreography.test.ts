@@ -213,6 +213,7 @@ function baseOpts(
     evaluation: makeEvaluation(),
     reviewerUserId: '00000000-0000-4000-8000-000000000020',
     fetch: fetchImpl,
+    runContractTest: () => Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
     ...overrides,
   };
 }
@@ -381,10 +382,12 @@ test('generatePullRequest: contract-test injection runs BEFORE pulls.create', as
     }
     return harness.fetch(url as string, init as RequestInit);
   }) as unknown as typeof globalThis.fetch;
-  const runContractTest = mock.fn((): Promise<ContractTestResult> => {
-    contractTestRanAt = ++counter;
-    return Promise.resolve({ exitCode: 0, stdout: 'all green', stderr: '' });
-  });
+  const runContractTest = mock.fn(
+    (_changeSet: unknown[], _pkg: string, _pat: string): Promise<ContractTestResult> => {
+      contractTestRanAt = ++counter;
+      return Promise.resolve({ exitCode: 0, stdout: 'all green', stderr: '' });
+    },
+  );
   await generatePullRequest(baseOpts(wrappedFetch, { runContractTest }));
   assert.notEqual(contractTestRanAt, -1);
   assert.notEqual(pullsCreateRanAt, -1);
@@ -593,7 +596,7 @@ test('generatePullRequest: contract-test failure → branch deleted, stage=contr
     { match: '/git/refs/heads/', method: 'DELETE', body: '', status: 204 },
   ]);
   const runContractTest = mock.fn(
-    (): Promise<ContractTestResult> =>
+    (_changeSet: unknown[], _pkg: string, _pat: string): Promise<ContractTestResult> =>
       Promise.resolve({
         exitCode: 1,
         stdout: 'test foo failed: assertion error',

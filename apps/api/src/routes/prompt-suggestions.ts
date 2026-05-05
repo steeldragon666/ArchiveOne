@@ -263,11 +263,10 @@ function decodeCursor(s: string): CursorTuple | null {
  * handler (and re-reading on every request).
  *
  * The `runContractTest` field is the contract-test runner forwarded
- * into the choreography. Production callers should pass
- * `runContractTestSubprocess` from `@cpa/agents` (B.4); tests pass
- * a noop or scripted runner. If omitted entirely, the choreography
- * skips the contract-test stage — appropriate for tests that mock the
- * choreography wholesale, NOT for production.
+ * into the choreography. Required. Provide
+ * `buildContractTestRunner({ repoRoot })` from
+ * `apps/api/src/lib/contract-test-runner.ts` in production; tests pass
+ * a stub returning `{ exitCode: 0, stdout: '', stderr: '' }`.
  */
 export interface PromptSuggestionsRouteDeps {
   /** Evaluate a suggestion and return its change-set proposal. */
@@ -280,7 +279,7 @@ export interface PromptSuggestionsRouteDeps {
    *  `@cpa/integrations/github-app`. */
   choreograph?: (opts: ChoreographyOptions) => Promise<ChoreographyResult>;
   /** Contract-test runner forwarded into the choreography. */
-  runContractTest?: ContractTestRunner;
+  runContractTest: ContractTestRunner;
   /** Env bundle. Defaults to read from `process.env` lazily. */
   env?: {
     GITHUB_APP_ID?: string;
@@ -295,7 +294,7 @@ export interface PromptSuggestionsRouteDeps {
 
 export function registerPromptSuggestions(
   app: FastifyInstance,
-  deps: PromptSuggestionsRouteDeps = {},
+  deps: PromptSuggestionsRouteDeps,
 ): void {
   // -------------------------------------------------------------------
   // POST /v1/suggestions — flag a new suggestion (any authenticated role)
@@ -874,13 +873,11 @@ export function registerPromptSuggestions(
           suggestion: choreoSuggestion,
           evaluation,
           reviewerUserId,
+          runContractTest: deps.runContractTest,
           logger: {
             warn: (msg, meta) => req.log.warn({ ...(meta ?? {}), suggestionId: id }, msg),
           },
         };
-        if (deps.runContractTest) {
-          choreoOpts.runContractTest = deps.runContractTest;
-        }
         if (env['GITHUB_BOT_EMAIL']) {
           choreoOpts.botEmail = env['GITHUB_BOT_EMAIL'];
         }

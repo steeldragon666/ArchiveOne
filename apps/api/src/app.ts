@@ -300,10 +300,17 @@ export function buildApp(options: BuildAppOptions = {}): App {
     registerPreviewRules(instance);
     done();
   });
-  app.register((instance, _opts, done) => {
-    registerPromptSuggestions(instance, options.promptSuggestions);
-    done();
-  });
+  // Prompt-suggestions routes require explicit deps (esp. `runContractTest`,
+  // which closes the I3 skip-gate at the type level — see
+  // PromptSuggestionsRouteDeps in routes/prompt-suggestions.ts). Tests that
+  // do not exercise these routes call `buildApp()` without
+  // `options.promptSuggestions` and simply don't get them registered.
+  if (options.promptSuggestions) {
+    app.register((instance, _opts, done) => {
+      registerPromptSuggestions(instance, options.promptSuggestions!);
+      done();
+    });
+  }
   // DocuSign Connect webhook is registered as its own plugin so the
   // application/json content-type parser is encapsulated to that one
   // route (the handler needs the raw Buffer to HMAC-verify).
