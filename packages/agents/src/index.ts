@@ -4,3 +4,4 @@ export * from './classifier-expenditure/index.js';
 export * from './synthesizer-register/index.js';
 export * from './multi-cycle/index.js';
 export * from './suggestion-evaluator/index.js';
+export * from './multi-entity-similarity/index.js';
