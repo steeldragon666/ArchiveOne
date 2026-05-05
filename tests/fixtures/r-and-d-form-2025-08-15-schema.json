@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ATO R&D Tax Incentive Registration Form Schema — 15 Aug 2025",
+  "description": "Captured snapshot of the mandatory fields, char thresholds, and structural requirements for R&D Tax Incentive registration as of 15 Aug 2025. Used by the form-completeness contract test to ensure the API endpoint correctly reports missing/present data for each form dimension.",
+  "version": "2025-08-15",
+  "dimensions": {
+    "knowledge_search": {
+      "description": "Each R&D activity must demonstrate a documented search of existing knowledge (ATO s355.200). At minimum one knowledge_search_record per activity.",
+      "mandatory": true,
+      "rule": "every_activity_has_record",
+      "min_records_per_activity": 1
+    },
+    "beneficial_ownership": {
+      "description": "Ultimate Beneficial Ownership (UBO) register for TA 2023 s4 (associate) and s5 (foreign-related) flags. At least one UBO record must exist for the subject entity in the relevant fiscal year.",
+      "mandatory": true,
+      "rule": "at_least_one_row",
+      "min_count": 1
+    },
+    "forecast": {
+      "description": "Three-year R&D expenditure forecast anchored to base FY. Required for Form C and ATP applications. Offsets 1, 2, 3 must all be populated.",
+      "mandatory": true,
+      "rule": "all_offsets_present",
+      "required_offsets": [1, 2, 3]
+    },
+    "facilities": {
+      "description": "R&D facility register. At least one facility must be recorded for the subject entity in the relevant fiscal year.",
+      "mandatory": true,
+      "rule": "at_least_one_row",
+      "min_count": 1
+    },
+    "narratives": {
+      "description": "Narrative drafts for each activity must meet character-count thresholds per the 15 Aug 2025 ATO form specification. Every activity must have all required sections within bounds.",
+      "mandatory": true,
+      "rule": "all_within_thresholds",
+      "sections": {
+        "hypothesis": {
+          "min_chars": 200,
+          "max_chars": 3000,
+          "description": "Hypothesis or new knowledge sought"
+        },
+        "experiment": {
+          "min_chars": 200,
+          "max_chars": 5000,
+          "description": "Experimental methodology and activities"
+        },
+        "result": {
+          "min_chars": 100,
+          "max_chars": 3000,
+          "description": "Results and evaluation"
+        },
+        "conclusion": {
+          "min_chars": 100,
+          "max_chars": 2000,
+          "description": "Conclusions and new knowledge generated"
+        }
+      }
+    }
+  }
+}
