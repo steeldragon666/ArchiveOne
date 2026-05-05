@@ -133,7 +133,6 @@ describe('Contract: audit-timeline chain verification', () => {
       url: `/v1/audit/activity/${ACTIVITY_ID}/timeline`,
       cookies: { cpa_session: await consultantJwt() },
     });
-    if (res.statusCode !== 200) console.error('CONTRACT VERIFIED 500 BODY:', res.payload);
     assert.equal(res.statusCode, 200);
     const body = JSON.parse(res.payload) as {
       timeline: { kind: string; chain_verified?: boolean }[];
@@ -181,7 +180,6 @@ describe('Contract: audit-timeline chain verification', () => {
         url: `/v1/audit/activity/${ACTIVITY_ID}/timeline`,
         cookies: { cpa_session: await consultantJwt() },
       });
-      if (res.statusCode !== 200) console.error('CONTRACT TAMPERED 500 BODY:', res.payload);
       assert.equal(res.statusCode, 200);
       const body = JSON.parse(res.payload) as {
         timeline: { kind: string; chain_verified?: boolean }[];
@@ -224,7 +222,6 @@ describe('Contract: multi-entity-comparison with empty similarity table', () => 
       url: `/v1/multi-entity-comparison/${ACTIVITY_ID}`,
       cookies: { cpa_session: await consultantJwt() },
     });
-    if (res.statusCode !== 200) console.error('CONTRACT MULTI-ENTITY 500 BODY:', res.payload);
     assert.equal(res.statusCode, 200);
     const body = JSON.parse(res.payload) as {
       activities: { id: string }[];
