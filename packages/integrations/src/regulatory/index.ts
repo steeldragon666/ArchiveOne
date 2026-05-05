@@ -20,3 +20,5 @@ export {
   type DispatchInput,
   type DispatchResult,
 } from './webhook-dispatch.js';
+export { parseAustliiDecisions } from './connectors/austlii-html.js';
+export { parseRssItems } from './connectors/ato-rss.js';
