@@ -100,13 +100,17 @@ before(async () => {
                        VALUES (${SUBJECT_D7}, ${TENANT_D7}, 'Form Shape Entity', 'claimant')`;
   await privilegedSql`INSERT INTO project (id, tenant_id, subject_tenant_id, name)
                        VALUES (${PROJECT_D7}, ${TENANT_D7}, ${SUBJECT_D7}, 'Shape Project')`;
-  await privilegedSql`INSERT INTO claim (id, tenant_id, subject_tenant_id, fiscal_year)
-                       VALUES (${CLAIM_D7}, ${TENANT_D7}, ${SUBJECT_D7}, 2025)`;
+  await privilegedSql`INSERT INTO claim (id, tenant_id, subject_tenant_id, fiscal_year, project_id)
+                       VALUES (${CLAIM_D7}, ${TENANT_D7}, ${SUBJECT_D7}, 2025, ${PROJECT_D7})`;
+  // `activity` has no subject_tenant_id column — it links to its subject via
+  // `claim.subject_tenant_id`. The form-completeness endpoint does the JOIN
+  // server-side; the test only needs the (tenant, project, claim, code,
+  // kind, title, fy_label, hypothesis_formed_at) NOT NULL columns.
   await privilegedSql`INSERT INTO activity (id, tenant_id, project_id, claim_id, code, kind, title,
-                                            fy_label, hypothesis_formed_at, subject_tenant_id)
+                                            fy_label, hypothesis_formed_at)
                        VALUES (${ACTIVITY_D7}, ${TENANT_D7}, ${PROJECT_D7}, ${CLAIM_D7},
                                'FS-01', 'core', 'Form Shape Activity',
-                               ${FY}, '2025-01-01T00:00:00Z', ${SUBJECT_D7})`;
+                               ${FY}, '2025-01-01T00:00:00Z')`;
 });
 
 after(async () => {
@@ -244,10 +248,17 @@ describe('form-completeness contract: full state reports complete', () => {
     const token = await makeToken();
 
     // Seed all dimensions
-    // (a) knowledge_search_record
+    // (a) knowledge_search_record — columns per migration 0039:
+    //     subject_tenant_id NOT NULL, search_query (not "search_terms"),
+    //     sources_consulted jsonb (not "search_source" text), finding_summary
+    //     NOT NULL.
     await privilegedSql`INSERT INTO knowledge_search_record
-      (id, tenant_id, activity_id, search_date, search_source, search_terms)
-      VALUES (gen_random_uuid(), ${TENANT_D7}, ${ACTIVITY_D7}, CURRENT_DATE, 'Google Scholar', 'polymer blend')`;
+      (id, tenant_id, subject_tenant_id, activity_id, search_date,
+       search_query, sources_consulted, finding_summary)
+      VALUES (gen_random_uuid(), ${TENANT_D7}, ${SUBJECT_D7}, ${ACTIVITY_D7},
+              CURRENT_DATE, 'polymer blend prior art',
+              ${JSON.stringify(['Google Scholar', 'IEEE Xplore'])}::text::jsonb,
+              'No prior art identified for the specific blend ratio.')`;
 
     // (b) beneficial_ownership
     await privilegedSql`INSERT INTO beneficial_ownership
@@ -261,18 +272,34 @@ describe('form-completeness contract: full state reports complete', () => {
         VALUES (gen_random_uuid(), ${TENANT_D7}, ${SUBJECT_D7}, ${FY}, ${offset}, 500000.00, 5, 'medium')`;
     }
 
-    // (d) r_and_d_facility
+    // (d) r_and_d_facility — column is `address` (not "address_text") and
+    //     `is_owned` is NOT NULL with no default.
     await privilegedSql`INSERT INTO r_and_d_facility
-      (id, tenant_id, subject_tenant_id, fy_label, facility_name, address_text, used_for_activity_ids)
-      VALUES (gen_random_uuid(), ${TENANT_D7}, ${SUBJECT_D7}, ${FY}, 'Main Lab', '123 Research St', ARRAY[${ACTIVITY_D7}]::uuid[])`;
+      (id, tenant_id, subject_tenant_id, fy_label, facility_name, address, is_owned, used_for_activity_ids)
+      VALUES (gen_random_uuid(), ${TENANT_D7}, ${SUBJECT_D7}, ${FY},
+              'Main Lab', '123 Research St', true,
+              ARRAY[${ACTIVITY_D7}]::uuid[])`;
 
-    // (e) narrative_draft for all required sections
+    // (e) narrative_draft for all required sections.
+    //     `narrative_draft` stores content as a jsonb `segments` array of
+    //     NarrativeSegment shapes — there is no flat `content` column. All
+    //     of (current_version, status, content_hash, model, prompt_version,
+    //     created_by_user_id) are NOT NULL with no default. The completeness
+    //     endpoint sums LENGTH(segments[i]->>'text') across the array, so
+    //     a single prose segment of `min_chars` characters satisfies the
+    //     threshold.
     const sections = Object.entries(fixture.dimensions['narratives']?.sections ?? {});
     for (const [section, spec] of sections) {
-      const content = 'A'.repeat(spec.min_chars);
+      const text = 'A'.repeat(spec.min_chars);
+      const segments = JSON.stringify([{ type: 'prose', text }]);
       await privilegedSql`INSERT INTO narrative_draft
-        (id, tenant_id, activity_id, section_kind, content)
-        VALUES (gen_random_uuid(), ${TENANT_D7}, ${ACTIVITY_D7}, ${section}, ${content})`;
+        (id, tenant_id, activity_id, section_kind, segments, content_hash,
+         model, prompt_version, current_version, status, created_by_user_id)
+        VALUES (gen_random_uuid(), ${TENANT_D7}, ${ACTIVITY_D7}, ${section},
+                ${segments}::text::jsonb,
+                ${'h_' + section.padEnd(62, '0')},
+                'claude-sonnet-4-5', 'draft-narrative@1.0.0',
+                1, 'complete', ${USER_D7})`;
     }
 
     const res = await app.inject({
