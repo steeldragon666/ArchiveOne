@@ -32,19 +32,31 @@ import { sql } from '@cpa/db/client';
 /** ATO General Interest Charge rate (FY24-25 placeholder: 11.22% p.a.) */
 const ATO_GIC_RATE = 0.1122;
 
-/** Narrative character-count thresholds per 15 Aug 2025 form spec. */
+/**
+ * Narrative character-count thresholds per 15 Aug 2025 form spec.
+ *
+ * Keys MUST match `NARRATIVE_SECTION_KINDS` (`@cpa/db/schema/narrative_draft`)
+ * exactly — those are the only values the narrative_draft.section_kind CHECK
+ * constraint admits. The fixture
+ * `tests/fixtures/r-and-d-form-2025-08-15-schema.json` mirrors this set; the
+ * D.7 contract test asserts byte-for-byte parity (fixture ↔ this constant).
+ */
 const NARRATIVE_THRESHOLDS: Record<string, { min: number; max: number }> = {
+  new_knowledge: { min: 100, max: 2000 },
   hypothesis: { min: 200, max: 3000 },
-  experiment: { min: 200, max: 5000 },
-  result: { min: 100, max: 3000 },
-  conclusion: { min: 100, max: 2000 },
+  uncertainty: { min: 100, max: 2000 },
+  experiments_and_results: { min: 200, max: 5000 },
 };
 
 // ---------------------------------------------------------------------------
 // Zod schemas — input contracts
 // ---------------------------------------------------------------------------
 
-const OWNER_KINDS = ['individual', 'company', 'trust', 'partnership', 'other'] as const;
+// Mirrors the `beneficial_ownership_owner_kind_valid` CHECK constraint in
+// migration 0039 and `BENEFICIAL_OWNERSHIP_OWNER_KINDS` in
+// `@cpa/db/schema/beneficial_ownership`. Three-way parity is enforced by
+// `tools/scripts/check-three-way-parity.test.ts`.
+const OWNER_KINDS = ['individual', 'entity', 'foreign_entity', 'associate'] as const;
 
 const BeneficialOwnershipInput = z
   .object({
@@ -167,11 +179,13 @@ export function registerCompliance(app: FastifyInstance): void {
 
       const rows = await sql.begin(async (tx) => {
         await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+        // Migration 0039 only adds (first_recorded_at, created_at) — there
+        // is no `updated_at` on beneficial_ownership.
         return await tx`
           SELECT id, tenant_id, subject_tenant_id, fy_label, owner_kind,
                  owner_name, owner_country, ownership_pct, is_associate,
                  is_foreign_related, ta_2023_4_flag, ta_2023_5_flag,
-                 created_at, updated_at
+                 first_recorded_at, created_at
             FROM beneficial_ownership
            WHERE subject_tenant_id = ${subject_tenant_id}
              AND fy_label = ${fy}
@@ -291,6 +305,12 @@ export function registerCompliance(app: FastifyInstance): void {
 
     const upserted = await sql.begin(async (tx) => {
       await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+      // Migration 0039's UNIQUE constraint is on
+      //   (subject_tenant_id, base_fy_label, forecast_year_offset)
+      // — tenant_id is NOT part of the index, so the ON CONFLICT target must
+      // match the constraint columns exactly. There is no `updated_at` column
+      // on rd_forecast either; the row is simply rewritten in place on
+      // conflict.
       const rows = await tx`
         INSERT INTO rd_forecast (
           id, tenant_id, subject_tenant_id, base_fy_label,
@@ -301,12 +321,11 @@ export function registerCompliance(app: FastifyInstance): void {
           ${body.forecast_year_offset}, ${body.projected_spend_aud},
           ${body.projected_headcount}, ${body.confidence}
         )
-        ON CONFLICT (tenant_id, subject_tenant_id, base_fy_label, forecast_year_offset)
+        ON CONFLICT (subject_tenant_id, base_fy_label, forecast_year_offset)
         DO UPDATE SET
           projected_spend_aud = EXCLUDED.projected_spend_aud,
           projected_headcount = EXCLUDED.projected_headcount,
-          confidence = EXCLUDED.confidence,
-          updated_at = NOW()
+          confidence = EXCLUDED.confidence
         RETURNING *
       `;
       return rows[0];
@@ -362,12 +381,16 @@ export function registerCompliance(app: FastifyInstance): void {
       const result = await sql.begin(async (tx) => {
         await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
 
-        // (a) All activities for this subject+fy
+        // (a) All activities for this subject+fy. Activity joins to its
+        //     subject via `claim.subject_tenant_id` — there's no
+        //     `activity.subject_tenant_id` column.
         const activities = await tx<{ id: string }[]>`
-          SELECT id FROM activity
-           WHERE subject_tenant_id = ${subject_tenant_id}
-             AND fy_label = ${fy}
-             AND tenant_id = ${tenantId}
+          SELECT a.id
+            FROM activity a
+            JOIN claim c ON c.id = a.claim_id AND c.tenant_id = a.tenant_id
+           WHERE c.subject_tenant_id = ${subject_tenant_id}
+             AND a.fy_label = ${fy}
+             AND a.tenant_id = ${tenantId}
         `;
         const activityIds = activities.map((a) => a.id);
 
@@ -417,11 +440,24 @@ export function registerCompliance(app: FastifyInstance): void {
         `;
         const facilityCount = parseInt(facilityRows[0]?.count ?? '0', 10);
 
-        // (e) Narrative char counts within thresholds
+        // (e) Narrative char counts within thresholds.
+        //
+        //     `narrative_draft` stores its content as a jsonb array of
+        //     NarrativeSegment shapes (`segments` column) — there is no flat
+        //     `content` text column. Total content length is the sum of
+        //     LENGTH(segments[i]->>'text') across all segments. Computed
+        //     server-side so we don't have to ship the entire jsonb to the
+        //     API process just to count characters.
+        //
+        //     Completeness rule: every (activity, required_section_kind)
+        //     pair must have a draft whose total content length is within
+        //     the section's threshold band. A missing draft counts as
+        //     length=0, which fails the min check the same way an
+        //     under-length draft would.
         interface NarrativeRow {
           activity_id: string;
           section_kind: string;
-          content: string | null;
+          total_length: number;
         }
         const narrativeWarnings: {
           activity_id: string;
@@ -433,24 +469,39 @@ export function registerCompliance(app: FastifyInstance): void {
 
         if (activityIds.length > 0) {
           const narrativeRows = await tx<NarrativeRow[]>`
-            SELECT activity_id, section_kind, content
+            SELECT
+              activity_id,
+              section_kind,
+              COALESCE(
+                (SELECT SUM(LENGTH(elem->>'text'))::int
+                   FROM jsonb_array_elements(segments) AS elem
+                  WHERE elem->>'text' IS NOT NULL),
+                0
+              ) AS total_length
               FROM narrative_draft
              WHERE activity_id = ANY(${activityIds})
                AND tenant_id = ${tenantId}
           `;
 
+          // Index by (activity_id, section_kind) for O(1) lookup below.
+          const byKey = new Map<string, number>();
           for (const row of narrativeRows) {
-            const threshold = NARRATIVE_THRESHOLDS[row.section_kind];
-            if (!threshold) continue;
-            const length = (row.content ?? '').length;
-            if (length < threshold.min || length > threshold.max) {
-              narrativeWarnings.push({
-                activity_id: row.activity_id,
-                field: row.section_kind,
-                current_length: length,
-                min_required: threshold.min,
-                max_allowed: threshold.max,
-              });
+            byKey.set(`${row.activity_id}:${row.section_kind}`, row.total_length);
+          }
+
+          // For every (activity, required section), assert presence + length.
+          for (const activityId of activityIds) {
+            for (const [section, threshold] of Object.entries(NARRATIVE_THRESHOLDS)) {
+              const length = byKey.get(`${activityId}:${section}`) ?? 0;
+              if (length < threshold.min || length > threshold.max) {
+                narrativeWarnings.push({
+                  activity_id: activityId,
+                  field: section,
+                  current_length: length,
+                  min_required: threshold.min,
+                  max_allowed: threshold.max,
+                });
+              }
             }
           }
         }
@@ -525,16 +576,19 @@ export function registerCompliance(app: FastifyInstance): void {
           claimed_amount: string;
         }
 
+        // Activity scopes to its subject via `claim.subject_tenant_id` —
+        // there's no `activity.subject_tenant_id` column.
         const activityRows = await tx<ActivityExpRow[]>`
           SELECT
             a.id AS activity_id,
             a.title,
             COALESCE(SUM(e.amount_aud), 0)::text AS claimed_amount
           FROM activity a
+          JOIN claim c ON c.id = a.claim_id AND c.tenant_id = a.tenant_id
           LEFT JOIN expenditure e
             ON e.activity_id = a.id
             AND e.tenant_id = ${tenantId}
-          WHERE a.subject_tenant_id = ${subject_tenant_id}
+          WHERE c.subject_tenant_id = ${subject_tenant_id}
             AND a.fy_label = ${fy}
             AND a.tenant_id = ${tenantId}
           GROUP BY a.id, a.title

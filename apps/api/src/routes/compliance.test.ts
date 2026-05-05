@@ -293,7 +293,7 @@ describe('compliance: GET /v1/compliance/beneficial-ownership/:subject/:fy', () 
       payload: {
         subject_tenant_id: SUBJECT_D2,
         fy_label: 'FY25',
-        owner_kind: 'company',
+        owner_kind: 'entity',
         owner_name: 'BO Get Test Corp',
         ownership_pct: 30,
         is_associate: false,
