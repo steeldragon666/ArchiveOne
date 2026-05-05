@@ -23,6 +23,14 @@ interface TimelineRow {
   chain_verified?: boolean;
   payload?: unknown;
   metadata?: unknown;
+  /** Forensic fields returned per-row for the audit hover-card (C.3). */
+  forensic?: {
+    first_recorded_at?: string;
+    content_hash?: string;
+    chain_position?: number;
+    edit_count?: number;
+    prev_hash?: string | null;
+  };
 }
 
 export function registerAuditTimeline(app: FastifyInstance): void {
@@ -65,10 +73,19 @@ export function registerAuditTimeline(app: FastifyInstance): void {
         await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
 
         // 3a. Events referencing this activity (via jsonb payload->>'activity_id')
+        //     Include hash/prev_hash/received_at for forensic hover-card (C.3).
         const events = await tx<
-          { id: string; kind: string; payload: unknown; captured_at: Date | string }[]
+          {
+            id: string;
+            kind: string;
+            payload: unknown;
+            captured_at: Date | string;
+            hash: string;
+            prev_hash: string | null;
+            received_at: Date | string;
+          }[]
         >`
-          SELECT id, kind, payload, captured_at
+          SELECT id, kind, payload, captured_at, hash, prev_hash, received_at
             FROM event
            WHERE subject_tenant_id = ${subject_tenant_id}
              AND payload->>'activity_id' = ${activityId}
@@ -138,7 +155,8 @@ export function registerAuditTimeline(app: FastifyInstance): void {
 
       const isoOf = (v: Date | string): string => (typeof v === 'string' ? v : v.toISOString());
 
-      for (const e of timeline.events) {
+      for (let i = 0; i < timeline.events.length; i++) {
+        const e = timeline.events[i]!;
         rows.push({
           kind: 'event',
           id: e.id,
@@ -146,6 +164,12 @@ export function registerAuditTimeline(app: FastifyInstance): void {
           event_kind: e.kind,
           chain_verified: chainStatus.verified,
           payload: e.payload,
+          forensic: {
+            first_recorded_at: isoOf(e.received_at),
+            content_hash: e.hash,
+            chain_position: i + 1,
+            prev_hash: e.prev_hash,
+          },
         });
       }
 
@@ -158,6 +182,11 @@ export function registerAuditTimeline(app: FastifyInstance): void {
             version: nv.version,
             generation_kind: nv.generation_kind,
             content_hash: nv.content_hash,
+          },
+          forensic: {
+            first_recorded_at: isoOf(nv.created_at),
+            content_hash: nv.content_hash,
+            edit_count: nv.version,
           },
         });
       }

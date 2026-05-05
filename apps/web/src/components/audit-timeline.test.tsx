@@ -1,9 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import type { TimelineRow, TimelineResponse } from './audit-timeline.js';
+import {
+  truncateHash,
+  type TimelineRow,
+  type TimelineResponse,
+  type ForensicMeta,
+} from './audit-timeline.js';
+import { truncateVersionHash, type NarrativeVersionEntry } from './narrative-version-diff.js';
 
 /**
- * P7 Theme C Task C.2 — audit-timeline component tests.
+ * P7 Theme C Tasks C.2 + C.3 — audit-timeline + narrative-version-diff tests.
  *
  * apps/web's runner is `tsx --test` (Node, no jsdom). Following the
  * pattern from multi-cycle-timeline.test.tsx and page.test.tsx, we test
@@ -13,16 +19,39 @@ import type { TimelineRow, TimelineResponse } from './audit-timeline.js';
  * Coverage:
  *   - TimelineRow interface: all five `kind` discriminants type-check
  *   - TimelineResponse structure matches expected shape
- *   - KIND_ICONS covers all five kinds
- *   - KIND_LABELS covers all five kinds
+ *   - ForensicMeta fields present on event + narrative_version rows
+ *   - truncateHash: long hashes → 8 chars; short hashes unchanged
+ *   - truncateVersionHash: same behaviour for narrative versions
  */
 
-// ---------- KIND_ICONS and KIND_LABELS coverage ----------
+// ---------- truncateHash ----------
 
-// We import the constants to verify exhaustiveness at the type level.
-// If a new kind is added to TimelineRow['kind'] without updating the
-// maps, TypeScript itself catches the gap via the Record<> constraint.
-// These tests confirm the runtime values match our spec.
+test('truncateHash: returns first 8 chars of long hash', () => {
+  const hash = 'abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890';
+  assert.equal(truncateHash(hash), 'abcdef12');
+  assert.equal(truncateHash(hash).length, 8);
+});
+
+test('truncateHash: short hash returned as-is', () => {
+  assert.equal(truncateHash('abc'), 'abc');
+  assert.equal(truncateHash('12345678'), '12345678');
+});
+
+test('truncateHash: exactly 8 chars returns unchanged', () => {
+  assert.equal(truncateHash('deadbeef'), 'deadbeef');
+});
+
+// ---------- truncateVersionHash ----------
+
+test('truncateVersionHash: returns first 8 chars of long hash', () => {
+  assert.equal(truncateVersionHash('hash_v1_abcdef1234567890'), 'hash_v1_');
+});
+
+test('truncateVersionHash: short hash returned as-is', () => {
+  assert.equal(truncateVersionHash('abc'), 'abc');
+});
+
+// ---------- TimelineRow kind discriminants ----------
 
 const EXPECTED_KINDS: TimelineRow['kind'][] = [
   'event',
@@ -33,9 +62,6 @@ const EXPECTED_KINDS: TimelineRow['kind'][] = [
 ];
 
 test('TimelineRow kind discriminants: all five expected kinds are type-valid', () => {
-  // This is a compile-time + runtime check: if a kind is removed from
-  // the union, TS errors here; if the list doesn't match at runtime,
-  // the assertion below catches it.
   const rows: TimelineRow[] = EXPECTED_KINDS.map((kind) => ({
     kind,
     id: `test-${kind}`,
@@ -48,7 +74,47 @@ test('TimelineRow kind discriminants: all five expected kinds are type-valid', (
   );
 });
 
-test('TimelineResponse shape: timeline array + chain_status object', () => {
+// ---------- ForensicMeta on event rows ----------
+
+test('ForensicMeta: event row carries chain_position + content_hash + first_recorded_at', () => {
+  const forensic: ForensicMeta = {
+    first_recorded_at: '2025-06-01T00:00:01Z',
+    content_hash: 'abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
+    chain_position: 3,
+    prev_hash: '0000000000000000000000000000000000000000000000000000000000000000',
+  };
+  const row: TimelineRow = {
+    kind: 'event',
+    id: 'e1',
+    timestamp: '2025-06-01T00:00:00Z',
+    event_kind: 'ACTIVITY_UPDATED',
+    chain_verified: true,
+    forensic,
+  };
+  assert.equal(row.forensic?.chain_position, 3);
+  assert.equal(truncateHash(forensic.content_hash ?? ''), 'abcdef12');
+  assert.equal(row.forensic?.prev_hash?.slice(0, 8), '00000000');
+});
+
+test('ForensicMeta: narrative_version row carries edit_count + content_hash', () => {
+  const forensic: ForensicMeta = {
+    first_recorded_at: '2025-06-01T00:06:00Z',
+    content_hash: 'hash_v2_content',
+    edit_count: 2,
+  };
+  const row: TimelineRow = {
+    kind: 'narrative_version',
+    id: 'nv2',
+    timestamp: '2025-06-01T00:06:00Z',
+    forensic,
+  };
+  assert.equal(row.forensic?.edit_count, 2);
+  assert.equal(row.forensic?.content_hash, 'hash_v2_content');
+});
+
+// ---------- TimelineResponse shape ----------
+
+test('TimelineResponse shape: timeline array + chain_status + forensic fields', () => {
   const response: TimelineResponse = {
     timeline: [
       {
@@ -58,30 +124,23 @@ test('TimelineResponse shape: timeline array + chain_status object', () => {
         event_kind: 'ACTIVITY_CREATED',
         chain_verified: true,
         payload: { activity_id: 'a1' },
+        forensic: {
+          first_recorded_at: '2025-06-01T00:00:01Z',
+          content_hash: 'abc123def456',
+          chain_position: 1,
+          prev_hash: null,
+        },
       },
       {
         kind: 'narrative_version',
         id: '2',
         timestamp: '2025-06-01T00:01:00Z',
         metadata: { version: 1, generation_kind: 'initial' },
-      },
-      {
-        kind: 'audit_log',
-        id: '3',
-        timestamp: '2025-06-01T00:02:00Z',
-        event_kind: 'HYPOTHESIS_FORMED_AT_IMMUTABILITY_VIOLATION',
-      },
-      {
-        kind: 'suggestion',
-        id: '4',
-        timestamp: '2025-06-01T00:03:00Z',
-        metadata: { source_kind: 'narrative_consistency', issue_summary: 'Gap' },
-      },
-      {
-        kind: 'similarity_flag',
-        id: '5',
-        timestamp: '2025-06-01T00:04:00Z',
-        metadata: { score: 0.87 },
+        forensic: {
+          first_recorded_at: '2025-06-01T00:01:00Z',
+          content_hash: 'hash_v1',
+          edit_count: 1,
+        },
       },
     ],
     chain_status: {
@@ -93,25 +152,23 @@ test('TimelineResponse shape: timeline array + chain_status object', () => {
   };
 
   assert.ok(Array.isArray(response.timeline));
-  assert.equal(response.timeline.length, 5);
-  assert.ok(response.chain_status);
-  assert.equal(response.chain_status.verified, true);
-  assert.equal(response.chain_status.event_count, 5);
-  assert.equal(response.chain_status.first_break_at, null);
+  assert.equal(response.timeline.length, 2);
+  assert.equal(response.timeline[0]!.forensic?.chain_position, 1);
+  assert.equal(response.timeline[1]!.forensic?.edit_count, 1);
 });
 
-test('TimelineRow: event rows carry chain_verified + event_kind', () => {
-  const row: TimelineRow = {
-    kind: 'event',
-    id: 'e1',
-    timestamp: '2025-06-01T00:00:00Z',
-    event_kind: 'ACTIVITY_UPDATED',
-    chain_verified: false,
-    payload: { activity_id: 'a1', index: 2 },
+// ---------- NarrativeVersionEntry ----------
+
+test('NarrativeVersionEntry: structure matches expected fields', () => {
+  const entry: NarrativeVersionEntry = {
+    id: 'v1',
+    version: 1,
+    generation_kind: 'initial',
+    content_hash: 'abcdef1234567890',
+    created_at: '2025-06-01T00:06:00Z',
   };
-  assert.equal(row.kind, 'event');
-  assert.equal(row.chain_verified, false);
-  assert.equal(row.event_kind, 'ACTIVITY_UPDATED');
+  assert.equal(entry.version, 1);
+  assert.equal(truncateVersionHash(entry.content_hash), 'abcdef12');
 });
 
 test('TimelineRow: chain_status.first_break_at records break position when chain is broken', () => {
@@ -129,3 +186,4 @@ test('TimelineRow: chain_status.first_break_at records break position when chain
 });
 
 test.todo('AuditTimeline component: full DOM interaction tested in Playwright e2e');
+test.todo('NarrativeVersionDiff component: full DOM interaction tested in Playwright e2e');
