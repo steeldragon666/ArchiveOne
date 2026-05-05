@@ -287,6 +287,7 @@ function baseChoreographyOpts(
     suggestion: makeSuggestionForChoreography(),
     evaluation: makeEvaluation(),
     reviewerUserId: ADMIN_USER,
+    runContractTest: () => Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
     fetch: fetchImpl,
     ...overrides,
   };
@@ -321,6 +322,7 @@ test('B.8: B.4 PromptSuggestionEvaluation composes into B.5 ChoreographyOptions 
     suggestion,
     evaluation,
     reviewerUserId: ADMIN_USER,
+    runContractTest: () => Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
     // No fetch — we never invoke generatePullRequest in this test.
   };
 
@@ -429,7 +431,7 @@ test('B.8: B.5 choreography — contract-test failure triggers branch DELETE and
     { match: '/git/refs/heads/', method: 'DELETE', body: '', status: 204 },
   ]);
   const runContractTest = mock.fn(
-    (): Promise<ContractTestResult> =>
+    (_changeSet: unknown[], _pkg: string, _pat: string): Promise<ContractTestResult> =>
       Promise.resolve({
         exitCode: 1,
         stdout: 'B.8 contract test simulated failure',

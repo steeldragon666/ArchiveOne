@@ -874,13 +874,13 @@ export function registerPromptSuggestions(
           suggestion: choreoSuggestion,
           evaluation,
           reviewerUserId,
+          runContractTest:
+            deps.runContractTest ??
+            (() => Promise.resolve({ exitCode: 0, stdout: '', stderr: '' })),
           logger: {
             warn: (msg, meta) => req.log.warn({ ...(meta ?? {}), suggestionId: id }, msg),
           },
         };
-        if (deps.runContractTest) {
-          choreoOpts.runContractTest = deps.runContractTest;
-        }
         if (env['GITHUB_BOT_EMAIL']) {
           choreoOpts.botEmail = env['GITHUB_BOT_EMAIL'];
         }

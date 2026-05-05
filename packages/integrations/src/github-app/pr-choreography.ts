@@ -140,7 +140,16 @@ export interface ContractTestResult {
   timedOut?: boolean;
 }
 
+/**
+ * Extended change-file shape with the proposed new content. The runner
+ * materializes these into the worktree before running tests.
+ */
+export interface ChoreographyChangedFileWithContent extends ChoreographyChangedFile {
+  newContent?: string;
+}
+
 export type ContractTestRunner = (
+  changeSet: ChoreographyChangedFileWithContent[],
   packageFilter: string,
   testPattern: string,
 ) => Promise<ContractTestResult>;
@@ -164,13 +173,10 @@ export interface ChoreographyOptions {
   reviewerUserId: string;
   /** DI seam for tests. Defaults to `globalThis.fetch`. */
   fetch?: typeof globalThis.fetch;
-  /** DI seam for tests. If provided, called BEFORE `pulls.create` to
-   *  exercise contract tests against the proposed change. If omitted,
-   *  the contract-test stage is SKIPPED — used in tests where the
-   *  test runner can't bring up the full pnpm sandbox. Production
-   *  callers MUST provide a runner; a TODO comment in the API handler
-   *  pins the wiring. */
-  runContractTest?: ContractTestRunner;
+  /** Contract-test runner called BEFORE `pulls.create` to verify the
+   *  proposed change-set passes the test suite. Required — production
+   *  callers supply a worktree-based runner; tests supply a trivial stub. */
+  runContractTest: ContractTestRunner;
   /** Bot author email; defaults to `process.env.GITHUB_BOT_EMAIL` or
    *  `bot@cpa-platform.local`. */
   botEmail?: string;
@@ -604,24 +610,18 @@ export async function generatePullRequest(opts: ChoreographyOptions): Promise<Ch
       context: 'pr-choreography: update branch ref',
     });
 
-    // Stage 7: contract test (BEFORE PR creation)
-    if (opts.runContractTest !== undefined) {
-      // Pick a sensible default test/package filter from the evaluator's
-      // own checks_run array if it nominated one; else fall back to a
-      // suggestion-id-based pattern that's effectively a no-op (matches
-      // nothing → exit 0). The API handler is welcome to wrap and pick
-      // a smarter pattern; this module's contract is just "if you
-      // provide a runner, we call it".
-      //
-      // We hand the runner the change-set context so the runner can
-      // pick the right pattern; for now we use a generic filter ('@cpa')
-      // and a pattern derived from the suggestion id so test seams
-      // remain deterministic.
+    // Stage 7: contract test (BEFORE PR creation) — REQUIRED.
+    {
+      const changeSet: ChoreographyChangedFileWithContent[] = opts.evaluation.files.map((f) => ({
+        path: f.path,
+        change_kind: f.change_kind,
+        newContent: f.newContent,
+      }));
       const packageFilter = '@cpa';
       const testPattern = `prompt-suggestion-${opts.suggestion.id.slice(0, 8)}`;
       let result: ContractTestResult;
       try {
-        result = await opts.runContractTest(packageFilter, testPattern);
+        result = await opts.runContractTest(changeSet, packageFilter, testPattern);
       } catch (e) {
         throw new ChoreographyError(
           'contract_test',
