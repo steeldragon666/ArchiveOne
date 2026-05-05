@@ -37,3 +37,5 @@ export * from './knowledge_search_record.js';
 export * from './multi_entity_similarity_score.js';
 export * from './r_and_d_facility.js';
 export * from './rd_forecast.js';
+export * from './regulatory_source.js';
+export * from './regulatory_event.js';

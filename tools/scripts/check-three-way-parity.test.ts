@@ -6,6 +6,10 @@ import {
   MULTI_ENTITY_SIMILARITY_KINDS,
   MULTI_ENTITY_REVIEWER_DISPOSITIONS,
   RD_FORECAST_CONFIDENCES,
+  REGULATORY_SOURCE_PARSER_KINDS,
+  REGULATORY_SOURCE_POLLED_STATUSES,
+  REGULATORY_EVENT_KINDS,
+  REGULATORY_EVENT_SEVERITIES,
 } from '@cpa/db/schema';
 
 /**
@@ -97,5 +101,61 @@ test('three-way parity: rd_forecast.confidence — SQL CHECK ↔ TS const', asyn
     sqlValues,
     Array.from(RD_FORECAST_CONFIDENCES).sort(),
     'SQL ↔ TS const mismatch for RD_FORECAST_CONFIDENCES',
+  );
+});
+
+// ---------------------------------------------------------------------------
+// D.8 RIF enums
+// ---------------------------------------------------------------------------
+
+test('three-way parity: regulatory_source.parser_kind — SQL CHECK ↔ TS const', async () => {
+  if (!dbAvailable) return;
+  const sqlValues = await getCheckValues(
+    'regulatory_source_parser_kind_valid',
+    'regulatory_source',
+  );
+  assert.deepEqual(
+    sqlValues,
+    Array.from(REGULATORY_SOURCE_PARSER_KINDS).sort(),
+    'SQL ↔ TS const mismatch for REGULATORY_SOURCE_PARSER_KINDS',
+  );
+});
+
+test('three-way parity: regulatory_source.last_polled_status — SQL CHECK ↔ TS const', async () => {
+  if (!dbAvailable) return;
+  const sqlValues = await getCheckValues(
+    'regulatory_source_last_polled_status_valid',
+    'regulatory_source',
+  );
+  assert.deepEqual(
+    sqlValues,
+    Array.from(REGULATORY_SOURCE_POLLED_STATUSES).sort(),
+    'SQL ↔ TS const mismatch for REGULATORY_SOURCE_POLLED_STATUSES',
+  );
+});
+
+test('three-way parity: regulatory_event.classification_kind — SQL CHECK ↔ TS const', async () => {
+  if (!dbAvailable) return;
+  const sqlValues = await getCheckValues(
+    'regulatory_event_classification_kind_valid',
+    'regulatory_event',
+  );
+  assert.deepEqual(
+    sqlValues,
+    Array.from(REGULATORY_EVENT_KINDS).sort(),
+    'SQL ↔ TS const mismatch for REGULATORY_EVENT_KINDS',
+  );
+});
+
+test('three-way parity: regulatory_event.classification_severity — SQL CHECK ↔ TS const', async () => {
+  if (!dbAvailable) return;
+  const sqlValues = await getCheckValues(
+    'regulatory_event_classification_severity_valid',
+    'regulatory_event',
+  );
+  assert.deepEqual(
+    sqlValues,
+    Array.from(REGULATORY_EVENT_SEVERITIES).sort(),
+    'SQL ↔ TS const mismatch for REGULATORY_EVENT_SEVERITIES',
   );
 });

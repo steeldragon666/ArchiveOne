@@ -95,8 +95,8 @@ export async function runPairwiseScan(input: ScanInput): Promise<ScanResult> {
     };
   }
 
-  // 2. Load historical rejection corpus (empty until D.8)
-  const rejections = await loadHistoricalRejections(tenantId);
+  // 2. Load historical rejection corpus
+  const rejections = await loadHistoricalRejections(tenantId, executor);
 
   // 3. Generate ordered pairs (a.id < b.id)
   const mutableActivities = [...activities];

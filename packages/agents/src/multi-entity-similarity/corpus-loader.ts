@@ -1,10 +1,9 @@
+import type { SimilaritySqlExecutor } from './scorer.js';
+
 /**
  * Historical rejection corpus entry from regulatory_event rows where
  * classification_kind IN ('aat_decision','art_decision') and severity
  * indicates rejection.
- *
- * STUB: returns empty array until D.8 creates the regulatory_event table
- * and the follow-up session populates the backfill.
  */
 export interface HistoricalRejection {
   event_id: string;
@@ -17,23 +16,28 @@ export interface HistoricalRejection {
 /**
  * Load historical rejection corpus for similarity comparison.
  *
- * Returns an empty array until D.8 creates the regulatory_event and
- * regulatory_source tables. The follow-up session that implements D.8
- * will light up this query.
+ * Queries regulatory_event for AAT/ART decisions with high or medium
+ * severity — these represent past rejections that current activities
+ * might resemble, triggering a DISR pattern-match warning.
  *
- * @param _tenantId - Tenant scope (unused until D.8)
+ * Note: regulatory_event is a global table (no RLS), so the tenantId
+ * parameter is reserved for future tenant-scoped filtering if needed.
+ *
+ * @param _tenantId - Reserved for future tenant-scoped filtering
+ * @param executor  - DI seam for the SQL client (tests inject a stub)
  */
-export function loadHistoricalRejections(_tenantId: string): Promise<HistoricalRejection[]> {
-  // STUB: regulatory_event table does not exist yet (D.8).
-  // When D.8 lands, replace with:
-  //   const rows = await executor`
-  //     SELECT id AS event_id, raw_title AS title, raw_content AS content,
-  //            classification_kind, published_at
-  //     FROM regulatory_event
-  //     WHERE classification_kind IN ('aat_decision', 'art_decision')
-  //       AND classification_severity IN ('high', 'medium')
-  //   `;
-  //   return rows as HistoricalRejection[];
-  void _tenantId; // suppress unused warning
-  return Promise.resolve([]);
+export async function loadHistoricalRejections(
+  _tenantId: string,
+  executor: SimilaritySqlExecutor,
+): Promise<HistoricalRejection[]> {
+  void _tenantId;
+  const rows = await executor<HistoricalRejection>`
+    SELECT id AS event_id, raw_title AS title, raw_content AS content,
+           classification_kind, published_at::text
+    FROM regulatory_event
+    WHERE classification_kind IN ('aat_decision', 'art_decision')
+      AND classification_severity IN ('high', 'medium')
+    ORDER BY published_at DESC
+  `;
+  return rows as HistoricalRejection[];
 }
