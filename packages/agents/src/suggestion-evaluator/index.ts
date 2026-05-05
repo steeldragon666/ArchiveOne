@@ -22,6 +22,15 @@ export {
 } from './repo-tools.js';
 export type { RepoToolName } from './repo-tools.js';
 export { SYSTEM_PROMPT } from './prompts/prompt-suggestion-evaluate@1.0.0.js';
+export {
+  evaluate,
+  EvaluatorConfigError,
+  EvaluatorUpstreamError,
+  EvaluatorParseError,
+  EvaluatorLoopExhaustedError,
+  type EvaluateInput,
+  type EvaluateSuggestionInput,
+} from './evaluate.js';
 
 // Side-effect import: registers `prompt-suggestion-evaluate@1.0.0` in the
 // runtime prompt registry. Mirrors the pattern in
