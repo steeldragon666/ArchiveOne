@@ -2,8 +2,20 @@
 // any module that fastify/pino/postgres-js depends on is loaded.
 import { sdk } from './tracer-init.js';
 import { buildApp } from './app.js';
+import { evaluate as defaultEvaluate } from '@cpa/agents/suggestion-evaluator';
+import { generatePullRequest } from '@cpa/integrations/github-app';
+import { buildContractTestRunner } from './lib/contract-test-runner.js';
 
-const app = buildApp();
+const repoRoot = process.env['REPO_ROOT'] ?? process.cwd();
+
+const app = buildApp({
+  promptSuggestions: {
+    evaluate: (input) =>
+      defaultEvaluate({ suggestion: input.suggestion, repoRoot: input.repoRoot }),
+    choreograph: (opts) => generatePullRequest(opts),
+    runContractTest: buildContractTestRunner({ repoRoot }),
+  },
+});
 
 const port = Number(process.env.API_PORT ?? 3000);
 

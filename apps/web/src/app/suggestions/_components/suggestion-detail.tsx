@@ -52,16 +52,15 @@ import { TriageForm } from './triage-form';
  * for every authenticated request. Rendering the button as if it
  * works would give consultants a non-functional CTA.
  *
- * Phase 2 (B.5.1 follow-up) wires the production evaluator + flips
- * this flag on by default. Until then the button is hidden by default
- * and can be enabled in dev/staging by setting
- *   NEXT_PUBLIC_FEATURE_GENERATE_PR=true
- * to exercise the dep-injection seam against a stubbed evaluator.
+ * The production evaluator + contract-test runner are now wired (P7b
+ * Issue #27). The button is on by default; set
+ *   NEXT_PUBLIC_FEATURE_GENERATE_PR=false
+ * as an explicit kill-switch if the endpoint needs to be disabled.
  *
  * The state-machine gate `canGeneratePr(status)` remains independent
  * — it asserts "this transition is allowed", not "this feature ships".
  */
-const FEATURE_GENERATE_PR = process.env['NEXT_PUBLIC_FEATURE_GENERATE_PR'] === 'true';
+const FEATURE_GENERATE_PR = process.env['NEXT_PUBLIC_FEATURE_GENERATE_PR'] !== 'false';
 
 export interface SuggestionDetailProps {
   suggestionId: string;
