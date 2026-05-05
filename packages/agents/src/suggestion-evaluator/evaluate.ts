@@ -66,16 +66,16 @@ export class EvaluatorUpstreamError extends Error {
 }
 export class EvaluatorParseError extends Error {
   override readonly name = 'EvaluatorParseError';
-  /** First 500 chars of the unparseable response, for triage. */
-  rawSnippet: string;
+  /** First 500 chars of the unparseable response, for triage. Truncated by the constructor. */
+  readonly rawSnippet: string;
   constructor(message: string, rawSnippet: string) {
     super(message);
-    this.rawSnippet = rawSnippet;
+    this.rawSnippet = rawSnippet.slice(0, 500);
   }
 }
 export class EvaluatorLoopExhaustedError extends Error {
   override readonly name = 'EvaluatorLoopExhaustedError';
-  turnsUsed: number;
+  readonly turnsUsed: number;
   constructor(message: string, turnsUsed: number) {
     super(message);
     this.turnsUsed = turnsUsed;
