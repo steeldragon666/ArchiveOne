@@ -39,24 +39,81 @@ export interface ActiveTenantResult {
  * email — the audit trail anchors on it.
  *
  * Note: user table is GLOBAL (no RLS) — direct sql writes work as cpa_app.
+ *
+ * Race-safety: the `user` table has TWO unique constraints we have to
+ * handle for concurrent-login correctness:
+ *   1. partial unique index on (primary_idp, external_id) WHERE
+ *      deleted_at IS NULL  — handled by `ON CONFLICT (...)`.
+ *   2. unique constraint on `email` (`user_email_unique`)  — NOT
+ *      reachable from a single ON CONFLICT (Postgres has no syntax for
+ *      multi-target ON CONFLICT).
+ *
+ * When two concurrent OIDC logins for the same user (same external_id +
+ * same email) hit different DB connections within ~1ms, both INSERTs
+ * see no `(primary_idp, external_id)` row yet (neither has committed)
+ * and try to insert. The first one wins; the second one is rejected by
+ * `user_email_unique` BEFORE the ON CONFLICT branch can run. Without
+ * recovery, the second login returns 500 in production.
+ *
+ * Recovery: catch the email-unique violation and run an UPDATE-RETURNING
+ * scoped to (primary_idp, external_id, deleted_at IS NULL) — this both
+ * bumps last_login_at AND returns the row, identical to the lucky-path
+ * ON CONFLICT branch in one roundtrip (vs. SELECT-then-UPDATE which
+ * races against a third concurrent caller).
+ *
+ * If recovery returns no row, that means we hit `user_email_unique` for
+ * a DIFFERENT user (two distinct external_ids trying to claim the same
+ * email — a real integrity error, not a race). We re-throw.
  */
 export async function findOrCreateUser(input: FindOrCreateUserInput): Promise<UserRow> {
-  // Race-free single-roundtrip pattern. The unique index on
-  // (primary_idp, external_id) WHERE deleted_at IS NULL means concurrent
-  // logins for the same external user will both target the same row;
-  // the second one's ON CONFLICT branch updates last_login_at without
-  // touching email or display_name. RETURNING * gives us the row either
-  // way.
   const newId = crypto.randomUUID();
-  const rows = await sql<UserRow[]>`
-    INSERT INTO "user" (id, email, display_name, primary_idp, external_id, last_login_at)
-    VALUES (${newId}, ${input.email}, ${input.displayName}, ${input.primaryIdp}, ${input.externalId}, NOW())
-    ON CONFLICT (primary_idp, external_id) WHERE deleted_at IS NULL
-    DO UPDATE SET last_login_at = NOW()
-    RETURNING id, email, display_name AS "displayName", primary_idp AS "primaryIdp", external_id AS "externalId"
-  `;
-  if (!rows[0]) throw new Error('findOrCreateUser: INSERT/ON CONFLICT did not return a row');
-  return rows[0];
+  try {
+    const rows = await sql<UserRow[]>`
+      INSERT INTO "user" (id, email, display_name, primary_idp, external_id, last_login_at)
+      VALUES (${newId}, ${input.email}, ${input.displayName}, ${input.primaryIdp}, ${input.externalId}, NOW())
+      ON CONFLICT (primary_idp, external_id) WHERE deleted_at IS NULL
+      DO UPDATE SET last_login_at = NOW()
+      RETURNING id, email, display_name AS "displayName", primary_idp AS "primaryIdp", external_id AS "externalId"
+    `;
+    if (!rows[0]) throw new Error('findOrCreateUser: INSERT/ON CONFLICT did not return a row');
+    return rows[0];
+  } catch (err) {
+    if (!isEmailUniqueViolation(err)) throw err;
+    // Lost the race on user_email_unique. The other concurrent caller's
+    // row is already committed; UPDATE-RETURNING produces the same end
+    // state as the lucky-path ON CONFLICT branch (bump last_login_at +
+    // return row).
+    const recovered = await sql<UserRow[]>`
+      UPDATE "user"
+         SET last_login_at = NOW()
+       WHERE primary_idp = ${input.primaryIdp}
+         AND external_id = ${input.externalId}
+         AND deleted_at IS NULL
+      RETURNING id, email, display_name AS "displayName", primary_idp AS "primaryIdp", external_id AS "externalId"
+    `;
+    if (!recovered[0]) {
+      // No matching (primary_idp, external_id) row → the email collision
+      // is between two DIFFERENT users, not a race. Real integrity
+      // violation; re-throw the original error.
+      throw err;
+    }
+    return recovered[0];
+  }
+}
+
+/**
+ * Detect a postgres-js unique-violation error specifically on the
+ * `user_email_unique` constraint. SQLSTATE 23505 is the unique-violation
+ * code. We check both `constraint_name` (when populated by postgres-js)
+ * and the message text, so this remains correct across postgres-js
+ * versions and across DBs where constraint metadata may be missing.
+ */
+function isEmailUniqueViolation(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false;
+  const e = err as { code?: unknown; constraint_name?: unknown; message?: unknown };
+  if (e.code !== '23505') return false;
+  if (e.constraint_name === 'user_email_unique') return true;
+  return typeof e.message === 'string' && e.message.includes('user_email_unique');
 }
 
 interface PrivilegedTenantUserRow {
