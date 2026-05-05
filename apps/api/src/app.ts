@@ -26,6 +26,7 @@ import { registerMicrosoftAuth } from './routes/auth/microsoft.js';
 import { registerSignout } from './routes/auth/signout.js';
 import { healthRoutes } from './routes/health.js';
 import { registerAuditScore } from './routes/audit-score.js';
+import { registerAuditTimeline } from './routes/audit-timeline.js';
 import { registerBrandConfig } from './routes/brand-config.js';
 import { registerClaimantMagicLinkRedeem } from './routes/claimant-magic-link.js';
 import { registerClaimantStatus } from './routes/claimant-status.js';
@@ -230,6 +231,10 @@ export function buildApp(options: BuildAppOptions = {}): App {
   });
   app.register((instance, _opts, done) => {
     registerAuditScore(instance);
+    done();
+  });
+  app.register((instance, _opts, done) => {
+    registerAuditTimeline(instance);
     done();
   });
   app.register((instance, _opts, done) => {
