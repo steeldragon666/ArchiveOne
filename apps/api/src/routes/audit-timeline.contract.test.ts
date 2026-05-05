@@ -13,8 +13,8 @@ import { buildApp } from '../app.js';
  *
  * 1. Verified chain → chain_verified=true on all event rows
  * 2. Tampered chain → chain_verified=false on all event rows
- * 3. Multi-entity endpoint → empty scores + similarity_available=false
- *    when multi_entity_similarity_score table doesn't exist (pre-p7d)
+ * 3. Multi-entity endpoint → empty scores + similarity_available=true
+ *    when multi_entity_similarity_score table exists but has no data
  *
  * Seeds BOTH verified-anchor AND tampered-anchor cases per C.6 spec.
  */
@@ -212,8 +212,8 @@ describe('Contract: audit-timeline chain verification', () => {
   });
 });
 
-describe('Contract: multi-entity-comparison pre-p7d', () => {
-  test('returns empty scores + similarity_available=false when table does not exist', async (t) => {
+describe('Contract: multi-entity-comparison with empty similarity table', () => {
+  test('returns empty scores + similarity_available=true when table exists but has no data', async (t) => {
     if (skipIfNoDb(t)) return;
     const app = buildApp();
     await app.ready();
@@ -229,9 +229,13 @@ describe('Contract: multi-entity-comparison pre-p7d', () => {
       similarity_available: boolean;
     };
 
-    assert.equal(body.similarity_available, false, 'similarity_available must be false pre-p7d');
+    assert.equal(
+      body.similarity_available,
+      true,
+      'similarity_available must be true when table exists',
+    );
     assert.ok(Array.isArray(body.scores), 'scores must be an array');
-    assert.equal(body.scores.length, 0, 'scores must be empty pre-p7d');
+    assert.equal(body.scores.length, 0, 'scores must be empty when no similarity data exists');
 
     await app.close();
   });

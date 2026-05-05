@@ -32,7 +32,7 @@ export function registerIntelligence(app: FastifyInstance): void {
           e.id, e.source_id, e.external_id, e.raw_title, e.raw_content,
           e.source_url, e.published_at, e.classified_at,
           e.classification_kind, e.classification_severity,
-          s.name AS source_name
+          s.source_name AS source_name
         FROM regulatory_event e
         JOIN regulatory_source s ON s.id = e.source_id
         WHERE (${kind}::text IS NULL OR e.classification_kind = ${kind})
@@ -62,7 +62,7 @@ export function registerIntelligence(app: FastifyInstance): void {
   app.get('/v1/intelligence/sources', { preHandler: requireSession }, async (_request, reply) => {
     const sources = await privilegedSql`
         SELECT
-          id, name, parser_kind, base_url, fetch_interval_hours, enabled,
+          id, source_name, parser_kind, source_url, fetch_interval_hours, enabled,
           last_polled_at, last_polled_status,
           CASE
             WHEN last_polled_at IS NULL THEN true
@@ -70,7 +70,7 @@ export function registerIntelligence(app: FastifyInstance): void {
             ELSE false
           END AS stale
         FROM regulatory_source
-        ORDER BY name
+        ORDER BY source_name
       `;
     return reply.send({ sources });
   });
