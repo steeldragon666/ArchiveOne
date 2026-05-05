@@ -6,6 +6,14 @@ import { repoTools, dispatchRepoTool } from './repo-tools.js';
 import { getAnthropicClient } from '../runtime/anthropic-client.js';
 
 /**
+ * Per-call max_tokens budget for the Anthropic conversation. If a turn
+ * truncates at this limit, we surface an {@link EvaluatorTruncatedError}
+ * carrying the value so callers can decide whether to raise the cap or
+ * split the suggestion.
+ */
+const MAX_TOKENS = 8192;
+
+/**
  * Local structural interface for the suggestion shape this evaluator
  * consumes. Identical shape to `PromptSuggestionForChoreography` in
  * `@cpa/integrations/github-app`, but cannot be imported from there
@@ -122,7 +130,7 @@ export async function evaluate(input: EvaluateInput): Promise<PromptSuggestionEv
           system: SYSTEM_PROMPT,
           messages,
           tools: anthropicToolDefinitions(),
-          max_tokens: 8192,
+          max_tokens: MAX_TOKENS,
         },
         { signal: input.signal },
       );
@@ -163,7 +171,26 @@ export async function evaluate(input: EvaluateInput): Promise<PromptSuggestionEv
       continue;
     }
 
-    // stop_reason === 'end_turn' (or similar) — extract final text and parse.
+    if (response.stop_reason === 'max_tokens') {
+      throw new EvaluatorTruncatedError(
+        `Anthropic truncated the response at max_tokens=${MAX_TOKENS} on turn ${turn}; ` +
+          `consider raising max_tokens or splitting the suggestion into smaller pieces.`,
+        MAX_TOKENS,
+        turn,
+      );
+    }
+    if (response.stop_reason !== 'end_turn' && response.stop_reason !== null) {
+      // 'stop_sequence' or any new/unknown value — log a warning and still try to parse,
+      // since the response might be a complete final answer that just stopped on a sequence
+      // we didn't anticipate. Keeps forward compat without silent failures.
+      // (Use console.warn since we don't have a logger DI seam in evaluate.ts; the API-layer
+      // wiring already logs structured info around this call site.)
+      console.warn(
+        `[evaluator] unexpected stop_reason="${response.stop_reason}" on turn ${turn}; attempting parse anyway`,
+      );
+    }
+
+    // stop_reason === 'end_turn' OR an unknown-but-not-truncating value — extract final text and parse.
     const finalText = response.content
       .filter((b): b is Anthropic.Messages.TextBlock => b.type === 'text')
       .map((b) => b.text)
@@ -216,6 +243,23 @@ export class EvaluatorLoopExhaustedError extends Error {
   readonly turnsUsed: number;
   constructor(message: string, turnsUsed: number) {
     super(message);
+    this.turnsUsed = turnsUsed;
+  }
+}
+/**
+ * Thrown when Anthropic returns stop_reason='max_tokens' — the response
+ * was truncated mid-stream and the JSON we'd parse is incomplete.
+ * Distinct from EvaluatorParseError (which signals the model produced
+ * malformed JSON) so callers can distinguish "model misbehaved" from
+ * "we hit our max_tokens budget and need a higher cap".
+ */
+export class EvaluatorTruncatedError extends Error {
+  override readonly name = 'EvaluatorTruncatedError';
+  readonly maxTokens: number;
+  readonly turnsUsed: number;
+  constructor(message: string, maxTokens: number, turnsUsed: number) {
+    super(message);
+    this.maxTokens = maxTokens;
     this.turnsUsed = turnsUsed;
   }
 }

@@ -8,6 +8,7 @@ import {
   EvaluatorUpstreamError,
   EvaluatorParseError,
   EvaluatorLoopExhaustedError,
+  EvaluatorTruncatedError,
 } from './evaluate.js';
 
 // ---------------------------------------------------------------------------
@@ -292,4 +293,20 @@ test('evaluate: missing API key (no anthropic + no env) -> EvaluatorConfigError'
   } finally {
     if (saved !== undefined) process.env['ANTHROPIC_API_KEY'] = saved;
   }
+});
+
+test('evaluate: stop_reason=max_tokens throws EvaluatorTruncatedError', async () => {
+  const fakeAnthropic = mockAnthropicReturning({
+    content: [{ type: 'text' as const, text: '{"suggestion_id":"abc","files":[' }], // truncated
+    stop_reason: 'max_tokens',
+  });
+  await assert.rejects(
+    () =>
+      evaluate({
+        suggestion: makeSuggestion(),
+        repoRoot: process.cwd(),
+        anthropic: fakeAnthropic,
+      }),
+    (err: unknown) => err instanceof EvaluatorTruncatedError && err.turnsUsed === 1,
+  );
 });

@@ -28,6 +28,7 @@ export {
   EvaluatorUpstreamError,
   EvaluatorParseError,
   EvaluatorLoopExhaustedError,
+  EvaluatorTruncatedError,
   type EvaluateInput,
   type EvaluateSuggestionInput,
 } from './evaluate.js';
