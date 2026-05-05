@@ -63,6 +63,35 @@ const ZERO_RESULT: ExpenditureClassifyJobResult = {
   needs_review_downgraded: 0,
 };
 
+/**
+ * In-flight classify-job registry for test determinism.
+ *
+ * Production callers do `void enqueueExpenditureClassify(...).catch(...)`
+ * — the route's 202 returns before the classifier's INSERT lands. That's
+ * the right shape for production (classification is best-effort,
+ * downstream of EXPENDITURE_INGESTED) but it produces a race in tests:
+ *
+ *   1. Test A POSTs to /reclassify; route fires-and-forgets; returns 202.
+ *   2. Test A asserts on response, completes.
+ *   3. Test B's beforeEach DELETEs `event WHERE kind = 'EXPENDITURE_CLASSIFIED'`.
+ *   4. Test A's still-in-flight enqueue *now* INSERTs the EXPENDITURE_CLASSIFIED
+ *      row — landing AFTER Test B's cleanup, polluting Test B's assertion.
+ *
+ * Tests can call `drainPendingClassifyJobs()` in beforeEach (after all
+ * Promise.allSettled work) to wait for any in-flight jobs from prior
+ * tests to settle BEFORE the cleanup DELETE runs. This converts the
+ * fire-and-forget pattern into a deterministic barrier without
+ * changing production semantics.
+ *
+ * Implementation: Set so add/delete are O(1) and order doesn't matter.
+ * Each enqueue adds itself, then schedules a `.finally` cleanup that
+ * removes itself when the promise settles. The drain helper takes a
+ * snapshot of the current Set members and awaits Promise.allSettled —
+ * so a transient classifier failure in one pending job doesn't crash
+ * the test's beforeEach.
+ */
+const _pendingJobs: Set<Promise<unknown>> = new Set();
+
 export function enqueueExpenditureClassify(
   input: EnqueueExpenditureClassifyInput,
 ): Promise<ExpenditureClassifyJobResult> {
@@ -70,6 +99,7 @@ export function enqueueExpenditureClassify(
   // matches the intent of the gates — when Agent A is disabled (or this
   // tenant isn't in the staged-rollout allowlist), the trigger should be
   // a true no-op with no observable side effects.
+  // Gated calls do no DB work and therefore need no drain tracking.
   if (!isAgentEnabled('A')) return Promise.resolve({ ...ZERO_RESULT });
   if (!isTenantAllowed(input.tenant_id)) return Promise.resolve({ ...ZERO_RESULT });
   if (input.expenditure_ids.length === 0) return Promise.resolve({ ...ZERO_RESULT });
@@ -78,10 +108,10 @@ export function enqueueExpenditureClassify(
   // { tenant_id, expenditure_ids })` once pg-boss is bootstrapped. The
   // call shape is intentionally identical — the handler signature already
   // matches the pg-boss job-data contract.
-  return runExpenditureClassifyJob({
+  const job = runExpenditureClassifyJob({
     tenant_id: input.tenant_id,
     expenditure_ids: input.expenditure_ids,
-  }).catch((err) => {
+  }).catch((err: unknown) => {
     // Hook errors must NOT propagate up to fail the parent
     // EXPENDITURE_INGESTED insert. The chain transaction has already
     // committed by the time we run; classification is downstream and
@@ -99,4 +129,45 @@ export function enqueueExpenditureClassify(
     // so the rejection is unhandled-but-observed-by-the-catch above.
     throw err;
   });
+
+  // Register for drain. Use `void` on the .finally chain so the cleanup's
+  // own promise (which we don't return) doesn't trigger an unhandled-
+  // rejection warning. Note the .finally callback fires regardless of
+  // resolve/reject — so we always cleanup.
+  _pendingJobs.add(job);
+  void job.finally(() => {
+    _pendingJobs.delete(job);
+  });
+
+  return job;
+}
+
+/**
+ * Wait for all in-flight `enqueueExpenditureClassify(...)` jobs to
+ * settle (resolve OR reject). Test-only — production code should never
+ * need this; the fire-and-forget pattern is intentional in production.
+ *
+ * Use in `beforeEach` (or before assertions that read from `event`,
+ * `agent_call_cache`, etc.) to convert the fire-and-forget pattern into
+ * a deterministic barrier. Without this, the prior test's still-pending
+ * enqueue can land its INSERT after `beforeEach` runs, polluting the
+ * current test's preconditions.
+ *
+ * Snapshot semantics: takes the Set members at call time. New jobs
+ * registered AFTER drain starts are NOT awaited (by design — the caller
+ * is asking "settle everything in flight now", not "block forever").
+ *
+ * Uses `Promise.allSettled` so one transient classifier failure
+ * doesn't crash the caller. Errors are still logged via the catch
+ * handler above; this just means the drain itself never throws.
+ */
+export async function drainPendingClassifyJobs(): Promise<void> {
+  if (_pendingJobs.size === 0) return;
+  const snapshot = Array.from(_pendingJobs);
+  await Promise.allSettled(snapshot);
+}
+
+/** Test-only: number of currently-pending classify jobs. */
+export function _pendingClassifyJobsCount(): number {
+  return _pendingJobs.size;
 }
