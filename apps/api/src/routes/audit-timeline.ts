@@ -71,6 +71,8 @@ export function registerAuditTimeline(app: FastifyInstance): void {
       // 3. Query all timeline sources in parallel within one transaction
       const timeline = await sql.begin(async (tx) => {
         await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+        // audit_log uses a separate RLS GUC (app.current_firm_id)
+        await tx`SELECT set_config('app.current_firm_id', ${tenantId}, true)`;
 
         // 3a. Events referencing this activity (via jsonb payload->>'activity_id')
         //     Include hash/prev_hash/received_at for forensic hover-card (C.3).
