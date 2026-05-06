@@ -18,3 +18,6 @@ export {
   COMPANY_TAX_RATE,
 } from './clawback-calculator.js';
 export type { ClawbackInput, ClawbackResult, ClawbackSummary } from './clawback-calculator.js';
+
+export { reconcileClaim } from './reconciliation.js';
+export type { ReconciliationFinding, ReconciliationInput } from './reconciliation.js';
