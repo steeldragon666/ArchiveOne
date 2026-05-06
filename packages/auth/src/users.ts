@@ -1,7 +1,7 @@
 import { sql, privilegedSql } from '@cpa/db/client';
 
 export interface FindOrCreateUserInput {
-  primaryIdp: 'microsoft' | 'google';
+  primaryIdp: 'microsoft' | 'google' | 'email';
   externalId: string;
   email: string;
   displayName: string | null;
@@ -11,7 +11,7 @@ export interface UserRow {
   id: string;
   email: string;
   displayName: string | null;
-  primaryIdp: 'microsoft' | 'google';
+  primaryIdp: 'microsoft' | 'google' | 'email';
   externalId: string;
 }
 

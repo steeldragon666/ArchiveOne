@@ -57,6 +57,7 @@ import {
   registerBillingWebhookPlugin,
   type BillingWebhookRouteDeps,
 } from './routes/billing-webhook.js';
+import { registerSignupRoutes, type SignupRouteDeps } from './routes/auth/signup.js';
 import { registerCompliance } from './routes/compliance.js';
 import { registerIntelligence } from './routes/intelligence.js';
 import { registerListTenants } from './routes/tenants/list.js';
@@ -120,6 +121,7 @@ export interface BuildAppOptions {
   promptSuggestions?: PromptSuggestionsRouteDeps;
   billing?: BillingRouteDeps;
   billingWebhook?: BillingWebhookRouteDeps;
+  signup?: SignupRouteDeps;
 }
 
 export function buildApp(options: BuildAppOptions = {}): App {
@@ -347,6 +349,12 @@ export function buildApp(options: BuildAppOptions = {}): App {
   if (options.billingWebhook) {
     app.register((instance, _opts, done) => {
       registerBillingWebhookPlugin(instance, options.billingWebhook!);
+      done();
+    });
+  }
+  if (options.signup) {
+    app.register((instance, _opts, done) => {
+      registerSignupRoutes(instance, options.signup!);
       done();
     });
   }
