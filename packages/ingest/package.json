@@ -1,0 +1,36 @@
+{
+  "name": "@cpa/ingest",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "test": "tsx --env-file-if-exists=../../.env --test --test-force-exit --test-concurrency=1 \"src/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src"
+  },
+  "dependencies": {
+    "mammoth": "^1.8.0",
+    "papaparse": "^5.4.1",
+    "pdf-parse": "^1.1.1",
+    "tesseract.js": "^6.0.0",
+    "mailparser": "^3.7.2",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/papaparse": "^5.3.14",
+    "@types/mailparser": "^3.4.6",
+    "@types/pdf-parse": "^1.1.4",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
+}
