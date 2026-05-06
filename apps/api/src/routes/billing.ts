@@ -2,44 +2,13 @@ import type { FastifyInstance } from 'fastify';
 import type Stripe from 'stripe';
 import { z } from 'zod';
 import { requireSession } from '@cpa/auth';
-import { privilegedSql } from '@cpa/db/client';
+import {
+  FOUNDER_COUPON_ID,
+  tryClaimFoundingPartnerSlot,
+} from '../lib/founding-partner-allocator.js';
 
 export interface BillingRouteDeps {
   stripe: Stripe;
-}
-
-/**
- * Stripe coupon ID applied when a founding-partner slot is available.
- * The coupon must exist in Stripe (created during ops setup — see Task 1.1).
- * 50% off all components for 12 months for the first 10 firms.
- */
-const FOUNDER_COUPON = 'FOUNDER-50';
-
-/**
- * Check if an unclaimed founding-partner slot exists and atomically claim it
- * for the given tenant.
- *
- * Uses an advisory lock keyed on the table name to prevent two concurrent
- * requests racing to claim the same slot. The lock is released at transaction
- * end (xact-level advisory lock).
- *
- * Returns true if a slot was successfully claimed, false otherwise.
- */
-async function tryClaimFoundingPartnerSlot(tenantId: string): Promise<boolean> {
-  const rows = await privilegedSql<{ id: string }[]>`
-    UPDATE founding_partner_slots
-       SET claimed_by_tenant_id = ${tenantId},
-           claimed_at           = NOW()
-     WHERE id = (
-           SELECT id
-             FROM founding_partner_slots
-            WHERE claimed_by_tenant_id IS NULL
-            LIMIT 1
-            FOR UPDATE SKIP LOCKED
-           )
- RETURNING id
-  `;
-  return rows.length > 0;
 }
 
 export function registerBilling(app: FastifyInstance, deps: BillingRouteDeps): void {
@@ -87,7 +56,7 @@ export function registerBilling(app: FastifyInstance, deps: BillingRouteDeps): v
             ? [{ price: process.env['STRIPE_PRICE_ID_SLA'], quantity: 1 }]
             : []),
         ],
-        ...(hasFoundingSlot ? { discounts: [{ coupon: FOUNDER_COUPON }] } : {}),
+        ...(hasFoundingSlot ? { discounts: [{ coupon: FOUNDER_COUPON_ID }] } : {}),
       };
 
       const session = await stripe.checkout.sessions.create(sessionParams);
