@@ -135,6 +135,7 @@ const cleanup = async (): Promise<void> => {
   await privilegedSql`DELETE FROM subscription_item WHERE tenant_id = ${TENANT}`;
   await privilegedSql`DELETE FROM subscription WHERE tenant_id = ${TENANT}`;
   await privilegedSql`DELETE FROM claim WHERE tenant_id = ${TENANT}`;
+  await privilegedSql`DELETE FROM audit_score_snapshot WHERE subject_tenant_id IN (SELECT id FROM subject_tenant WHERE tenant_id = ${TENANT})`;
   await privilegedSql`DELETE FROM subject_tenant WHERE tenant_id = ${TENANT}`;
   await privilegedSql`DELETE FROM tenant_user WHERE tenant_id = ${TENANT}`;
   await sql`DELETE FROM "user" WHERE id = ${ADMIN_USER}`;

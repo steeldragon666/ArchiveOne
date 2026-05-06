@@ -62,6 +62,7 @@ function makeMockStripe(onCall?: (call: MockCall) => void): {
 
 const cleanup = async (): Promise<void> => {
   await privilegedSql`DELETE FROM claim WHERE id IN (${CLAIM_A}, ${CLAIM_B})`;
+  await privilegedSql`DELETE FROM audit_score_snapshot WHERE subject_tenant_id = ${SUBJECT}`;
   await privilegedSql`DELETE FROM subscription_item WHERE id = ${SUB_ITEM}`;
   await privilegedSql`DELETE FROM subscription WHERE id = ${SUBSCRIPTION}`;
   await privilegedSql`DELETE FROM subject_tenant WHERE id = ${SUBJECT}`;

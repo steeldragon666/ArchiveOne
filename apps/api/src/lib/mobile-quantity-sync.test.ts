@@ -73,6 +73,7 @@ const cleanup = async (): Promise<void> => {
   await privilegedSql`DELETE FROM claimant_mobile_subscription WHERE tenant_id IN (${TENANT})`;
   await privilegedSql`DELETE FROM subscription_item WHERE id = ${SUB_ITEM}`;
   await privilegedSql`DELETE FROM subscription WHERE id = ${SUBSCRIPTION}`;
+  await privilegedSql`DELETE FROM audit_score_snapshot WHERE subject_tenant_id IN (SELECT id FROM subject_tenant WHERE tenant_id = ${TENANT})`;
   await privilegedSql`DELETE FROM subject_tenant WHERE tenant_id = ${TENANT}`;
   await sql`DELETE FROM tenant WHERE id IN (${TENANT}, ${NO_SI_TENANT})`;
 };
