@@ -158,7 +158,23 @@ for role in "${DEPLOY_SA_ROLES[@]}"; do
 done
 
 # -----------------------------------------------------------------------------
-# 6. Summary
+# 6. Budget alerts
+# -----------------------------------------------------------------------------
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -x "${SCRIPT_DIR}/budget-alerts.sh" ]]; then
+  echo ""
+  echo "--- Budget alerts ---"
+  BILLING_ACCOUNT_ID="${BILLING_ACCOUNT_ID}" \
+  PROD_PROJECT="${PROD_PROJECT}" \
+  STG_PROJECT="${STG_PROJECT}" \
+    "${SCRIPT_DIR}/budget-alerts.sh"
+else
+  echo ""
+  echo "WARNING: budget-alerts.sh not found or not executable — run it separately"
+fi
+
+# -----------------------------------------------------------------------------
+# 7. Summary
 # -----------------------------------------------------------------------------
 echo ""
 echo "============================================================"
