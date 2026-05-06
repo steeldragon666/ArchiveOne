@@ -9,3 +9,4 @@ export * from './evidence-index.js';
 export * from './expenditure-schedule.js';
 export * from './ingest-summary.js';
 export * from './pdf-base.js';
+export * from './portal-narrative-pack.js';
