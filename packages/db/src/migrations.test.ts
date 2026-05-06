@@ -2631,3 +2631,93 @@ test('migration 0039: cleanup — remove D.1 test fixtures', async () => {
   await privilegedSql`DELETE FROM tenant WHERE id = ${TENANT_D1_ID}`;
   assert.ok(true);
 });
+
+// ---------------------------------------------------------------------------
+// P9 Phase 1 Task 1.2 — migration 0041_subscription_schema
+//
+// Verifies:
+//   1. All 7 new tables exist
+//   2. founding_partner_slots seeded with exactly 10 rows
+//   3. tenant.tier and tenant.billing_mode columns exist
+//   4. claim.delivery_kind and claim.platform_fee_charged_at columns exist
+//   5. processed_webhook_events uses stripe_event_id as PK (text)
+//   6. RLS enabled on all tenant-scoped new tables
+// ---------------------------------------------------------------------------
+
+test('migration 0041: all 7 subscription tables exist', async () => {
+  const tables = await privilegedSql<{ table_name: string }[]>`
+    SELECT table_name FROM information_schema.tables
+     WHERE table_schema = 'public'
+       AND table_name IN (
+         'subscription', 'subscription_item', 'onboarding_payment',
+         'claimant_mobile_subscription', 'floor_topup_invoice',
+         'founding_partner_slots', 'processed_webhook_events'
+       )
+     ORDER BY table_name
+  `;
+  assert.equal(tables.length, 7, 'all 7 subscription tables must exist after migration 0041');
+});
+
+test('migration 0041: founding_partner_slots seeded with 10 rows', async () => {
+  const result = await privilegedSql<{ count: string }[]>`
+    SELECT COUNT(*)::text AS count FROM founding_partner_slots
+  `;
+  assert.equal(
+    Number(result[0]!.count),
+    10,
+    'founding_partner_slots must be seeded with exactly 10 rows',
+  );
+});
+
+test('migration 0041: tenant has tier and billing_mode columns', async () => {
+  const cols = await privilegedSql<{ column_name: string }[]>`
+    SELECT column_name FROM information_schema.columns
+     WHERE table_name = 'tenant'
+       AND column_name IN ('tier', 'billing_mode', 'stripe_customer_id', 'trial_ends_at', 'trial_status')
+     ORDER BY column_name
+  `;
+  const names = new Set(cols.map((r) => r.column_name));
+  assert.ok(names.has('tier'), 'tenant.tier must exist');
+  assert.ok(names.has('billing_mode'), 'tenant.billing_mode must exist');
+  assert.ok(names.has('stripe_customer_id'), 'tenant.stripe_customer_id must exist');
+  assert.ok(names.has('trial_ends_at'), 'tenant.trial_ends_at must exist');
+  assert.ok(names.has('trial_status'), 'tenant.trial_status must exist');
+});
+
+test('migration 0041: claim has delivery_kind and platform_fee_charged_at columns', async () => {
+  const cols = await privilegedSql<{ column_name: string }[]>`
+    SELECT column_name FROM information_schema.columns
+     WHERE table_name = 'claim'
+       AND column_name IN ('delivery_kind', 'platform_fee_charged_at')
+     ORDER BY column_name
+  `;
+  const names = new Set(cols.map((r) => r.column_name));
+  assert.ok(names.has('delivery_kind'), 'claim.delivery_kind must exist');
+  assert.ok(names.has('platform_fee_charged_at'), 'claim.platform_fee_charged_at must exist');
+});
+
+test('migration 0041: processed_webhook_events uses stripe_event_id text PK', async () => {
+  const cols = await privilegedSql<{ column_name: string; data_type: string }[]>`
+    SELECT column_name, data_type FROM information_schema.columns
+     WHERE table_name = 'processed_webhook_events'
+     ORDER BY column_name
+  `;
+  const byName = Object.fromEntries(cols.map((r) => [r.column_name, r.data_type]));
+  assert.ok('stripe_event_id' in byName, 'processed_webhook_events.stripe_event_id must exist');
+  assert.equal(byName['stripe_event_id'], 'text', 'stripe_event_id must be text type');
+});
+
+test('migration 0041: RLS enabled on tenant-scoped subscription tables', async () => {
+  const rows = await privilegedSql<{ relname: string; relrowsecurity: boolean }[]>`
+    SELECT relname, relrowsecurity FROM pg_class
+     WHERE relname IN (
+       'subscription', 'subscription_item', 'onboarding_payment',
+       'claimant_mobile_subscription', 'floor_topup_invoice'
+     )
+     ORDER BY relname
+  `;
+  assert.equal(rows.length, 5, 'all 5 tenant-scoped tables must be in pg_class');
+  for (const row of rows) {
+    assert.equal(row.relrowsecurity, true, `RLS must be enabled on ${row.relname}`);
+  }
+});

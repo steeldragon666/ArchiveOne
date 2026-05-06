@@ -288,6 +288,13 @@
       "when": 1777979280000,
       "tag": "0040_regulatory_intelligence",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1778064000000,
+      "tag": "0041_subscription_schema",
+      "breakpoints": true
     }
   ]
 }
