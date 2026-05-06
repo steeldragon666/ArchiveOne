@@ -58,6 +58,7 @@ import {
   type BillingWebhookRouteDeps,
 } from './routes/billing-webhook.js';
 import { registerSignupRoutes, type SignupRouteDeps } from './routes/auth/signup.js';
+import { registerTenantActivationGate } from './middleware/auth.js';
 import { registerCompliance } from './routes/compliance.js';
 import { registerIntelligence } from './routes/intelligence.js';
 import { registerListTenants } from './routes/tenants/list.js';
@@ -168,6 +169,15 @@ export function buildApp(options: BuildAppOptions = {}): App {
   const sessionSecret = process.env['SESSION_JWT_SECRET'] ?? DEFAULT_DEV_SESSION_SECRET;
   const cookieName = process.env['SESSION_COOKIE_NAME'] ?? DEFAULT_SESSION_COOKIE_NAME;
   app.register(sessionPlugin, { secret: sessionSecret, cookieName });
+
+  // Tenant activation gate — P9.1.7.
+  // app.after() defers hook registration until after sessionPlugin has
+  // initialised (plugins initialise in registration order). Both the session
+  // preHandler and the gate preHandler end up in the root scope, so Fastify
+  // runs them for every route — session first (index 0), gate second (index 1).
+  app.after(() => {
+    registerTenantActivationGate(app as unknown as FastifyInstance);
+  });
 
   app.register(healthRoutes);
 
