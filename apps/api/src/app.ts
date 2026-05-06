@@ -56,6 +56,7 @@ import {
 import { registerBilling, type BillingRouteDeps } from './routes/billing.js';
 import { registerBillingPlan } from './routes/billing-plan.js';
 import { registerBillingPortal } from './routes/billing-portal.js';
+import { registerInvoices } from './routes/invoices.js';
 import {
   registerBillingWebhookPlugin,
   type BillingWebhookRouteDeps,
@@ -362,6 +363,7 @@ export function buildApp(options: BuildAppOptions = {}): App {
       registerBilling(instance, options.billing!);
       registerBillingPlan(instance, options.billing!);
       registerBillingPortal(instance, options.billing!);
+      registerInvoices(instance, options.billing!);
       done();
     });
   }
