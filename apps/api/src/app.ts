@@ -31,6 +31,7 @@ import { registerMultiEntityComparison } from './routes/multi-entity-comparison.
 import { registerBrandConfig } from './routes/brand-config.js';
 import { registerClaimantMagicLinkRedeem } from './routes/claimant-magic-link.js';
 import { registerClaimantStatus } from './routes/claimant-status.js';
+import { registerClaimants } from './routes/claimants.js';
 import { registerClaimPdf } from './routes/claim-pdf.js';
 import { registerClaims } from './routes/claims.js';
 import { registerEmployees } from './routes/employees.js';
@@ -249,6 +250,10 @@ export function buildApp(options: BuildAppOptions = {}): App {
   });
   app.register((instance, _opts, done) => {
     registerClaimantStatus(instance);
+    done();
+  });
+  app.register((instance, _opts, done) => {
+    registerClaimants(instance, options.billing ? { stripe: options.billing.stripe } : undefined);
     done();
   });
   app.register((instance, _opts, done) => {
