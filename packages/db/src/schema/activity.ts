@@ -1,4 +1,4 @@
-import { index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { claim } from './claim.js';
 import { project } from './project.js';
@@ -91,6 +91,11 @@ export const activity = pgTable(
     // the "hypothesis date", defeating the Body by Michael compliance
     // argument. Application writers MUST provide an explicit timestamp.
     hypothesisFormedAt: timestamp('hypothesis_formed_at', { withTimezone: true }).notNull(),
+    // Sprint A — per-AusIndustry-portal-field content. Schema enforced at
+    // application layer via CorePortalFieldsSchema / SupportingPortalFieldsSchema
+    // (packages/schemas/src/portal-fields.ts). Default empty object for
+    // backward compatibility with pre-Sprint-A activities.
+    portalFields: jsonb('portal_fields').notNull().default({}),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true })
       .notNull()
