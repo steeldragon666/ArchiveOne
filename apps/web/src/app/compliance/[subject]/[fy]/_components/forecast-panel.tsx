@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, TrendingUp } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Pencil, Plus, TrendingUp } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import { postForecast, type ForecastInput } from '../_lib/api';
+import { getForecasts, postForecast, type ForecastInput, type ForecastRow } from '../_lib/api';
 
 const OFFSETS = [1, 2, 3] as const;
 const CONFIDENCE_LEVELS = ['low', 'medium', 'high'] as const;
@@ -35,9 +35,17 @@ export function ForecastPanel({ subject, fy }: Props) {
   const [editingOffset, setEditingOffset] = useState<1 | 2 | 3 | null>(null);
   const queryClient = useQueryClient();
 
+  const { data } = useQuery({
+    queryKey: ['compliance', 'forecast', subject, fy],
+    queryFn: () => getForecasts(subject, fy),
+  });
+
   const mutation = useMutation({
     mutationFn: postForecast,
     onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: ['compliance', 'forecast', subject, fy],
+      });
       void queryClient.invalidateQueries({
         queryKey: ['compliance', 'form-completeness', subject, fy],
       });
@@ -48,6 +56,11 @@ export function ForecastPanel({ subject, fy }: Props) {
   // Parse FY label to compute offset years (e.g. FY25 → FY26, FY27, FY28)
   const fyMatch = fy.match(/\d+/);
   const baseYear = fyMatch ? parseInt(fyMatch[0], 10) : 0;
+
+  // Index saved rows by offset for O(1) lookup
+  const rowByOffset = new Map<number, ForecastRow>(
+    (data?.rows ?? []).map((r) => [r.forecast_year_offset, r]),
+  );
 
   return (
     <Card>
@@ -66,6 +79,7 @@ export function ForecastPanel({ subject, fy }: Props) {
           {OFFSETS.map((offset) => {
             const yearLabel = baseYear ? `FY${baseYear + offset}` : `Year +${offset}`;
             const isEditing = editingOffset === offset;
+            const saved = rowByOffset.get(offset);
 
             if (isEditing) {
               return (
@@ -80,6 +94,41 @@ export function ForecastPanel({ subject, fy }: Props) {
                   isPending={mutation.isPending}
                   error={mutation.error}
                 />
+              );
+            }
+
+            if (saved) {
+              return (
+                <div key={offset} className="rounded-md border p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium">{yearLabel}</p>
+                    <span
+                      className={cn(
+                        'rounded-full px-2 py-0.5 text-xs',
+                        CONFIDENCE_STYLES[saved.confidence],
+                      )}
+                    >
+                      {saved.confidence.charAt(0).toUpperCase() + saved.confidence.slice(1)}
+                    </span>
+                  </div>
+                  <p className="text-sm tabular-nums font-mono">
+                    {Number(saved.projected_spend_aud).toLocaleString('en-AU', {
+                      style: 'currency',
+                      currency: 'AUD',
+                      maximumFractionDigits: 0,
+                    })}
+                  </p>
+                  <p className="text-xs text-muted-foreground">{saved.projected_headcount} FTE</p>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs"
+                    onClick={() => setEditingOffset(offset)}
+                  >
+                    <Pencil className="h-3 w-3" />
+                    Edit
+                  </Button>
+                </div>
               );
             }
 

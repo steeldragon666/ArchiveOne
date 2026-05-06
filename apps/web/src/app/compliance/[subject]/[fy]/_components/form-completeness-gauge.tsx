@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { CheckCircle2, Circle, AlertTriangle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
-import { getFormCompleteness } from '../_lib/api';
+import { getFormCompleteness, type FormCompletenessResponse } from '../_lib/api';
 
 interface Props {
   subject: string;
@@ -114,9 +114,7 @@ function StatusHint({
   checks,
 }: {
   dimensionKey: string;
-  checks: NonNullable<
-    ReturnType<typeof getFormCompleteness> extends Promise<infer T> ? T : never
-  >['checks'];
+  checks: FormCompletenessResponse['checks'];
 }) {
   const check = checks[dimensionKey as DimensionKey];
   if (!check) return null;

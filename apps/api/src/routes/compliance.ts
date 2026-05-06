@@ -12,8 +12,11 @@ import { sql } from '@cpa/db/client';
  *   POST   /v1/compliance/beneficial-ownership
  *   GET    /v1/compliance/beneficial-ownership/:subject_tenant_id/:fy
  *   POST   /v1/compliance/knowledge-search
+ *   GET    /v1/compliance/knowledge-search/:subject_tenant_id/:fy
  *   POST   /v1/compliance/facilities
+ *   GET    /v1/compliance/facilities/:subject_tenant_id/:fy
  *   POST   /v1/compliance/forecast
+ *   GET    /v1/compliance/forecast/:subject_tenant_id/:fy
  *   POST   /v1/compliance/multi-entity-scan
  *   GET    /v1/compliance/form-completeness/:subject_tenant_id/:fy
  *   GET    /v1/compliance/at-risk-summary/:subject_tenant_id/:fy
@@ -245,6 +248,43 @@ export function registerCompliance(app: FastifyInstance): void {
   );
 
   // -------------------------------------------------------------------
+  // 3b. GET /v1/compliance/knowledge-search/:subject_tenant_id/:fy
+  //     Returns all knowledge-search records for activities in the FY.
+  // -------------------------------------------------------------------
+  app.get<{ Params: { subject_tenant_id: string; fy: string } }>(
+    '/v1/compliance/knowledge-search/:subject_tenant_id/:fy',
+    { preHandler: requireSession },
+    async (req, reply) => {
+      const { subject_tenant_id, fy } = req.params;
+      if (!z.string().uuid().safeParse(subject_tenant_id).success) {
+        return reply.status(400).send({ error: 'invalid subject_tenant_id', requestId: req.id });
+      }
+
+      const tenantId = req.user!.tenantId!;
+
+      const rows = await sql.begin(async (tx) => {
+        await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+        // Join through activity to filter by FY — knowledge_search_record
+        // has no fy_label column; the FY lives on the activity row.
+        return await tx`
+          SELECT ksr.id, ksr.subject_tenant_id, ksr.activity_id, ksr.search_date,
+                 ksr.search_query, ksr.sources_consulted, ksr.finding_summary,
+                 ksr.first_recorded_at
+            FROM knowledge_search_record ksr
+            JOIN activity a ON a.id = ksr.activity_id AND a.tenant_id = ksr.tenant_id
+            JOIN claim c    ON c.id = a.claim_id     AND c.tenant_id = a.tenant_id
+           WHERE c.subject_tenant_id = ${subject_tenant_id}
+             AND a.fy_label          = ${fy}
+             AND ksr.tenant_id       = ${tenantId}
+           ORDER BY ksr.search_date DESC, ksr.first_recorded_at ASC
+        `;
+      });
+
+      return { rows };
+    },
+  );
+
+  // -------------------------------------------------------------------
   // 4. POST /v1/compliance/facilities
   // -------------------------------------------------------------------
   app.post('/v1/compliance/facilities', { preHandler: requireSession }, async (req, reply) => {
@@ -284,6 +324,38 @@ export function registerCompliance(app: FastifyInstance): void {
 
     return reply.status(201).send(inserted);
   });
+
+  // -------------------------------------------------------------------
+  // 4b. GET /v1/compliance/facilities/:subject_tenant_id/:fy
+  //     Returns all R&D facilities for the subject and FY.
+  // -------------------------------------------------------------------
+  app.get<{ Params: { subject_tenant_id: string; fy: string } }>(
+    '/v1/compliance/facilities/:subject_tenant_id/:fy',
+    { preHandler: requireSession },
+    async (req, reply) => {
+      const { subject_tenant_id, fy } = req.params;
+      if (!z.string().uuid().safeParse(subject_tenant_id).success) {
+        return reply.status(400).send({ error: 'invalid subject_tenant_id', requestId: req.id });
+      }
+
+      const tenantId = req.user!.tenantId!;
+
+      const rows = await sql.begin(async (tx) => {
+        await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+        return await tx`
+          SELECT id, subject_tenant_id, fy_label, facility_name, address,
+                 is_owned, used_for_activity_ids, first_recorded_at
+            FROM r_and_d_facility
+           WHERE subject_tenant_id = ${subject_tenant_id}
+             AND fy_label          = ${fy}
+             AND tenant_id         = ${tenantId}
+           ORDER BY first_recorded_at ASC
+        `;
+      });
+
+      return { rows };
+    },
+  );
 
   // -------------------------------------------------------------------
   // 5. POST /v1/compliance/forecast
@@ -337,6 +409,39 @@ export function registerCompliance(app: FastifyInstance): void {
 
     return reply.status(201).send(upserted);
   });
+
+  // -------------------------------------------------------------------
+  // 5b. GET /v1/compliance/forecast/:subject_tenant_id/:fy
+  //     Returns all forecast rows for the base FY (offsets 1–3).
+  // -------------------------------------------------------------------
+  app.get<{ Params: { subject_tenant_id: string; fy: string } }>(
+    '/v1/compliance/forecast/:subject_tenant_id/:fy',
+    { preHandler: requireSession },
+    async (req, reply) => {
+      const { subject_tenant_id, fy } = req.params;
+      if (!z.string().uuid().safeParse(subject_tenant_id).success) {
+        return reply.status(400).send({ error: 'invalid subject_tenant_id', requestId: req.id });
+      }
+
+      const tenantId = req.user!.tenantId!;
+
+      const rows = await sql.begin(async (tx) => {
+        await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+        return await tx`
+          SELECT id, subject_tenant_id, base_fy_label, forecast_year_offset,
+                 projected_spend_aud, projected_headcount, confidence,
+                 first_recorded_at
+            FROM rd_forecast
+           WHERE subject_tenant_id = ${subject_tenant_id}
+             AND base_fy_label     = ${fy}
+             AND tenant_id         = ${tenantId}
+           ORDER BY forecast_year_offset ASC
+        `;
+      });
+
+      return { rows };
+    },
+  );
 
   // -------------------------------------------------------------------
   // 6. POST /v1/compliance/multi-entity-scan (STUB)

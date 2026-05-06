@@ -1,14 +1,21 @@
 'use client';
 
 import { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Search } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { postKnowledgeSearch, type KnowledgeSearchInput } from '../_lib/api';
+import {
+  getKnowledgeSearchRecords,
+  postKnowledgeSearch,
+  type KnowledgeSearchInput,
+} from '../_lib/api';
+
+/** Stored when the user leaves the Sources field blank. */
+const DEFAULT_SOURCE = 'general' as const;
 
 interface Props {
   subject: string;
@@ -19,15 +26,29 @@ export function KnowledgeSearchPanel({ subject, fy }: Props) {
   const [showForm, setShowForm] = useState(false);
   const queryClient = useQueryClient();
 
+  const {
+    data,
+    isPending,
+    error: queryError,
+  } = useQuery({
+    queryKey: ['compliance', 'knowledge-search', subject, fy],
+    queryFn: () => getKnowledgeSearchRecords(subject, fy),
+  });
+
   const mutation = useMutation({
     mutationFn: postKnowledgeSearch,
     onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: ['compliance', 'knowledge-search', subject, fy],
+      });
       void queryClient.invalidateQueries({
         queryKey: ['compliance', 'form-completeness', subject, fy],
       });
       setShowForm(false);
     },
   });
+
+  const rows = data?.rows ?? [];
 
   return (
     <Card>
@@ -56,6 +77,39 @@ export function KnowledgeSearchPanel({ subject, fy }: Props) {
             isPending={mutation.isPending}
             error={mutation.error}
           />
+        )}
+
+        {isPending && <p className="text-sm text-muted-foreground">Loading…</p>}
+        {queryError && (
+          <p className="text-sm text-red-700">
+            {queryError instanceof Error ? queryError.message : 'Failed to load'}
+          </p>
+        )}
+
+        {!isPending && rows.length === 0 && !showForm && (
+          <p className="text-sm text-muted-foreground">No search records for {fy}.</p>
+        )}
+
+        {rows.length > 0 && (
+          <div className="space-y-2">
+            {rows.map((row) => (
+              <div key={row.id} className="rounded-md border p-3 space-y-1">
+                <div className="flex items-center gap-2">
+                  <Search className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <span className="font-medium text-sm">{row.search_query}</span>
+                  <span className="ml-auto font-mono text-xs text-muted-foreground tabular-nums">
+                    {row.search_date}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground pl-6 line-clamp-2">
+                  {row.finding_summary}
+                </p>
+                <p className="text-xs text-muted-foreground pl-6 font-mono">
+                  Activity: {row.activity_id.slice(0, 8)}…
+                </p>
+              </div>
+            ))}
+          </div>
         )}
       </CardContent>
     </Card>
@@ -95,7 +149,7 @@ function AddSearchForm({
       activity_id: activityId.trim(),
       search_date: searchDate,
       search_query: searchQuery.trim(),
-      sources_consulted: sourcesArray.length > 0 ? sourcesArray : ['general'],
+      sources_consulted: sourcesArray.length > 0 ? sourcesArray : [DEFAULT_SOURCE],
       finding_summary: findingSummary.trim(),
     });
   }

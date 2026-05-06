@@ -44,7 +44,8 @@ export interface BeneficialOwnershipRow {
   owner_kind: 'individual' | 'entity' | 'foreign_entity' | 'associate';
   owner_name: string;
   owner_country: string | null;
-  ownership_pct: number;
+  /** postgres-js returns numeric columns as strings — use Number() for arithmetic */
+  ownership_pct: string;
   is_associate: boolean;
   is_foreign_related: boolean;
   ta_2023_4_flag: boolean | null;
@@ -73,6 +74,17 @@ export interface KnowledgeSearchInput {
   finding_summary: string;
 }
 
+export interface KnowledgeSearchRow {
+  id: string;
+  subject_tenant_id: string;
+  activity_id: string;
+  search_date: string;
+  search_query: string;
+  sources_consulted: string[];
+  finding_summary: string;
+  first_recorded_at: string;
+}
+
 export interface FacilityInput {
   subject_tenant_id: string;
   fy_label: string;
@@ -82,6 +94,17 @@ export interface FacilityInput {
   used_for_activity_ids: string[];
 }
 
+export interface FacilityRow {
+  id: string;
+  subject_tenant_id: string;
+  fy_label: string;
+  facility_name: string;
+  address: string;
+  is_owned: boolean;
+  used_for_activity_ids: string[];
+  first_recorded_at: string;
+}
+
 export interface ForecastInput {
   subject_tenant_id: string;
   base_fy_label: string;
@@ -89,6 +112,18 @@ export interface ForecastInput {
   projected_spend_aud: number;
   projected_headcount: number;
   confidence: 'low' | 'medium' | 'high';
+}
+
+export interface ForecastRow {
+  id: string;
+  subject_tenant_id: string;
+  base_fy_label: string;
+  forecast_year_offset: 1 | 2 | 3;
+  /** postgres-js returns numeric columns as strings — use Number() for arithmetic */
+  projected_spend_aud: string;
+  projected_headcount: number;
+  confidence: 'low' | 'medium' | 'high';
+  first_recorded_at: string;
 }
 
 export interface MultiEntityScanInput {
@@ -130,22 +165,36 @@ export function postBeneficialOwnership(input: BeneficialOwnershipInput) {
   });
 }
 
+export function getKnowledgeSearchRecords(subject: string, fy: string) {
+  return apiFetch<{ rows: KnowledgeSearchRow[] }>(
+    `/v1/compliance/knowledge-search/${subject}/${fy}`,
+  );
+}
+
 export function postKnowledgeSearch(input: KnowledgeSearchInput) {
-  return apiFetch<Record<string, unknown>>('/v1/compliance/knowledge-search', {
+  return apiFetch<KnowledgeSearchRow>('/v1/compliance/knowledge-search', {
     method: 'POST',
     body: JSON.stringify(input),
   });
+}
+
+export function getFacilities(subject: string, fy: string) {
+  return apiFetch<{ rows: FacilityRow[] }>(`/v1/compliance/facilities/${subject}/${fy}`);
 }
 
 export function postFacility(input: FacilityInput) {
-  return apiFetch<Record<string, unknown>>('/v1/compliance/facilities', {
+  return apiFetch<FacilityRow>('/v1/compliance/facilities', {
     method: 'POST',
     body: JSON.stringify(input),
   });
 }
 
+export function getForecasts(subject: string, fy: string) {
+  return apiFetch<{ rows: ForecastRow[] }>(`/v1/compliance/forecast/${subject}/${fy}`);
+}
+
 export function postForecast(input: ForecastInput) {
-  return apiFetch<Record<string, unknown>>('/v1/compliance/forecast', {
+  return apiFetch<ForecastRow>('/v1/compliance/forecast', {
     method: 'POST',
     body: JSON.stringify(input),
   });
