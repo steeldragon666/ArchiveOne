@@ -16,3 +16,5 @@ export { welcomeEmail } from './templates/welcome.js';
 export { inviteEmail } from './templates/invite.js';
 export { magicLinkEmail } from './templates/magic-link.js';
 export { claimStatusEmail } from './templates/claim-status.js';
+export { trialDay23ReminderEmail } from './templates/trial-day-23-reminder.js';
+export type { TrialDay23ReminderData } from './templates/trial-day-23-reminder.js';
