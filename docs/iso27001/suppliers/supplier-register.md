@@ -21,7 +21,7 @@ Maintain a register of all third-party suppliers that process, store, or have ac
 | ---------------- | --------------------------------- | ------------------------------------------ | ------------ | ------------------ | ---------------- | ------------- | ----------- |
 | Anthropic        | AI inference (Claude)             | Narrative content, expenditure summaries   | Confidential | SOC 2 Type II      | Terms of service | 2026-05-06    | Medium      |
 | GitHub           | Source code hosting + CI/CD       | Source code, CI logs, PR metadata          | Internal     | SOC 2 + ISO 27001  | DPA signed       | 2026-05-06    | Low         |
-| Hosting provider | Infrastructure (compute, DB, CDN) | All platform data (Restricted)             | Restricted   | Varies by provider | DPA required     | 2026-05-06    | High        |
+| Google Cloud (GCP) | Infrastructure (Cloud Run, Cloud SQL, Secret Manager, Cloud Build, DNS, Monitoring) | All platform data (Restricted) | Restricted | ISO 27001 + SOC 2 Type II + ISO 27017/27018 | DPA accepted (Google Cloud Terms) | 2026-05-06 | Medium |
 | Sentry           | Error tracking + monitoring       | Error payloads, stack traces               | Internal     | SOC 2 Type II      | DPA signed       | 2026-05-06    | Low         |
 | PagerDuty        | Incident alerting                 | Alert metadata (no customer data)          | Internal     | SOC 2 + ISO 27001  | DPA signed       | 2026-05-06    | Low         |
 | Resend           | Transactional email               | Recipient email addresses, email content   | Confidential | SOC 2 Type II      | DPA signed       | 2026-05-06    | Medium      |
@@ -54,18 +54,24 @@ Risk ratings are assigned based on:
 - **DPA status:** Covered by Anthropic's terms of service; formal DPA to be pursued
 - **Action items:** Request formal DPA; verify data processing addendum covers Australian Privacy Act requirements
 
-### 4.2 Hosting Provider (High Risk)
+### 4.2 Google Cloud — GCP (Medium Risk)
 
-- **Service:** Compute, managed PostgreSQL, CDN, secrets management
-- **Data shared:** All platform data including Restricted-tier (production database)
-- **Concern:** Single point of failure for data sovereignty and availability
+- **Service:** GCP infrastructure — Cloud Run (API + web), Cloud SQL Postgres 16 (production database), Secret Manager, Cloud Build, Cloud DNS, Cloud Monitoring, Cloud Logging
+- **Data shared:** All Restricted-tier data (production database, container runtime, secrets)
+- **Concern:** Multi-tenant cloud provider; most sensitive data lives here. No immediate alternative — all compute, database, secrets, and CI/CD run on GCP.
 - **Mitigations:**
-  - Provider-managed encryption at rest and in transit
-  - RLS enforced at database level regardless of infrastructure access
-  - Regular backups with tested restore procedures
-  - Provider's certifications verified annually
-- **DPA status:** Required; must cover Australian data residency requirements
-- **Action items:** Verify data residency guarantees; confirm backup encryption; annual certification review
+  - Data residency locked to australia-southeast1 (Sydney); no non-AU regions configured; DPA contractual commitment
+  - Encryption at rest (AES-256) and in transit (TLS 1.3) by GCP default
+  - RLS enforced at application layer via `app.current_tenant_id` GUC, regardless of GCP administrative access
+  - PITR enabled on Cloud SQL with 7-day retention; daily backups to australia-southeast2
+  - Restore drills executed via `tools/gcp/cloudsql-restore-drill.sh`
+  - Secret Manager centralises all credential management; no secrets in source code or container images
+  - IAM follows least-privilege: `cpa-deploy` SA holds only required roles
+  - Cloud Audit Logs capture all admin and data-access events; exported to long-term log sink
+- **DPA status:** Accepted via Google Cloud Terms (Data Processing Amendment) on 2026-05-06
+- **Risk downgrade:** Initial register recorded this supplier as High Risk (placeholder for unnamed hosting provider). Downgraded to Medium after verifying ISO/IEC 27001:2013 + SOC 2 Type II certifications and confirmed Australian data residency commitment.
+- **Detailed assessment:** `docs/iso27001/suppliers/google-cloud.md`
+- **Action items:** Obtain DPA confirmation PDF from GCP Console and store at `docs/iso27001/suppliers/evidence/google-cloud-dpa-2026.pdf`; annual certification review; verify region config has not changed annually
 
 ### 4.3 Resend (Medium Risk)
 
@@ -96,7 +102,7 @@ Risk ratings are assigned based on:
 | ---------------- | ----------- | -------- |
 | Anthropic        | 2026-11-06  | Aaron    |
 | GitHub           | 2026-11-06  | Aaron    |
-| Hosting provider | 2026-11-06  | Aaron    |
+| Google Cloud (GCP) | 2027-05-06  | Aaron    |
 | Sentry           | 2026-11-06  | Aaron    |
 | PagerDuty        | 2026-11-06  | Aaron    |
 | Resend           | 2026-11-06  | Aaron    |
