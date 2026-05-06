@@ -288,7 +288,7 @@ export function buildApp(options: BuildAppOptions = {}): App {
     done();
   });
   app.register((instance, _opts, done) => {
-    registerClaims(instance);
+    registerClaims(instance, options.billing ? { stripe: options.billing.stripe } : undefined);
     done();
   });
   app.register((instance, _opts, done) => {

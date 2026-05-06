@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
+import type Stripe from 'stripe';
 import { requireSession } from '@cpa/auth';
 import { sql } from '@cpa/db/client';
 import { insertEventWithChain } from '@cpa/db';
@@ -7,6 +8,7 @@ import {
   ClaimStageAdvancedPayload,
   ClaimSubmittedPayload,
   CreateClaimBody,
+  DeliveryKindEnum,
   ListClaimsQuery,
   UpdateClaimBody,
   UpdateClaimStageBody,
@@ -14,6 +16,11 @@ import {
   type ClaimStage,
 } from '@cpa/schemas';
 import { validateStageTransition } from '../lib/claim-stage.js';
+import { emitClaimUsageRecord } from '../jobs/emit-claim-usage-record.js';
+
+export interface ClaimsRouteDeps {
+  stripe?: Stripe;
+}
 
 // TODO(p4-a-cleanup): post-A1 review-flagged refactors deferred to a separate
 // cross-cutting task after the swimlanes merge — same items affect this file:
@@ -53,6 +60,8 @@ interface RawClaimRow {
   subject_tenant_id: string;
   fiscal_year: number;
   stage: ClaimStage;
+  delivery_kind: string | null;
+  platform_fee_charged_at: Date | string | null;
   ausindustry_reference: string | null;
   submitted_at: Date | string | null;
   submitted_by_user_id: string | null;
@@ -69,6 +78,7 @@ const toApi = (r: RawClaimRow): Claim => ({
   subject_tenant_id: r.subject_tenant_id,
   fiscal_year: r.fiscal_year,
   stage: r.stage,
+  delivery_kind: (r.delivery_kind as Claim['delivery_kind']) ?? null,
   ausindustry_reference: r.ausindustry_reference,
   submitted_at: isoOrNull(r.submitted_at),
   submitted_by_user_id: r.submitted_by_user_id,
@@ -97,7 +107,8 @@ const toApi = (r: RawClaimRow): Claim => ({
  * a CLAIM_CREATED kind. The first event for a claim is the
  * CLAIM_STAGE_ADVANCED on the first stage transition (per design doc).
  */
-export function registerClaims(app: FastifyInstance): void {
+export function registerClaims(app: FastifyInstance, deps?: ClaimsRouteDeps): void {
+  const { stripe } = deps ?? {};
   // ---------------------------------------------------------------------
   // POST /v1/claims — create a fiscal-year claim row. No event emitted.
   // ---------------------------------------------------------------------
@@ -159,6 +170,7 @@ export function registerClaims(app: FastifyInstance): void {
             ${ausindustry_reference ?? null}
           )
           RETURNING id, tenant_id, subject_tenant_id, fiscal_year, stage,
+                    delivery_kind, platform_fee_charged_at,
                     ausindustry_reference, submitted_at, submitted_by_user_id,
                     created_at, updated_at
         `;
@@ -223,6 +235,7 @@ export function registerClaims(app: FastifyInstance): void {
 
       const rows = await tx<RawClaimRow[]>`
         SELECT id, tenant_id, subject_tenant_id, fiscal_year, stage,
+               delivery_kind, platform_fee_charged_at,
                ausindustry_reference, submitted_at, submitted_by_user_id,
                created_at, updated_at
           FROM claim
@@ -250,6 +263,7 @@ export function registerClaims(app: FastifyInstance): void {
         await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
         const rows = await tx<RawClaimRow[]>`
           SELECT id, tenant_id, subject_tenant_id, fiscal_year, stage,
+                 delivery_kind, platform_fee_charged_at,
                  ausindustry_reference, submitted_at, submitted_by_user_id,
                  created_at, updated_at
             FROM claim
@@ -334,6 +348,7 @@ export function registerClaims(app: FastifyInstance): void {
         await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
         const before = await tx<RawClaimRow[]>`
           SELECT id, tenant_id, subject_tenant_id, fiscal_year, stage,
+                 delivery_kind, platform_fee_charged_at,
                  ausindustry_reference, submitted_at, submitted_by_user_id,
                  created_at, updated_at
             FROM claim
@@ -369,6 +384,7 @@ export function registerClaims(app: FastifyInstance): void {
            WHERE id = ${id}
              AND tenant_id = ${tenantId}
            RETURNING id, tenant_id, subject_tenant_id, fiscal_year, stage,
+                     delivery_kind, platform_fee_charged_at,
                      ausindustry_reference, submitted_at, submitted_by_user_id,
                      created_at, updated_at
         `;
@@ -484,6 +500,7 @@ export function registerClaims(app: FastifyInstance): void {
         await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
         const before = await tx<RawClaimRow[]>`
           SELECT id, tenant_id, subject_tenant_id, fiscal_year, stage,
+                 delivery_kind, platform_fee_charged_at,
                  ausindustry_reference, submitted_at, submitted_by_user_id,
                  created_at, updated_at
             FROM claim
@@ -522,6 +539,7 @@ export function registerClaims(app: FastifyInstance): void {
            WHERE id = ${id}
              AND tenant_id = ${tenantId}
            RETURNING id, tenant_id, subject_tenant_id, fiscal_year, stage,
+                     delivery_kind, platform_fee_charged_at,
                      ausindustry_reference, submitted_at, submitted_by_user_id,
                      created_at, updated_at
         `;
@@ -581,6 +599,91 @@ export function registerClaims(app: FastifyInstance): void {
       }
 
       return reply.status(200).send({ claim: toApi(result.row) });
+    },
+  );
+
+  // ---------------------------------------------------------------------
+  // PATCH /v1/claims/:id/deliver — set delivery_kind (NULL → value) and
+  // emit a Stripe per-claim usage record via emitClaimUsageRecord.
+  //
+  // Called once per claim when the consultant decides whether the claim
+  // will be delivered as a quarterly_assurance or annual_claim. Setting
+  // delivery_kind for the first time triggers the metered usage record.
+  //
+  // Idempotency: emitClaimUsageRecord guards against double-billing via
+  // platform_fee_charged_at (see job JSDoc). This route still allows
+  // re-setting delivery_kind (e.g. to correct a typo) without re-billing.
+  //
+  // No Stripe configured: if deps.stripe is undefined (local dev / tests
+  // that don't pass deps), the DB update still lands but no usage record
+  // is posted. This matches the pattern in prompt-suggestions.ts where
+  // the AI client is optional in dev.
+  // ---------------------------------------------------------------------
+  app.patch<{ Params: { id: string } }>(
+    '/v1/claims/:id/deliver',
+    { preHandler: requireSession },
+    async (req, reply) => {
+      const role = req.user!.role;
+      if (role !== 'admin' && role !== 'consultant') {
+        return reply.status(403).send({
+          error: 'forbidden',
+          message: 'Admin or consultant role required',
+          requestId: req.id,
+        });
+      }
+
+      const bodyParsed = DeliveryKindEnum.safeParse(
+        (req.body as Record<string, unknown>)?.delivery_kind,
+      );
+      if (!bodyParsed.success) {
+        return reply.status(400).send({
+          error: 'invalid_body',
+          message: 'Body must be { delivery_kind: "quarterly_assurance" | "annual_claim" }',
+          requestId: req.id,
+        });
+      }
+      const delivery_kind = bodyParsed.data;
+      const { id } = req.params;
+      const tenantId = req.user!.tenantId!;
+
+      // Set delivery_kind and return the updated row in one transaction.
+      const result = await sql.begin(async (tx) => {
+        await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+        const updated = await tx<RawClaimRow[]>`
+          UPDATE claim
+             SET delivery_kind = ${delivery_kind},
+                 updated_at    = NOW()
+           WHERE id        = ${id}
+             AND tenant_id = ${tenantId}
+           RETURNING id, tenant_id, subject_tenant_id, fiscal_year, stage,
+                     delivery_kind, platform_fee_charged_at,
+                     ausindustry_reference, submitted_at, submitted_by_user_id,
+                     created_at, updated_at
+        `;
+        const row = updated[0];
+        return row ?? null;
+      });
+
+      if (!result) {
+        return reply.status(404).send({
+          error: 'claim_not_found',
+          message: 'No claim with that id in this firm',
+          requestId: req.id,
+        });
+      }
+
+      // Emit usage record if stripe is configured. Fire-and-forget with
+      // error logging — a transient Stripe failure here is not fatal to
+      // the API response; pg-boss retry handles persistence.
+      if (stripe) {
+        emitClaimUsageRecord({ claim_id: id, tenant_id: tenantId }, stripe).catch(
+          (err: unknown) => {
+            app.log.error({ err, claim_id: id }, 'emit-claim-usage-record failed');
+          },
+        );
+      }
+
+      return reply.status(200).send({ claim: toApi(result) });
     },
   );
 }

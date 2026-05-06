@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { Iso8601, Uuid } from './primitives.js';
+import { DeliveryKindEnum } from './billing.js';
 
 /**
  * Single source of truth for claim pipeline stages over the wire.
@@ -45,6 +46,7 @@ export const Claim = z.object({
   subject_tenant_id: Uuid,
   fiscal_year: z.number().int(),
   stage: ClaimStage,
+  delivery_kind: DeliveryKindEnum.nullable(),
   ausindustry_reference: z.string().nullable(),
   submitted_at: Iso8601.nullable(),
   submitted_by_user_id: Uuid.nullable(),
