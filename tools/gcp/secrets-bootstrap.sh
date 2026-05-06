@@ -82,6 +82,9 @@ SECRETS=(
   "stripe-price-id-sla-bronze:Stripe price ID for SLA Bronze"
   "stripe-price-id-sla-silver:Stripe price ID for SLA Silver"
   "stripe-price-id-sla-gold:Stripe price ID for SLA Gold"
+
+  # ── Email / Transactional ─────────────────────────────────────────────────
+  "resend-api-key:Resend transactional email API key"
 )
 
 PLACEHOLDER="PLACEHOLDER — set real value before deploying"

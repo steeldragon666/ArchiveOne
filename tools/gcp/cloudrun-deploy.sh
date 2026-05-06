@@ -109,7 +109,8 @@ STRIPE_PRICE_ID_PER_CLAIM=stripe-price-id-per-claim:latest,\
 STRIPE_PRICE_ID_MOBILE=stripe-price-id-mobile:latest,\
 STRIPE_PRICE_ID_SLA_BRONZE=stripe-price-id-sla-bronze:latest,\
 STRIPE_PRICE_ID_SLA_SILVER=stripe-price-id-sla-silver:latest,\
-STRIPE_PRICE_ID_SLA_GOLD=stripe-price-id-sla-gold:latest" \
+STRIPE_PRICE_ID_SLA_GOLD=stripe-price-id-sla-gold:latest,\
+RESEND_API_KEY=resend-api-key:latest" \
   --allow-unauthenticated \
   --quiet
 
