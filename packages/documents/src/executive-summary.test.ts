@@ -119,11 +119,7 @@ test('renderExecutiveSummaryPdf: changing generated_at affects output', async ()
   });
   // Two PDFs with different timestamps must differ — proves the timestamp
   // string actually reaches the rendered document.
-  if (a.length === b.length) {
-    assert.notEqual(Buffer.from(a).compare(Buffer.from(b)), 0);
-  } else {
-    assert.notEqual(a.length, b.length);
-  }
+  assert.notEqual(Buffer.from(a).compare(Buffer.from(b)), 0);
 });
 
 test('renderExecutiveSummaryPdf: activity kind chips render (core and supporting)', async () => {
