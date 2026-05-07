@@ -21,14 +21,18 @@ export const RIF_DAILY_SCRAPE_CRON = '0 3 * * *';
  * The cron schedule uses Australia/Sydney timezone context.
  */
 export async function registerRifDailyScrapeJob(boss: PgBoss): Promise<void> {
-  await boss.schedule(RIF_DAILY_SCRAPE_JOB_NAME, RIF_DAILY_SCRAPE_CRON, null, {
-    tz: 'Australia/Sydney',
-  });
+  // Register the worker FIRST so the queue row exists in pg-boss's
+  // schema. boss.schedule() has a foreign key on schedule.name →
+  // queue.name; calling schedule before work fails with a 23503 FK
+  // violation on a fresh database where the queue hasn't been seen yet.
   await boss.work(RIF_DAILY_SCRAPE_JOB_NAME, async () => {
     const result = await runDailyScrape();
     console.log(
       `[rif-daily-scrape] sources=${result.sources_processed} inserted=${result.events_inserted} skipped=${result.events_skipped} errors=${result.errors.length}`,
     );
     return result;
+  });
+  await boss.schedule(RIF_DAILY_SCRAPE_JOB_NAME, RIF_DAILY_SCRAPE_CRON, null, {
+    tz: 'Australia/Sydney',
   });
 }
