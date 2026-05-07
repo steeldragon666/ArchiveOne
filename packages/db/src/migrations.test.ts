@@ -1956,6 +1956,7 @@ test('migration 0037: trigger does NOT fire on other column updates', async () =
 });
 
 test('migration 0037: AuditKind three-way parity (Zod ↔ db AUDIT_KINDS const ↔ SQL CHECK)', async () => {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
   const { AUDIT_KINDS: zodKinds } = await import('@cpa/schemas');
   const { AUDIT_KINDS: dbKinds } = await import('./schema/audit_log.js');
 
@@ -1967,7 +1968,9 @@ test('migration 0037: AuditKind three-way parity (Zod ↔ db AUDIT_KINDS const �
     s.slice(1, -1),
   );
 
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
   assert.deepEqual([...zodKinds].sort(), [...dbKinds].sort(), 'Zod ↔ db const mismatch');
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
   assert.deepEqual([...zodKinds].sort(), [...sqlValues].sort(), 'Zod ↔ SQL CHECK mismatch');
 });
 
@@ -2720,4 +2723,33 @@ test('migration 0041: RLS enabled on tenant-scoped subscription tables', async (
   for (const row of rows) {
     assert.equal(row.relrowsecurity, true, `RLS must be enabled on ${row.relname}`);
   }
+});
+
+// ---------------------------------------------------------------------------
+// Sprint A Task A.1 — migration 0044_activity_portal_fields
+// ---------------------------------------------------------------------------
+
+test('migration 0044: activity.portal_fields column exists with correct type', async () => {
+  const rows = await privilegedSql<
+    { data_type: string; is_nullable: string; column_default: string }[]
+  >`
+    SELECT data_type, is_nullable, column_default
+      FROM information_schema.columns
+     WHERE table_name = 'activity' AND column_name = 'portal_fields'
+  `;
+  assert.equal(rows.length, 1, 'portal_fields column must exist');
+  assert.equal(rows[0]!.data_type, 'jsonb', 'column type must be jsonb');
+  assert.equal(rows[0]!.is_nullable, 'NO', 'column must be NOT NULL');
+  assert.ok(
+    rows[0]!.column_default?.includes("'{}'::jsonb"),
+    `column_default must be empty jsonb object, got: ${rows[0]!.column_default}`,
+  );
+});
+
+test('migration 0044: GIN index exists on activity.portal_fields', async () => {
+  const rows = await privilegedSql<{ indexname: string }[]>`
+    SELECT indexname FROM pg_indexes
+     WHERE tablename = 'activity' AND indexname = 'activity_portal_fields_idx'
+  `;
+  assert.equal(rows.length, 1, 'GIN index activity_portal_fields_idx must exist');
 });

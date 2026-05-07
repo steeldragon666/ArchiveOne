@@ -20,3 +20,4 @@ export * from './mapping-rule.js';
 export * from './audit.js';
 export * from './billing.js';
 export * from './sla.js';
+export * from './portal-fields.js';
