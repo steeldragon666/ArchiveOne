@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { registerFederationAuditHook } from './audit-hook.js';
 import { registerFederationInvitations } from './invitations.js';
 import { registerFederationShares } from './shares.js';
 
@@ -9,6 +10,7 @@ import { registerFederationShares } from './shares.js';
  * Registered in app.ts inside an app.register() scope.
  */
 export function registerFederation(app: FastifyInstance): void {
+  registerFederationAuditHook(app);
   registerFederationInvitations(app);
   registerFederationShares(app);
 }
