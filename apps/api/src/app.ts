@@ -31,6 +31,7 @@ import { registerMultiEntityComparison } from './routes/multi-entity-comparison.
 import { registerBrandConfig } from './routes/brand-config.js';
 import { registerClaimantMagicLinkRedeem } from './routes/claimant-magic-link.js';
 import { registerClaimantStatus } from './routes/claimant-status.js';
+import { registerClaimants } from './routes/claimants.js';
 import { registerClaimPdf } from './routes/claim-pdf.js';
 import { registerClaims } from './routes/claims.js';
 import { registerEmployees } from './routes/employees.js';
@@ -52,6 +53,13 @@ import {
   registerPromptSuggestions,
   type PromptSuggestionsRouteDeps,
 } from './routes/prompt-suggestions.js';
+import { registerBilling, type BillingRouteDeps } from './routes/billing.js';
+import {
+  registerBillingWebhookPlugin,
+  type BillingWebhookRouteDeps,
+} from './routes/billing-webhook.js';
+import { registerSignupRoutes, type SignupRouteDeps } from './routes/auth/signup.js';
+import { registerTenantActivationGate } from './middleware/auth.js';
 import { registerCompliance } from './routes/compliance.js';
 import { registerIntelligence } from './routes/intelligence.js';
 import { registerListTenants } from './routes/tenants/list.js';
@@ -113,6 +121,9 @@ export type App = FastifyInstance<
  */
 export interface BuildAppOptions {
   promptSuggestions?: PromptSuggestionsRouteDeps;
+  billing?: BillingRouteDeps;
+  billingWebhook?: BillingWebhookRouteDeps;
+  signup?: SignupRouteDeps;
 }
 
 export function buildApp(options: BuildAppOptions = {}): App {
@@ -159,6 +170,15 @@ export function buildApp(options: BuildAppOptions = {}): App {
   const sessionSecret = process.env['SESSION_JWT_SECRET'] ?? DEFAULT_DEV_SESSION_SECRET;
   const cookieName = process.env['SESSION_COOKIE_NAME'] ?? DEFAULT_SESSION_COOKIE_NAME;
   app.register(sessionPlugin, { secret: sessionSecret, cookieName });
+
+  // Tenant activation gate — P9.1.7.
+  // app.after() defers hook registration until after sessionPlugin has
+  // initialised (plugins initialise in registration order). Both the session
+  // preHandler and the gate preHandler end up in the root scope, so Fastify
+  // runs them for every route — session first (index 0), gate second (index 1).
+  app.after(() => {
+    registerTenantActivationGate(app as unknown as FastifyInstance);
+  });
 
   app.register(healthRoutes);
 
@@ -233,6 +253,10 @@ export function buildApp(options: BuildAppOptions = {}): App {
     done();
   });
   app.register((instance, _opts, done) => {
+    registerClaimants(instance, options.billing ? { stripe: options.billing.stripe } : undefined);
+    done();
+  });
+  app.register((instance, _opts, done) => {
     registerAuditScore(instance);
     done();
   });
@@ -269,7 +293,7 @@ export function buildApp(options: BuildAppOptions = {}): App {
     done();
   });
   app.register((instance, _opts, done) => {
-    registerClaims(instance);
+    registerClaims(instance, options.billing ? { stripe: options.billing.stripe } : undefined);
     done();
   });
   app.register((instance, _opts, done) => {
@@ -328,6 +352,24 @@ export function buildApp(options: BuildAppOptions = {}): App {
   if (options.promptSuggestions) {
     app.register((instance, _opts, done) => {
       registerPromptSuggestions(instance, options.promptSuggestions!);
+      done();
+    });
+  }
+  if (options.billing) {
+    app.register((instance, _opts, done) => {
+      registerBilling(instance, options.billing!);
+      done();
+    });
+  }
+  if (options.billingWebhook) {
+    app.register((instance, _opts, done) => {
+      registerBillingWebhookPlugin(instance, options.billingWebhook!);
+      done();
+    });
+  }
+  if (options.signup) {
+    app.register((instance, _opts, done) => {
+      registerSignupRoutes(instance, options.signup!);
       done();
     });
   }
