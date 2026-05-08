@@ -8,7 +8,7 @@
 
 ## Overview
 
-This runbook covers secret rotation for the CPA Platform in production.
+This runbook covers secret rotation for Claimsure in production.
 Secrets are stored in [GCP Secret Manager](https://cloud.google.com/secret-manager)
 and injected into Cloud Run services at boot time via `--set-secrets`.
 
@@ -33,9 +33,9 @@ development) to the production GCP deployment. In production there is no
 ```bash
 # Authenticate with sufficient permissions
 gcloud auth login
-gcloud config set project cpa-platform-prod
+gcloud config set project claimsure-prod
 
-# Required roles on cpa-platform-prod:
+# Required roles on claimsure-prod:
 #   roles/secretmanager.admin   — to add versions and describe secrets
 #   roles/run.admin             — to redeploy services
 ```
@@ -52,17 +52,17 @@ SECRET_NAME="session-jwt-secret"   # replace with target secret name
 
 # Option A: pass value via stdin (recommended — avoids shell history)
 gcloud secrets versions add "${SECRET_NAME}" \
-  --project=cpa-platform-prod \
+  --project=claimsure-prod \
   --data-file=- <<< 'new-secret-value'
 
 # Option B: pass from a file (useful for PEM keys or multi-line values)
 gcloud secrets versions add "${SECRET_NAME}" \
-  --project=cpa-platform-prod \
+  --project=claimsure-prod \
   --data-file=/path/to/secret.txt
 
 # Verify the new version was added
 gcloud secrets versions list "${SECRET_NAME}" \
-  --project=cpa-platform-prod
+  --project=claimsure-prod
 ```
 
 Secret versions are numbered sequentially. Cloud Run services reference
@@ -84,11 +84,11 @@ IMAGE_TAG="$(git rev-parse --short HEAD)" \
 
 # Or update a single service (no image rebuild):
 gcloud run services update cpa-api \
-  --project=cpa-platform-prod \
+  --project=claimsure-prod \
   --region=australia-southeast1
 
 gcloud run services update cpa-web \
-  --project=cpa-platform-prod \
+  --project=claimsure-prod \
   --region=australia-southeast1
 ```
 
@@ -97,14 +97,14 @@ gcloud run services update cpa-web \
 ```bash
 # Deploy a new revision without sending traffic
 gcloud run deploy cpa-api \
-  --project=cpa-platform-prod \
+  --project=claimsure-prod \
   --region=australia-southeast1 \
-  --image="gcr.io/cpa-platform-prod/cpa-api:${IMAGE_TAG}" \
+  --image="gcr.io/claimsure-prod/cpa-api:${IMAGE_TAG}" \
   --no-traffic
 
 # Get the new revision name
 NEW_REVISION=$(gcloud run revisions list \
-  --project=cpa-platform-prod \
+  --project=claimsure-prod \
   --region=australia-southeast1 \
   --service=cpa-api \
   --format="value(name)" \
@@ -112,13 +112,13 @@ NEW_REVISION=$(gcloud run revisions list \
 
 # Shift 10 % of traffic to the new revision, then 100 % after validation
 gcloud run services update-traffic cpa-api \
-  --project=cpa-platform-prod \
+  --project=claimsure-prod \
   --region=australia-southeast1 \
   --to-revisions="${NEW_REVISION}=10"
 
 # After validation:
 gcloud run services update-traffic cpa-api \
-  --project=cpa-platform-prod \
+  --project=claimsure-prod \
   --region=australia-southeast1 \
   --to-latest
 ```
@@ -148,7 +148,7 @@ window of exposure.
 
    ```bash
    gcloud secrets versions add SESSION_JWT_SECRET \
-     --project=cpa-platform-prod \
+     --project=claimsure-prod \
      --data-file=- <<< 'new-value'
    ```
 
@@ -157,21 +157,21 @@ window of exposure.
    ```bash
    # List versions to get the old version number (e.g. "1")
    gcloud secrets versions list SESSION_JWT_SECRET \
-     --project=cpa-platform-prod
+     --project=claimsure-prod
 
    gcloud secrets versions disable SESSION_JWT_SECRET/1 \
-     --project=cpa-platform-prod
+     --project=claimsure-prod
    ```
 
 5. **Redeploy all affected services** immediately:
 
    ```bash
    gcloud run services update cpa-api \
-     --project=cpa-platform-prod \
+     --project=claimsure-prod \
      --region=australia-southeast1
 
    gcloud run services update cpa-web \
-     --project=cpa-platform-prod \
+     --project=claimsure-prod \
      --region=australia-southeast1
    ```
 
@@ -179,7 +179,7 @@ window of exposure.
 
    ```bash
    API_URL=$(gcloud run services describe cpa-api \
-     --project=cpa-platform-prod \
+     --project=claimsure-prod \
      --region=australia-southeast1 \
      --format="value(status.url)")
    curl "${API_URL}/health"
@@ -205,7 +205,7 @@ and Secret Manager to avoid dropped webhook events or failed API calls.
 
    ```bash
    gcloud secrets versions add stripe-api-key \
-     --project=cpa-platform-prod \
+     --project=claimsure-prod \
      --data-file=- <<< 'sk_live_new-key-here'
    ```
 
@@ -213,7 +213,7 @@ and Secret Manager to avoid dropped webhook events or failed API calls.
 
    ```bash
    gcloud run services update cpa-api \
-     --project=cpa-platform-prod \
+     --project=claimsure-prod \
      --region=australia-southeast1
    ```
 
@@ -230,7 +230,7 @@ and Secret Manager to avoid dropped webhook events or failed API calls.
 
    ```bash
    gcloud secrets versions add stripe-webhook-secret \
-     --project=cpa-platform-prod \
+     --project=claimsure-prod \
      --data-file=- <<< 'whsec_new-value'
    ```
 
@@ -240,7 +240,7 @@ and Secret Manager to avoid dropped webhook events or failed API calls.
 
    ```bash
    gcloud run services update cpa-api \
-     --project=cpa-platform-prod \
+     --project=claimsure-prod \
      --region=australia-southeast1
    ```
 
@@ -255,7 +255,7 @@ The GitHub App private key is a multi-line RSA PEM. Rotation requires creating
 a new key in GitHub before removing the old one.
 
 1. Go to [github.com/settings/apps](https://github.com/settings/apps) →
-   select the CPA Platform GitHub App → **Private keys** → **Generate a
+   select the Claimsure GitHub App → **Private keys** → **Generate a
    private key**. Download the `.pem` file.
 
 2. The app now has **two** active private keys (old + new). This means existing
@@ -265,7 +265,7 @@ a new key in GitHub before removing the old one.
 
    ```bash
    gcloud secrets versions add github-app-private-key \
-     --project=cpa-platform-prod \
+     --project=claimsure-prod \
      --data-file=/path/to/new-private-key.pem
    ```
 
@@ -273,7 +273,7 @@ a new key in GitHub before removing the old one.
 
    ```bash
    gcloud run services update cpa-api \
-     --project=cpa-platform-prod \
+     --project=claimsure-prod \
      --region=australia-southeast1
    ```
 
@@ -289,7 +289,7 @@ a new key in GitHub before removing the old one.
    ```bash
    # Replace "1" with the actual version number of the old key
    gcloud secrets versions disable github-app-private-key/1 \
-     --project=cpa-platform-prod
+     --project=claimsure-prod
    ```
 
 ---
@@ -299,14 +299,14 @@ a new key in GitHub before removing the old one.
 ```bash
 # List all secrets with the managed-by=bootstrap label
 gcloud secrets list \
-  --project=cpa-platform-prod \
+  --project=claimsure-prod \
   --filter="labels.managed-by=bootstrap" \
   --format="table(name, createTime, replication.userManaged.replicas[0].location)"
 
 # Check the latest version of a specific secret
 gcloud secrets versions describe latest \
   --secret=session-jwt-secret \
-  --project=cpa-platform-prod
+  --project=claimsure-prod
 ```
 
 ---
@@ -318,10 +318,10 @@ account must have access before the `--set-secrets` flag will work.
 
 ```bash
 SECRET_NAME="new-secret-name"
-RUNTIME_SA="cpa-run@cpa-platform-prod.iam.gserviceaccount.com"
+RUNTIME_SA="cpa-run@claimsure-prod.iam.gserviceaccount.com"
 
 gcloud secrets add-iam-policy-binding "${SECRET_NAME}" \
-  --project=cpa-platform-prod \
+  --project=claimsure-prod \
   --member="serviceAccount:${RUNTIME_SA}" \
   --role="roles/secretmanager.secretAccessor"
 ```

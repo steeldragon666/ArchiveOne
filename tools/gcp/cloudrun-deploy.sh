@@ -2,14 +2,14 @@
 set -euo pipefail
 
 # =============================================================================
-# CPA Platform — Cloud Run Deployment
+# Claimsure — Cloud Run Deployment
 #
 # Builds container images via Cloud Build and deploys two Cloud Run services:
 #   cpa-api  — Fastify API, port 3000, min-instances=1 (pg-boss persistence)
 #   cpa-web  — Next.js web app, port 5173, min-instances=0
 #
 # Usage:
-#   export PROD_PROJECT="cpa-platform-prod"     # default
+#   export PROD_PROJECT="claimsure-prod"     # default
 #   export REGION="australia-southeast1"         # default
 #   export IMAGE_TAG="$(git rev-parse --short HEAD)"  # recommended
 #   bash tools/gcp/cloudrun-deploy.sh
@@ -26,7 +26,7 @@ set -euo pipefail
 #     roles/iam.serviceAccountUser  (for the Cloud Run service account)
 # =============================================================================
 
-PROD_PROJECT="${PROD_PROJECT:-cpa-platform-prod}"
+PROD_PROJECT="${PROD_PROJECT:-claimsure-prod}"
 REGION="${REGION:-australia-southeast1}"
 IMAGE_TAG="${IMAGE_TAG:?IMAGE_TAG must be set (e.g. export IMAGE_TAG=\$(git rev-parse --short HEAD))}"
 
@@ -37,7 +37,7 @@ WEB_IMAGE="${REGISTRY}/cpa-web:${IMAGE_TAG}"
 # Service account that Cloud Run services run as (created by project-bootstrap.sh)
 RUNTIME_SA="cpa-run@${PROD_PROJECT}.iam.gserviceaccount.com"
 
-echo "=== CPA Platform — Cloud Run Deployment ==="
+echo "=== Claimsure — Cloud Run Deployment ==="
 echo "  Project   : ${PROD_PROJECT}"
 echo "  Region    : ${REGION}"
 echo "  Image tag : ${IMAGE_TAG}"
@@ -76,7 +76,7 @@ gcloud run deploy cpa-api \
   --port=3000 \
   --concurrency=80 \
   --timeout=60 \
-  --set-env-vars="NODE_ENV=production,API_PORT=3000,CLASSIFIER_IMPL=anthropic,XERO_IMPL=real,P6_AGENT_A_ENABLED=true,P6_AGENT_B_ENABLED=true,P6_AGENT_C_ENABLED=true,P6_AGENT_C_STREAMING_ENABLED=false,MICROSOFT_OIDC_TENANT=common,DOCUSIGN_AUTH_BASE_URL=https://account.docusign.com,DOCUSIGN_API_BASE_URL=https://na4.docusign.net,INTEGRATIONS_SUCCESS_REDIRECT=https://app.cpa-platform.com/integrations,SESSION_COOKIE_NAME=cpa_session,SESSION_TTL_SECONDS=86400" \
+  --set-env-vars="NODE_ENV=production,API_PORT=3000,CLASSIFIER_IMPL=anthropic,XERO_IMPL=real,P6_AGENT_A_ENABLED=true,P6_AGENT_B_ENABLED=true,P6_AGENT_C_ENABLED=true,P6_AGENT_C_STREAMING_ENABLED=false,MICROSOFT_OIDC_TENANT=common,DOCUSIGN_AUTH_BASE_URL=https://account.docusign.com,DOCUSIGN_API_BASE_URL=https://na4.docusign.net,INTEGRATIONS_SUCCESS_REDIRECT=https://app.claimsure.com.au/integrations,SESSION_COOKIE_NAME=cpa_session,SESSION_TTL_SECONDS=86400" \
   --set-secrets="\
 DATABASE_URL=database-url:latest,\
 DATABASE_URL_APP=database-url-app:latest,\

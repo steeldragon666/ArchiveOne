@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # =============================================================================
-# CPA Platform — Secret Manager Bootstrap
+# Claimsure — Secret Manager Bootstrap
 #
 # Idempotent script that creates all required secrets in GCP Secret Manager.
 # For each secret:
@@ -10,7 +10,7 @@ set -euo pipefail
 #   - If it does not exist → create with PLACEHOLDER value (prints "+")
 #
 # Usage:
-#   export PROD_PROJECT="cpa-platform-prod"   # default
+#   export PROD_PROJECT="claimsure-prod"   # default
 #   export REGION="australia-southeast1"       # default
 #   bash tools/gcp/secrets-bootstrap.sh
 #
@@ -24,7 +24,7 @@ set -euo pipefail
 #   Role required: roles/secretmanager.admin on PROD_PROJECT
 # =============================================================================
 
-PROD_PROJECT="${PROD_PROJECT:-cpa-platform-prod}"
+PROD_PROJECT="${PROD_PROJECT:-claimsure-prod}"
 REGION="${REGION:-australia-southeast1}"
 
 # secrets array: "secret-name:Human-readable description (max 63 chars for label)"

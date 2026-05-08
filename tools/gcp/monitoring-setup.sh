@@ -2,9 +2,9 @@
 set -euo pipefail
 
 # =============================================================================
-# CPA Platform — Cloud Monitoring Alert Policy Setup
+# Claimsure — Cloud Monitoring Alert Policy Setup
 #
-# Creates (or updates) the four production alert policies for the CPA Platform
+# Creates (or updates) the four production alert policies for Claimsure
 # and wires them to PagerDuty (for critical/warning) and email (for Cloud SQL).
 #
 # Prerequisites:
@@ -14,7 +14,7 @@ set -euo pipefail
 #     roles/monitoring.notificationChannelEditor
 #
 # Usage:
-#   export PROD_PROJECT="cpa-platform-prod"      # default
+#   export PROD_PROJECT="claimsure-prod"      # default
 #   export PAGERDUTY_SERVICE_KEY="<pd-key>"      # from PagerDuty (P8 T1.2)
 #   export ALERT_EMAIL="aaron@cpaplatform.com"   # email for non-critical alerts
 #   bash tools/gcp/monitoring-setup.sh
@@ -24,14 +24,14 @@ set -euo pipefail
 #   creation if they already exist. Re-running is safe.
 # =============================================================================
 
-PROD_PROJECT="${PROD_PROJECT:-cpa-platform-prod}"
+PROD_PROJECT="${PROD_PROJECT:-claimsure-prod}"
 PAGERDUTY_SERVICE_KEY="${PAGERDUTY_SERVICE_KEY:?PAGERDUTY_SERVICE_KEY must be set (from PagerDuty integration — P8 T1.2)}"
 ALERT_EMAIL="${ALERT_EMAIL:?ALERT_EMAIL must be set (e.g. aaron@cpaplatform.com)}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 POLICY_DIR="${SCRIPT_DIR}/monitoring"
 
-echo "=== CPA Platform — Cloud Monitoring Setup ==="
+echo "=== Claimsure — Cloud Monitoring Setup ==="
 echo "  Project : ${PROD_PROJECT}"
 echo "  Email   : ${ALERT_EMAIL}"
 echo ""
@@ -40,7 +40,7 @@ echo ""
 
 echo "--- Configuring PagerDuty notification channel ---"
 
-PD_CHANNEL_NAME="CPA Platform PagerDuty"
+PD_CHANNEL_NAME="Claimsure PagerDuty"
 
 EXISTING_PD=$(gcloud alpha monitoring channels list \
   --project="${PROD_PROJECT}" \
@@ -66,7 +66,7 @@ fi
 echo ""
 echo "--- Configuring email notification channel ---"
 
-EMAIL_CHANNEL_NAME="CPA Platform Email Alerts"
+EMAIL_CHANNEL_NAME="Claimsure Email Alerts"
 
 EXISTING_EMAIL=$(gcloud alpha monitoring channels list \
   --project="${PROD_PROJECT}" \

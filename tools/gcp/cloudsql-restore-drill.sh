@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # -----------------------------------------------------------------------------
-# CPA Platform — Cloud SQL Restore Drill
+# Claimsure — Cloud SQL Restore Drill
 #
 # Clones the latest production Cloud SQL instance to a temporary drill instance,
 # prints connection information for manual verification, then deletes the drill
@@ -12,7 +12,7 @@ set -euo pipefail
 #   bash tools/gcp/cloudsql-restore-drill.sh
 #
 # All variables can be overridden via environment:
-#   PROD_PROJECT      — defaults to cpa-platform-prod
+#   PROD_PROJECT      — defaults to claimsure-prod
 #   REGION            — defaults to australia-southeast1
 #   DB_INSTANCE_PROD  — defaults to cpa-prod-db
 #   SKIP_DELETE       — set to 1 to keep the drill instance for manual inspection
@@ -25,7 +25,7 @@ set -euo pipefail
 #   SKIP_DELETE=1 bash tools/gcp/cloudsql-restore-drill.sh
 # -----------------------------------------------------------------------------
 
-PROD_PROJECT="${PROD_PROJECT:-cpa-platform-prod}"
+PROD_PROJECT="${PROD_PROJECT:-claimsure-prod}"
 REGION="${REGION:-australia-southeast1}"
 DB_INSTANCE_PROD="${DB_INSTANCE_PROD:-cpa-prod-db}"
 SKIP_DELETE="${SKIP_DELETE:-0}"
@@ -68,7 +68,7 @@ trap cleanup EXIT
 # MAIN
 # =============================================================================
 
-info "CPA Platform — Cloud SQL Restore Drill"
+info "Claimsure — Cloud SQL Restore Drill"
 info "Source instance : ${DB_INSTANCE_PROD} (${PROD_PROJECT})"
 info "Drill instance  : ${DRILL_INSTANCE}"
 info "SKIP_DELETE     : ${SKIP_DELETE}"
@@ -176,7 +176,7 @@ fi
 # -----------------------------------------------------------------------------
 echo ""
 echo "============================================================"
-echo " CPA Platform Cloud SQL Restore Drill — Summary"
+echo " Claimsure Cloud SQL Restore Drill — Summary"
 echo "============================================================"
 echo " Source instance : ${DB_INSTANCE_PROD} (${PROD_PROJECT})"
 echo " Drill instance  : ${DRILL_INSTANCE}"

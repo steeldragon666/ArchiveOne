@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # -----------------------------------------------------------------------------
-# CPA Platform — GCP Project Bootstrap
+# Claimsure — GCP Project Bootstrap
 #
 # Idempotent script that provisions GCP projects (prod + stg), links billing,
 # enables required APIs, and creates the deployment service account.
@@ -12,16 +12,16 @@ set -euo pipefail
 #   bash tools/gcp/project-bootstrap.sh
 #
 # All variables can be overridden via environment:
-#   PROD_PROJECT   — defaults to cpa-platform-prod
-#   STG_PROJECT    — defaults to cpa-platform-stg
+#   PROD_PROJECT   — defaults to claimsure-prod
+#   STG_PROJECT    — defaults to claimsure-stg
 #   BILLING_ACCOUNT_ID — required, no default
 # -----------------------------------------------------------------------------
 
-PROD_PROJECT="${PROD_PROJECT:-cpa-platform-prod}"
-STG_PROJECT="${STG_PROJECT:-cpa-platform-stg}"
-PROD_NAME="${PROD_NAME:-CPA Platform Production}"
-STG_NAME="${STG_NAME:-CPA Platform Staging}"
-DEPLOY_SA_NAME="cpa-deploy"
+PROD_PROJECT="${PROD_PROJECT:-claimsure-prod}"
+STG_PROJECT="${STG_PROJECT:-claimsure-stg}"
+PROD_NAME="${PROD_NAME:-Claimsure Production}"
+STG_NAME="${STG_NAME:-Claimsure Staging}"
+DEPLOY_SA_NAME="claimsure-deploy"
 DEPLOY_SA="${DEPLOY_SA_NAME}@${PROD_PROJECT}.iam.gserviceaccount.com"
 
 # BILLING_ACCOUNT_ID is required — fail fast with a helpful message if unset
@@ -136,7 +136,7 @@ else
   info "Creating service account ${DEPLOY_SA}..."
   gcloud iam service-accounts create "${DEPLOY_SA_NAME}" \
     --project="${PROD_PROJECT}" \
-    --display-name="CPA Platform Deployment SA" \
+    --display-name="Claimsure Deployment SA" \
     --description="Used by CI/CD pipelines to deploy to Cloud Run, Cloud SQL, etc." \
     --quiet
   done_created "Service account: ${DEPLOY_SA}"
@@ -178,7 +178,7 @@ fi
 # -----------------------------------------------------------------------------
 echo ""
 echo "============================================================"
-echo " CPA Platform GCP Bootstrap — Summary"
+echo " Claimsure GCP Bootstrap — Summary"
 echo "============================================================"
 echo " Production project : ${PROD_PROJECT}"
 echo " Staging project    : ${STG_PROJECT}"

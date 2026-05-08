@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # -----------------------------------------------------------------------------
-# CPA Platform — Cloud SQL Provisioning
+# Claimsure — Cloud SQL Provisioning
 #
 # Idempotent script that provisions Cloud SQL Postgres 16 instances (prod + stg)
 # with pgvector enabled, automated backups, and PITR in australia-southeast1.
@@ -11,8 +11,8 @@ set -euo pipefail
 #   bash tools/gcp/cloudsql-provision.sh
 #
 # All variables can be overridden via environment:
-#   PROD_PROJECT      — defaults to cpa-platform-prod
-#   STG_PROJECT       — defaults to cpa-platform-stg
+#   PROD_PROJECT      — defaults to claimsure-prod
+#   STG_PROJECT       — defaults to claimsure-stg
 #   REGION            — defaults to australia-southeast1
 #   DB_INSTANCE_PROD  — defaults to cpa-prod-db
 #   DB_INSTANCE_STG   — defaults to cpa-stg-db
@@ -24,8 +24,8 @@ set -euo pipefail
 #   and re-run.
 # -----------------------------------------------------------------------------
 
-PROD_PROJECT="${PROD_PROJECT:-cpa-platform-prod}"
-STG_PROJECT="${STG_PROJECT:-cpa-platform-stg}"
+PROD_PROJECT="${PROD_PROJECT:-claimsure-prod}"
+STG_PROJECT="${STG_PROJECT:-claimsure-stg}"
 REGION="${REGION:-australia-southeast1}"
 DB_INSTANCE_PROD="${DB_INSTANCE_PROD:-cpa-prod-db}"
 DB_INSTANCE_STG="${DB_INSTANCE_STG:-cpa-stg-db}"
@@ -195,7 +195,7 @@ provision_environment() {
 # MAIN
 # =============================================================================
 
-info "CPA Platform — Cloud SQL Provisioning"
+info "Claimsure — Cloud SQL Provisioning"
 info "Region   : ${REGION}"
 info "Prod     : ${DB_INSTANCE_PROD} in ${PROD_PROJECT}"
 info "Staging  : ${DB_INSTANCE_STG} in ${STG_PROJECT}"
@@ -216,7 +216,7 @@ provision_environment "${DB_INSTANCE_STG}" "${STG_PROJECT}" "Staging"
 # Summary
 # -----------------------------------------------------------------------------
 echo "============================================================"
-echo " CPA Platform Cloud SQL Provisioning — Summary"
+echo " Claimsure Cloud SQL Provisioning — Summary"
 echo "============================================================"
 echo " Region          : ${REGION}"
 echo " Prod instance   : ${DB_INSTANCE_PROD} (${PROD_PROJECT})"
