@@ -1,15 +1,16 @@
 'use client';
 import { useSearchParams } from 'next/navigation';
-import { AuthGuard } from '@/components/auth-guard';
+import { AppShell } from '@/components/app-shell';
+import { CreateProjectButton } from './_components/create-project-button';
 import { ProjectList } from './_components/project-list';
 import { parseProjectListSort, parseProjectListStatus } from './_lib/url-params';
 
 /**
  * /projects — list of all projects in the active firm (T-A7).
  *
- * Pattern matches the C1/C4 conventions established in this repo:
- * `'use client'` + AuthGuard wrapping a client-rendered <ProjectList />.
- * Same shell as `/subject-tenants/page.tsx` and `/users/page.tsx`.
+ * Wrapped in <AppShell /> which provides the global header + persistent left
+ * nav and embeds AuthGuard internally; the page itself only owns the content
+ * area.
  *
  * URL-driven filters:
  *   - `?status=active|archived|all` — default 'active' (omitted)
@@ -22,9 +23,9 @@ import { parseProjectListSort, parseProjectListStatus } from './_lib/url-params'
  */
 export default function ProjectsPage() {
   return (
-    <AuthGuard>
+    <AppShell>
       <Inner />
-    </AuthGuard>
+    </AppShell>
   );
 }
 
@@ -34,14 +35,20 @@ function Inner() {
   const sort = parseProjectListSort(searchParams.get('sort'));
 
   return (
-    <main className="container mx-auto py-8 px-4">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold">Projects</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Long-lived R&amp;D undertakings spanning one or more fiscal-year claims.
-        </p>
-      </div>
+    <div className="space-y-8">
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div className="space-y-2">
+          <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+            Workspace
+          </p>
+          <h1 className="font-display text-3xl font-semibold tracking-tight">Projects</h1>
+          <p className="text-muted-foreground max-w-2xl">
+            Long-lived R&amp;D undertakings spanning one or more fiscal-year claims.
+          </p>
+        </div>
+        <CreateProjectButton />
+      </header>
       <ProjectList status={status} sort={sort} />
-    </main>
+    </div>
   );
 }

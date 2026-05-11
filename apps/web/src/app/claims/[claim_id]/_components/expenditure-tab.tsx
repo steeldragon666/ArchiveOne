@@ -18,6 +18,7 @@ import {
   type ExpenditureRow,
 } from '../_lib/expenditure-stub';
 import { parseExpenditureFilter } from '../_lib/url-params';
+import { EmptyState as BrandEmptyState } from '@/components/empty-state';
 import { ExpenditureApportionDialog } from './expenditure-apportion-dialog';
 import { ExpenditureFilterChips } from './expenditure-filter';
 import { ExpenditureRowItem } from './expenditure-row';
@@ -468,32 +469,28 @@ function EmptyState({
 }) {
   if (firmHasNothing) {
     return (
-      <div className="rounded-md border border-dashed p-8 text-center">
-        <p className="text-sm text-muted-foreground">
-          No Xero expenditures synced for this firm yet.
-        </p>
-        <p className="mt-2 text-xs text-muted-foreground">
-          Connect Xero in integrations to start syncing invoices, bank transactions, and receipts.
-        </p>
-      </div>
+      <BrandEmptyState
+        icon="ledger"
+        title="No Xero expenditures synced"
+        description="Connect Xero in integrations to start syncing invoices, bank transactions, and receipts."
+      />
     );
   }
   if (filter === 'unmapped') {
     return (
-      <div className="rounded-md border border-dashed p-8 text-center">
-        <p className="text-sm text-muted-foreground">No unmapped expenditures — nice work.</p>
-        <p className="mt-2 text-xs text-muted-foreground">
-          Switch to All or Mapped above to see the rest.
-        </p>
-      </div>
+      <BrandEmptyState
+        icon="ledger"
+        title="No unmapped expenditures — nice work"
+        description="Switch to All or Mapped above to see the rest."
+      />
     );
   }
   // filter === 'mapped' with zero rows.
   return (
-    <div className="rounded-md border border-dashed p-8 text-center">
-      <p className="text-sm text-muted-foreground">
-        No mapped expenditures yet. Switch to Unmapped above to start mapping.
-      </p>
-    </div>
+    <BrandEmptyState
+      icon="ledger"
+      title="No mapped expenditures yet"
+      description="Switch to Unmapped above to start mapping expenditures to activities."
+    />
   );
 }

@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import type { Project } from '@cpa/schemas';
 import { useWhoami } from '@/hooks/use-whoami';
 import { cn } from '@/lib/utils';
+import { EmptyState } from '@/components/empty-state';
 import { listProjects } from '../_lib/api';
 import {
   PROJECT_LIST_SORT_LABELS,
@@ -199,7 +200,7 @@ export function ProjectList({ status, sort }: ProjectListProps) {
           {projects.error instanceof Error ? projects.error.message : 'Unknown error'}
         </p>
       ) : visibleProjects.length === 0 ? (
-        <EmptyState status={status} />
+        <ProjectEmptyState status={status} />
       ) : (
         <ul className="space-y-2">
           {visibleProjects.map((p) => (
@@ -239,46 +240,31 @@ export function ProjectList({ status, sort }: ProjectListProps) {
   );
 }
 
-function EmptyState({ status }: { status: ProjectListStatus }) {
+function ProjectEmptyState({ status }: { status: ProjectListStatus }) {
   if (status === 'archived') {
     return (
-      <div className="border border-dashed rounded-md py-10 px-4 text-center space-y-2">
-        <p className="text-sm font-medium">No archived projects</p>
-        <p className="text-xs text-muted-foreground">
-          Archived projects are filtered out of the default list. Note: the API currently hides
-          archived projects entirely (route filters <code>archived_at IS NULL</code>); a follow-up
-          will widen the response.
-        </p>
-      </div>
+      <EmptyState
+        icon="folder"
+        title="No archived projects"
+        description="Archived projects are filtered out of the default list. The API currently hides archived projects entirely; a follow-up will widen the response."
+      />
     );
   }
   if (status === 'all') {
     return (
-      <div className="border border-dashed rounded-md py-10 px-4 text-center space-y-2">
-        <p className="text-sm font-medium">No projects yet for this firm</p>
-        <p className="text-xs text-muted-foreground">
-          When the API exposes archived projects, this view will combine active and archived. Until
-          then, the Active and Archived tabs are the only places to see your projects.
-        </p>
-      </div>
+      <EmptyState
+        icon="folder"
+        title="No projects yet for this firm"
+        description="When the API exposes archived projects, this view will combine active and archived. Until then, use the Active and Archived tabs."
+      />
     );
   }
   return (
-    <div className="border border-dashed rounded-md py-10 px-4 text-center space-y-3">
-      <p className="text-sm font-medium">No projects yet</p>
-      <p className="text-xs text-muted-foreground">
-        Projects group activities across one or more fiscal-year claims.
-      </p>
-      {/* TODO(p4-a-followup): wire this CTA to a create-project dialog once
-          the form lands. POST /v1/projects already exists (A1). */}
-      <button
-        type="button"
-        disabled
-        className="inline-flex items-center rounded-md bg-primary px-3 py-2 text-xs font-medium text-primary-foreground opacity-60 cursor-not-allowed"
-        title="Create form deferred to a follow-up commit"
-      >
-        Create project
-      </button>
-    </div>
+    <EmptyState
+      icon="folder"
+      title="No projects yet"
+      description="Projects group R&D activities across one or more fiscal-year claims."
+      action={{ label: 'Create your first project', href: '/projects' }}
+    />
   );
 }

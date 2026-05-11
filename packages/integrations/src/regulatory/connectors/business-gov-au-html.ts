@@ -6,6 +6,7 @@
  */
 
 import { registerConnector } from '../connector-factory.js';
+import { rifFetch } from '../fetch-with-retry.js';
 import type {
   ISourceConnector,
   RegulatorySourceRow,
@@ -14,14 +15,7 @@ import type {
 
 class BusinessGovAuHtmlConnector implements ISourceConnector {
   async fetch(source: RegulatorySourceRow): Promise<RawRegulatoryEvent[]> {
-    const response = await globalThis.fetch(source.source_url, {
-      headers: { 'User-Agent': 'CPA-Platform-RIF/1.0' },
-      signal: AbortSignal.timeout(30_000),
-    });
-
-    if (!response.ok) {
-      throw new Error(`business.gov.au fetch failed: HTTP ${response.status}`);
-    }
+    const response = await rifFetch(source.source_url);
 
     const html = await response.text();
     return parseBusinessGovAuPage(html, source.source_url);

@@ -1,11 +1,15 @@
 import crypto from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { requireSession } from '@cpa/auth';
+import { insertEventWithChain } from '@cpa/db';
 import { sql, privilegedSql } from '@cpa/db/client';
 import {
   PAYROLL_PROVIDERS,
   createEmployeeBody,
   listEmployeesQuery,
+  updateEmployeeBody,
+  EmployeeUpdatedPayload,
+  EmployeeDeactivatedPayload,
   type Employee,
   type PayrollProvider,
 } from '@cpa/schemas';
@@ -309,6 +313,237 @@ export function registerEmployees(app: FastifyInstance): void {
         }
         return { employee: toApi(row) };
       });
+    },
+  );
+
+  // -----------------------------------------------------------------------
+  // PATCH /v1/employees/:id — partial update + emit EMPLOYEE_UPDATED.
+  // -----------------------------------------------------------------------
+  app.patch<{ Params: { id: string } }>(
+    '/v1/employees/:id',
+    { preHandler: requireSession },
+    async (req, reply) => {
+      const role = req.user!.role;
+      if (role !== 'admin' && role !== 'consultant') {
+        return reply.status(403).send({
+          error: 'forbidden',
+          message: 'Admin or consultant role required',
+          requestId: req.id,
+        });
+      }
+
+      const parsed = updateEmployeeBody.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'invalid_body',
+          message:
+            'Body must be a partial update of { name?, email?, job_title?, payroll_external_id?, payroll_provider? } with no extra keys',
+          requestId: req.id,
+        });
+      }
+      const patch = parsed.data;
+      const { id } = req.params;
+      const tenantId = req.user!.tenantId!;
+      const userId = req.user!.id;
+
+      const patchKeys = Object.keys(patch) as Array<keyof typeof patch>;
+
+      const result = await sql.begin(async (tx) => {
+        await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+        const before = await tx<RawEmployeeRow[]>`
+          SELECT id, subject_tenant_id, tenant_id, email, name, job_title,
+                 payroll_external_id, payroll_provider, invited_at,
+                 invited_by_user_id, first_seen_at, last_seen_at, deactivated_at
+            FROM subject_tenant_employee
+           WHERE id = ${id} AND deactivated_at IS NULL
+        `;
+        const prev = before[0];
+        if (!prev) return { kind: 'not_found' as const };
+        if (patchKeys.length === 0) {
+          return { kind: 'noop' as const, row: prev };
+        }
+
+        const setName = patch.name !== undefined ? tx`name = ${patch.name},` : tx``;
+        const setEmail = patch.email !== undefined ? tx`email = ${patch.email},` : tx``;
+        const setJobTitle =
+          patch.job_title !== undefined ? tx`job_title = ${patch.job_title},` : tx``;
+        const setPayrollExternalId =
+          patch.payroll_external_id !== undefined
+            ? tx`payroll_external_id = ${patch.payroll_external_id},`
+            : tx``;
+        const setPayrollProvider =
+          patch.payroll_provider !== undefined
+            ? tx`payroll_provider = ${patch.payroll_provider},`
+            : tx``;
+
+        let updated: RawEmployeeRow[];
+        try {
+          updated = await tx<RawEmployeeRow[]>`
+            UPDATE subject_tenant_employee
+               SET ${setName}
+                   ${setEmail}
+                   ${setJobTitle}
+                   ${setPayrollExternalId}
+                   ${setPayrollProvider}
+                   invited_at = invited_at
+             WHERE id = ${id} AND deactivated_at IS NULL
+            RETURNING id, subject_tenant_id, tenant_id, email, name, job_title,
+                      payroll_external_id, payroll_provider, invited_at,
+                      invited_by_user_id, first_seen_at, last_seen_at, deactivated_at
+          `;
+        } catch (err) {
+          // Email uniqueness violation on the active-email partial index.
+          if ((err as { code?: string }).code === '23505') {
+            return { kind: 'email_taken' as const };
+          }
+          throw err;
+        }
+        const row = updated[0];
+        if (!row) {
+          throw new Error('PATCH /v1/employees/:id: UPDATE returned no row');
+        }
+        return { kind: 'updated' as const, prev, row };
+      });
+
+      if (result.kind === 'not_found') {
+        return reply.status(404).send({
+          error: 'employee_not_found',
+          message: 'No active employee with that id in this firm',
+          requestId: req.id,
+        });
+      }
+      if (result.kind === 'email_taken') {
+        return reply.status(409).send({
+          error: 'employee_email_taken',
+          message: 'An active employee with that email already exists for this claimant',
+          requestId: req.id,
+        });
+      }
+      if (result.kind === 'noop') {
+        return reply.status(200).send({ employee: toApi(result.row) });
+      }
+
+      // Build diff and emit chain event only when something changed.
+      const fieldsChanged: Record<string, { from: unknown; to: unknown }> = {};
+      if (patch.name !== undefined && result.prev.name !== result.row.name) {
+        fieldsChanged['name'] = { from: result.prev.name, to: result.row.name };
+      }
+      if (patch.email !== undefined && result.prev.email !== result.row.email) {
+        fieldsChanged['email'] = { from: result.prev.email, to: result.row.email };
+      }
+      if (patch.job_title !== undefined && result.prev.job_title !== result.row.job_title) {
+        fieldsChanged['job_title'] = { from: result.prev.job_title, to: result.row.job_title };
+      }
+      if (
+        patch.payroll_external_id !== undefined &&
+        result.prev.payroll_external_id !== result.row.payroll_external_id
+      ) {
+        fieldsChanged['payroll_external_id'] = {
+          from: result.prev.payroll_external_id,
+          to: result.row.payroll_external_id,
+        };
+      }
+      if (
+        patch.payroll_provider !== undefined &&
+        result.prev.payroll_provider !== result.row.payroll_provider
+      ) {
+        fieldsChanged['payroll_provider'] = {
+          from: result.prev.payroll_provider,
+          to: result.row.payroll_provider,
+        };
+      }
+
+      if (Object.keys(fieldsChanged).length > 0) {
+        const payload = EmployeeUpdatedPayload.parse({
+          employee_id: result.row.id,
+          fields_changed: fieldsChanged,
+        });
+        await insertEventWithChain({
+          tenant_id: tenantId,
+          subject_tenant_id: result.row.subject_tenant_id,
+          project_id: null,
+          kind: 'EMPLOYEE_UPDATED',
+          payload,
+          classification: null,
+          captured_at: new Date(),
+          captured_by_user_id: userId,
+          override_of_event_id: null,
+          override_new_kind: null,
+          override_reason: null,
+        });
+      }
+
+      return reply.status(200).send({ employee: toApi(result.row) });
+    },
+  );
+
+  // -----------------------------------------------------------------------
+  // DELETE /v1/employees/:id — soft-delete via deactivated_at + emit EMPLOYEE_DEACTIVATED.
+  // -----------------------------------------------------------------------
+  app.delete<{ Params: { id: string } }>(
+    '/v1/employees/:id',
+    { preHandler: requireSession },
+    async (req, reply) => {
+      const role = req.user!.role;
+      if (role !== 'admin' && role !== 'consultant') {
+        return reply.status(403).send({
+          error: 'forbidden',
+          message: 'Admin or consultant role required',
+          requestId: req.id,
+        });
+      }
+
+      const { id } = req.params;
+      const tenantId = req.user!.tenantId!;
+      const userId = req.user!.id;
+
+      const result = await sql.begin(async (tx) => {
+        await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+        const rows = await tx<{ id: string; subject_tenant_id: string }[]>`
+          UPDATE subject_tenant_employee
+             SET deactivated_at = NOW()
+           WHERE id = ${id} AND deactivated_at IS NULL
+           RETURNING id, subject_tenant_id
+        `;
+        if (rows[0]) return { kind: 'deactivated' as const, row: rows[0] };
+        // Not found or already deactivated — disambiguate.
+        const existing = await tx<{ id: string; subject_tenant_id: string }[]>`
+          SELECT id, subject_tenant_id FROM subject_tenant_employee WHERE id = ${id}
+        `;
+        if (!existing[0]) return { kind: 'not_found' as const };
+        return { kind: 'noop' as const };
+      });
+
+      if (result.kind === 'not_found') {
+        return reply.status(404).send({
+          error: 'employee_not_found',
+          message: 'No employee with that id in this firm',
+          requestId: req.id,
+        });
+      }
+
+      if (result.kind === 'deactivated') {
+        const payload = EmployeeDeactivatedPayload.parse({
+          employee_id: id,
+          deactivated_by_user_id: userId,
+        });
+        await insertEventWithChain({
+          tenant_id: tenantId,
+          subject_tenant_id: result.row.subject_tenant_id,
+          project_id: null,
+          kind: 'EMPLOYEE_DEACTIVATED',
+          payload,
+          classification: null,
+          captured_at: new Date(),
+          captured_by_user_id: userId,
+          override_of_event_id: null,
+          override_new_kind: null,
+          override_reason: null,
+        });
+      }
+
+      // 204 for both first-deactivation and idempotent re-deactivation.
+      return reply.status(204).send();
     },
   );
 

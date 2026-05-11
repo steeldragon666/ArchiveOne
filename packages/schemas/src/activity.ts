@@ -49,6 +49,26 @@ export const Activity = z.object({
   actual_outcome: z.string().nullable(),
   created_at: Iso8601,
   updated_at: Iso8601,
+  /**
+   * Narrative-approval review metadata (migration 0079).
+   *
+   * `needs_review` — true when the activity was auto-created by the
+   *   narrative-approval flow at a confidence below
+   *   AUTO_CREATE_CONFIDENCE_THRESHOLD (default 0.80). Consultants spot-check
+   *   these via the 🤖 review chip on the Activities tab and clear the flag
+   *   via POST /v1/activities/:id/mark-reviewed (emits ACTIVITY_REVIEWED).
+   * `proposal_confidence` — original AI confidence (0.0-1.0) at the moment
+   *   of auto-creation. Null for manually-created or per-card-confirmed rows.
+   * `proposed_from_event_id` — the upload event id whose extracted_content
+   *   the activity was derived from. Null for manual/confirmed rows. Used by
+   *   the ReviewActivityDialog to link back to the source document.
+   *
+   * All three are optional (default omitted by the server) so older client
+   * builds and rows from before the migration round-trip cleanly.
+   */
+  needs_review: z.boolean().optional(),
+  proposal_confidence: z.number().min(0).max(1).nullable().optional(),
+  proposed_from_event_id: Uuid.nullable().optional(),
 });
 export type Activity = z.infer<typeof Activity>;
 

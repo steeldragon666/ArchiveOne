@@ -1,3 +1,8 @@
+// MUST be the first import — force-loads .env values, overriding any
+// shell-leaked empty placeholders (notably ANTHROPIC_API_KEY="" from
+// Claude Desktop / MCP runtimes on Windows).
+import './force-env.js';
+
 // MUST be the first import — registers OTel auto-instrumentations before
 // any module that fastify/pino/postgres-js depends on is loaded.
 import { sdk } from './tracer-init.js';
@@ -19,6 +24,9 @@ import { generatePullRequest } from '@cpa/integrations/github-app';
 import { buildContractTestRunner } from './lib/contract-test-runner.js';
 import { getBoss, stopBoss } from './lib/pg-boss-client.js';
 import { registerRifDailyScrapeJob } from './jobs/rif-daily-scrape.js';
+import { registerGoogleDrivePollJob } from './jobs/google-drive-poll.js';
+import { registerClaimFinalisationJob } from './jobs/claim-finalisation.js';
+import { registerDocumentExtractJob } from './jobs/document-extract.js';
 
 const repoRoot = process.env['REPO_ROOT'] ?? process.cwd();
 
@@ -45,6 +53,12 @@ if (process.env['NODE_ENV'] !== 'test') {
     // Register cron jobs
     await registerRifDailyScrapeJob(boss);
     app.log.info('rif-daily-scrape job registered');
+    await registerGoogleDrivePollJob(boss);
+    app.log.info('google-drive-poll job registered');
+    await registerClaimFinalisationJob(boss);
+    app.log.info('claim-finalisation job registered');
+    await registerDocumentExtractJob(boss);
+    app.log.info('document-extract job registered');
   } catch (err) {
     app.log.error(err, 'pg-boss start failed');
     await sdk.shutdown();

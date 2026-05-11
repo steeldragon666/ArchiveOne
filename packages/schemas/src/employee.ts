@@ -73,3 +73,29 @@ export const listEmployeesQuery = z.object({
   subject_tenant_id: Uuid.optional(),
 });
 export type ListEmployeesQuery = z.infer<typeof listEmployeesQuery>;
+
+/**
+ * PATCH /v1/employees/:id body — partial update of editable fields.
+ *
+ * Identity fields (`id`, `subject_tenant_id`, `tenant_id`,
+ * `invited_by_user_id`) and lifecycle timestamps (`invited_at`,
+ * `first_seen_at`, `last_seen_at`, `deactivated_at`) are not updatable
+ * through this body; deactivation uses DELETE /v1/employees/:id.
+ *
+ * `email` is included: the consultant may correct a typo in the invite
+ * address before the employee activates their account. Changing email
+ * on an already-activated employee is intentionally allowed (mobile
+ * login re-issues a magic link to the new address).
+ *
+ * `.strict()` rejects unknown keys — protects against silent typos.
+ */
+export const updateEmployeeBody = z
+  .object({
+    name: z.string().min(1).max(200).optional(),
+    email: z.string().email().optional(),
+    job_title: z.string().max(200).nullable().optional(),
+    payroll_external_id: z.string().max(200).nullable().optional(),
+    payroll_provider: payrollProvider.nullable().optional(),
+  })
+  .strict();
+export type UpdateEmployeeBody = z.infer<typeof updateEmployeeBody>;

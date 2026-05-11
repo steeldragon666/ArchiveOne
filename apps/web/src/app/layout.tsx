@@ -31,8 +31,11 @@ const jetBrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'CPA Platform',
-  description: 'Australian R&D Tax Incentive consultant portal',
+  title: {
+    default: 'Claimsure',
+    template: '%s · Claimsure',
+  },
+  description: 'Forensic R&D Tax Incentive consulting platform.',
 };
 
 export const viewport: Viewport = { width: 'device-width', initialScale: 1 };

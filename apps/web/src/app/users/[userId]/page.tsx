@@ -1,6 +1,6 @@
 'use client';
 import { use } from 'react';
-import { AuthGuard } from '@/components/auth-guard';
+import { AppShell } from '@/components/app-shell';
 import { EditUserForm } from '@/components/edit-user-form';
 import { useUser } from '@/hooks/use-user';
 import { useWhoami } from '@/hooks/use-whoami';
@@ -8,9 +8,9 @@ import { useWhoami } from '@/hooks/use-whoami';
 export default function EditUserPage({ params }: { params: Promise<{ userId: string }> }) {
   const { userId } = use(params);
   return (
-    <AuthGuard>
+    <AppShell>
       <Inner userId={userId} />
-    </AuthGuard>
+    </AppShell>
   );
 }
 
@@ -19,32 +19,25 @@ function Inner({ userId }: { userId: string }) {
   const user = useUser(userId);
 
   if (whoami.data?.user.role !== 'admin') {
-    return (
-      <main className="container mx-auto py-8 px-4">
-        <p className="text-slate-500">Admin role required.</p>
-      </main>
-    );
+    return <p className="text-sm text-muted-foreground">Admin role required.</p>;
   }
 
   if (user.isLoading) {
-    return (
-      <main className="container mx-auto py-8 px-4">
-        <p className="text-slate-500">Loading…</p>
-      </main>
-    );
+    return <p className="text-sm text-muted-foreground">Loading…</p>;
   }
   if (user.error || !user.data) {
-    return (
-      <main className="container mx-auto py-8 px-4">
-        <p className="text-red-500">Failed to load user.</p>
-      </main>
-    );
+    return <p className="text-sm text-destructive">Failed to load user.</p>;
   }
 
   return (
-    <main className="container mx-auto py-8 px-4">
-      <h1 className="text-2xl font-bold mb-6">Edit firm member</h1>
+    <div className="space-y-8">
+      <header className="space-y-2">
+        <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+          Administration
+        </p>
+        <h1 className="font-display text-3xl font-semibold tracking-tight">Edit firm member</h1>
+      </header>
       <EditUserForm user={user.data} />
-    </main>
+    </div>
   );
 }

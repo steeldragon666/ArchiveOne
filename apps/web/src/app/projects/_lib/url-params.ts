@@ -84,10 +84,11 @@ export function parseProjectListSort(value: string | null | undefined): ProjectL
  * Settings is the rarest interaction (occasional mutation), Timeline is
  * the audit-trail dive when something needs investigating.
  */
-export type ProjectTab = 'claims' | 'timeline' | 'settings';
+export type ProjectTab = 'claims' | 'intake' | 'timeline' | 'settings';
 
 const PROJECT_TAB_VALUES: ReadonlySet<string> = new Set([
   'claims',
+  'intake',
   'timeline',
   'settings',
 ] satisfies ReadonlyArray<ProjectTab>);
@@ -116,6 +117,7 @@ export function parseProjectTab(value: string | null | undefined): ProjectTab {
  */
 export const PROJECT_TAB_LABELS: Record<ProjectTab, string> = {
   claims: 'Claims',
+  intake: 'Information intake',
   timeline: 'Timeline',
   settings: 'Settings',
 };

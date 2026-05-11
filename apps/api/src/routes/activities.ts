@@ -59,9 +59,26 @@ interface RawActivityRow {
   actual_outcome: string | null;
   created_at: Date | string;
   updated_at: Date | string;
+  // Narrative-approval review metadata (migration 0079). Optional on the
+  // row because older callers (the existing PATCH/POST handlers) don't
+  // SELECT these columns; only the list/detail GETs do.
+  needs_review?: boolean;
+  proposal_confidence?: string | number | null;
+  proposed_from_event_id?: string | null;
 }
 
 const isoOf = (v: Date | string): string => (typeof v === 'string' ? v : v.toISOString());
+
+/**
+ * Coerce postgres NUMERIC(4,3) into a JS number. postgres.js returns
+ * NUMERIC as a string by default to preserve precision; the wire schema
+ * (`proposal_confidence: z.number().min(0).max(1).nullable()`) requires
+ * a real number. NULL passes through unchanged.
+ */
+const numericToNumber = (v: string | number | null | undefined): number | null => {
+  if (v == null) return null;
+  return typeof v === 'string' ? Number(v) : v;
+};
 
 const toApi = (r: RawActivityRow): Activity => ({
   id: r.id,
@@ -79,6 +96,13 @@ const toApi = (r: RawActivityRow): Activity => ({
   actual_outcome: r.actual_outcome,
   created_at: isoOf(r.created_at),
   updated_at: isoOf(r.updated_at),
+  ...(r.needs_review !== undefined ? { needs_review: r.needs_review } : {}),
+  ...(r.proposal_confidence !== undefined
+    ? { proposal_confidence: numericToNumber(r.proposal_confidence) }
+    : {}),
+  ...(r.proposed_from_event_id !== undefined
+    ? { proposed_from_event_id: r.proposed_from_event_id }
+    : {}),
 });
 
 /**
@@ -384,7 +408,8 @@ export function registerActivities(app: FastifyInstance): void {
             SELECT id, tenant_id, project_id, claim_id, code, kind, title,
                    description, hypothesis, technical_uncertainty,
                    experimentation_log, expected_outcome, actual_outcome,
-                   created_at, updated_at
+                   created_at, updated_at,
+                   needs_review, proposal_confidence, proposed_from_event_id
               FROM activity
              WHERE claim_id = ${claim_id}
              ORDER BY code ASC
@@ -393,7 +418,8 @@ export function registerActivities(app: FastifyInstance): void {
             SELECT id, tenant_id, project_id, claim_id, code, kind, title,
                    description, hypothesis, technical_uncertainty,
                    experimentation_log, expected_outcome, actual_outcome,
-                   created_at, updated_at
+                   created_at, updated_at,
+                   needs_review, proposal_confidence, proposed_from_event_id
               FROM activity
              ORDER BY code ASC
           `;
@@ -416,7 +442,8 @@ export function registerActivities(app: FastifyInstance): void {
           SELECT id, tenant_id, project_id, claim_id, code, kind, title,
                  description, hypothesis, technical_uncertainty,
                  experimentation_log, expected_outcome, actual_outcome,
-                 created_at, updated_at
+                 created_at, updated_at,
+                 needs_review, proposal_confidence, proposed_from_event_id
             FROM activity
            WHERE id = ${id}
              AND tenant_id = ${tenantId}

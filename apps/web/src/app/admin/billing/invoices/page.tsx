@@ -1,6 +1,6 @@
 'use client';
 import { useQuery } from '@tanstack/react-query';
-import { AuthGuard } from '@/components/auth-guard';
+import { AppShell } from '@/components/app-shell';
 import { Button } from '@/components/ui/button';
 import {
   Table,
@@ -36,16 +36,18 @@ function formatDate(unixTs: number): string {
 }
 
 function statusClassName(status: string): string {
+  const base =
+    'inline-flex items-center rounded-full px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-widest border';
   switch (status) {
     case 'paid':
-      return 'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-green-100 text-green-800';
+      return `${base} border-primary/30 bg-primary/10 text-primary`;
     case 'open':
-      return 'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-yellow-100 text-yellow-800';
+      return `${base} border-[hsl(var(--brand-warning))]/30 bg-[hsl(var(--brand-warning))]/10 text-[hsl(var(--brand-warning))]`;
     case 'void':
     case 'uncollectible':
-      return 'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-red-100 text-red-800';
+      return `${base} border-destructive/30 bg-destructive/10 text-destructive`;
     default:
-      return 'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-gray-100 text-gray-700';
+      return `${base} border-border bg-muted text-muted-foreground`;
   }
 }
 
@@ -69,10 +71,16 @@ function InvoiceTable() {
 
   if (invoices.length === 0) {
     return (
-      <p className="text-muted-foreground text-sm">
-        No invoices found. Invoices appear here once your subscription is active and your first
-        billing cycle completes.
-      </p>
+      <div className="rounded border-2 border-dashed border-border bg-transparent p-8 space-y-2">
+        <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+          No invoices yet
+        </p>
+        <p className="font-display text-xl">Nothing has been billed</p>
+        <p className="text-sm text-muted-foreground">
+          Invoices appear here once your subscription is active and your first billing cycle
+          completes.
+        </p>
+      </div>
     );
   }
 
@@ -120,16 +128,19 @@ function InvoiceTable() {
 
 export default function InvoicesPage() {
   return (
-    <AuthGuard>
-      <main className="container mx-auto py-8 px-4 space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold">Invoice history</h1>
-          <p className="text-muted-foreground mt-2">
+    <AppShell>
+      <div className="space-y-8">
+        <header className="space-y-2">
+          <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+            Administration
+          </p>
+          <h1 className="font-display text-3xl font-semibold tracking-tight">Invoice history</h1>
+          <p className="text-muted-foreground max-w-2xl">
             All invoices include 10% Australian GST. ABN: 12 345 678 901.
           </p>
-        </div>
+        </header>
         <InvoiceTable />
-      </main>
-    </AuthGuard>
+      </div>
+    </AppShell>
   );
 }

@@ -329,3 +329,156 @@ test('GET /v1/subject-tenants/:id/chain-status: 404 cross-firm', async () => {
   assert.equal(res.statusCode, 404);
   await app.close();
 });
+
+// =============================================================================
+// PATCH /v1/subject-tenants/:id (P5A)
+// =============================================================================
+
+test('PATCH /v1/subject-tenants/:id: 401 without session', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'PATCH',
+    url: `/v1/subject-tenants/${SUBJECT_A1}`,
+    payload: { name: 'New Name' },
+  });
+  assert.equal(res.statusCode, 401);
+  await app.close();
+});
+
+test('PATCH /v1/subject-tenants/:id: 403 for viewer role', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'PATCH',
+    url: `/v1/subject-tenants/${SUBJECT_A1}`,
+    cookies: { cpa_session: await viewerJwt() },
+    payload: { name: 'Should Fail' },
+  });
+  assert.equal(res.statusCode, 403);
+  await app.close();
+});
+
+test('PATCH /v1/subject-tenants/:id: 400 on invalid body (extra key)', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'PATCH',
+    url: `/v1/subject-tenants/${SUBJECT_A1}`,
+    cookies: { cpa_session: await adminJwt() },
+    payload: { name: 'Valid', unknown_field: 'oops' },
+  });
+  assert.equal(res.statusCode, 400);
+  await app.close();
+});
+
+test('PATCH /v1/subject-tenants/:id: 404 cross-firm id (RLS isolation)', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'PATCH',
+    url: `/v1/subject-tenants/${SUBJECT_B1}`,
+    cookies: { cpa_session: await adminJwt() }, // firm-A session cannot see firm-B row
+    payload: { name: 'Hijack Attempt' },
+  });
+  assert.equal(res.statusCode, 404);
+  await app.close();
+});
+
+test('PATCH /v1/subject-tenants/:id: 200 + updated row + SUBJECT_TENANT_UPDATED event', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'PATCH',
+    url: `/v1/subject-tenants/${SUBJECT_A2}`,
+    cookies: { cpa_session: await consultantJwt() },
+    payload: { name: 'Beta Inc Updated' },
+  });
+  assert.equal(res.statusCode, 200);
+  const body = res.json<{ subject_tenant: { id: string; name: string } }>();
+  assert.equal(body.subject_tenant.id, SUBJECT_A2);
+  assert.equal(body.subject_tenant.name, 'Beta Inc Updated');
+
+  // Verify event landed on the chain.
+  const eventRows = await privilegedSql<{ kind: string; payload: Record<string, unknown> }[]>`
+    SELECT kind, payload FROM event
+     WHERE subject_tenant_id = ${SUBJECT_A2}
+       AND kind = 'SUBJECT_TENANT_UPDATED'
+     ORDER BY captured_at DESC LIMIT 1
+  `;
+  assert.equal(eventRows.length, 1);
+  assert.equal(eventRows[0]?.kind, 'SUBJECT_TENANT_UPDATED');
+
+  await app.close();
+});
+
+// =============================================================================
+// DELETE /v1/subject-tenants/:id (P5A)
+// =============================================================================
+
+test('DELETE /v1/subject-tenants/:id: 401 without session', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'DELETE',
+    url: `/v1/subject-tenants/${SUBJECT_A1}`,
+  });
+  assert.equal(res.statusCode, 401);
+  await app.close();
+});
+
+test('DELETE /v1/subject-tenants/:id: 403 for viewer role', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'DELETE',
+    url: `/v1/subject-tenants/${SUBJECT_A1}`,
+    cookies: { cpa_session: await viewerJwt() },
+  });
+  assert.equal(res.statusCode, 403);
+  await app.close();
+});
+
+test('DELETE /v1/subject-tenants/:id: 404 cross-firm (RLS isolation)', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'DELETE',
+    url: `/v1/subject-tenants/${SUBJECT_B1}`,
+    cookies: { cpa_session: await adminJwt() },
+  });
+  assert.equal(res.statusCode, 404);
+  await app.close();
+});
+
+test('DELETE /v1/subject-tenants/:id: 204 soft-delete + SUBJECT_TENANT_ARCHIVED event', async () => {
+  // Use SUBJECT_A2 (already patched above to 'Beta Inc Updated').
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'DELETE',
+    url: `/v1/subject-tenants/${SUBJECT_A2}`,
+    cookies: { cpa_session: await adminJwt() },
+  });
+  assert.equal(res.statusCode, 204);
+
+  // Row should be soft-deleted (deleted_at IS NOT NULL).
+  const row = await privilegedSql<{ deleted_at: Date | null }[]>`
+    SELECT deleted_at FROM subject_tenant WHERE id = ${SUBJECT_A2}
+  `;
+  assert.ok(row[0]?.deleted_at !== null);
+
+  // Chain event emitted.
+  const eventRows = await privilegedSql<{ kind: string }[]>`
+    SELECT kind FROM event
+     WHERE subject_tenant_id = ${SUBJECT_A2}
+       AND kind = 'SUBJECT_TENANT_ARCHIVED'
+     ORDER BY captured_at DESC LIMIT 1
+  `;
+  assert.equal(eventRows.length, 1);
+
+  await app.close();
+});
+
+test('DELETE /v1/subject-tenants/:id: 204 idempotent re-delete (already deleted)', async () => {
+  // SUBJECT_A2 was deleted in the prior test — re-deleting should still 204.
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'DELETE',
+    url: `/v1/subject-tenants/${SUBJECT_A2}`,
+    cookies: { cpa_session: await adminJwt() },
+  });
+  assert.equal(res.statusCode, 204);
+  await app.close();
+});

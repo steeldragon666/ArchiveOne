@@ -1,6 +1,53 @@
 import type { Activity, Claim, Event as ApiEvent, EvidenceKind, Project } from '@cpa/schemas';
 import { apiFetch } from '@/lib/api';
 
+// =====================================================================
+// Project create
+// =====================================================================
+
+/**
+ * POST /v1/projects body. Mirrors {@link CreateProjectBody} on the API
+ * side (packages/schemas/src/project.ts). `tenant_id` is set by the
+ * server from the session — clients never send it.
+ *
+ * `started_at` is an ISO-8601 string; the form binds a `<input type="date">`
+ * which gives `YYYY-MM-DD` and we promote that to `YYYY-MM-DDT00:00:00.000Z`
+ * client-side before sending. Same for `ended_at`. Acceptable for project
+ * lifecycle — calendar-day precision is the canonical UX, no need for
+ * timezone wrangling at the form layer.
+ */
+export interface CreateProjectInput {
+  subject_tenant_id: string;
+  name: string;
+  description?: string;
+  started_at: string; // ISO-8601
+  ended_at?: string; // ISO-8601, must be >= started_at
+}
+
+/**
+ * POST /v1/projects. Returns the created project row.
+ *
+ * The API response shape is `{ project: Project }`; we unwrap to the
+ * inner Project so callers can write straightforward
+ *   `const created = await createProject(input);`
+ *
+ * Errors surface through `apiFetch`'s typed error classes:
+ *   - 400 → `Error` ("invalid_body" — Zod validation; name too long etc)
+ *   - 403 → `ForbiddenError` (viewer role)
+ *   - 404 → `NotFoundError` (subject_tenant_id not in firm or soft-deleted)
+ */
+export async function createProject(input: CreateProjectInput): Promise<Project> {
+  // No explicit Content-Type — apiFetch auto-sets `content-type: application/json`
+  // when a body is present. Setting it here too creates a case-sensitive
+  // duplicate ('Content-Type' vs 'content-type') that some proxy paths
+  // collapse incorrectly, leading to 415 Unsupported Media Type at Fastify.
+  const body = await apiFetch<{ project: Project }>('/v1/projects', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return body.project;
+}
+
 /**
  * Typed fetch helpers for the /projects surfaces (T-A7).
  *

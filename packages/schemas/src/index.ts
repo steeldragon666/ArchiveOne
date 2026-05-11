@@ -21,3 +21,4 @@ export * from './audit.js';
 export * from './billing.js';
 export * from './sla.js';
 export * from './portal-fields.js';
+export * from './cloud-sync.js';

@@ -14,6 +14,7 @@ import { Iso8601, Uuid } from './primitives.js';
  */
 export const timeEntrySource = z.enum([
   'manual',
+  'consultant_manual',
   'employment_hero',
   'keypay',
   'deputy',
@@ -53,6 +54,7 @@ export const timeEntry = z.object({
   apportioned_at: Iso8601.nullable(),
   notes: z.string().nullable(),
   flagged_at: Iso8601.nullable(),
+  deleted_at: Iso8601.nullable(),
   created_at: Iso8601,
 });
 export type TimeEntry = z.infer<typeof timeEntry>;
@@ -117,3 +119,63 @@ export const listTimeEntriesQuery = z.object({
   include_flagged: z.coerce.boolean().default(false),
 });
 export type ListTimeEntriesQuery = z.infer<typeof listTimeEntriesQuery>;
+
+/**
+ * POST /v1/time-entries body — consultant-session manual entry.
+ *
+ * Unlike the mobile path (createManualTimeEntryBody), the consultant
+ * must specify which employee the entry is for via `employee_id` —
+ * there is no JWT-bound subject to derive it from.
+ *
+ * `subject_tenant_id` is required so the route can scope the RLS
+ * context and verify the employee belongs to the correct claimant.
+ *
+ * The `refine` mirrors createManualTimeEntryBody: reject trivially-
+ * invalid date ranges where ended_at <= started_at.
+ */
+export const createConsultantTimeEntryBody = z
+  .object({
+    subject_tenant_id: Uuid,
+    employee_id: Uuid,
+    started_at: z.string().datetime({ offset: true }),
+    ended_at: z.string().datetime({ offset: true }),
+    is_rd: z.boolean().default(true),
+    notes: z.string().max(2000).optional(),
+  })
+  .strict()
+  .refine((v) => new Date(v.ended_at) > new Date(v.started_at), {
+    message: 'ended_at must be after started_at',
+  });
+export type CreateConsultantTimeEntryBody = z.infer<typeof createConsultantTimeEntryBody>;
+
+/**
+ * PATCH /v1/time-entries/:id body — partial update of editable fields.
+ *
+ * Only the fields a consultant can meaningfully change after creation
+ * are exposed. Structural fields (employee_id, source, subject_tenant_id,
+ * tenant_id) are immutable after creation. Apportionment fields have their
+ * own dedicated PATCH endpoint (/apportionment).
+ *
+ * `.strict()` rejects unknown keys so typos produce 400s rather than
+ * silent no-ops.
+ *
+ * `.refine()` catches the simple both-fields-present inversion; the
+ * route handler validates the cross-row case (only one bound supplied)
+ * against the existing row.
+ */
+export const updateTimeEntryBody = z
+  .object({
+    started_at: z.string().datetime({ offset: true }).optional(),
+    ended_at: z.string().datetime({ offset: true }).optional(),
+    is_rd: z.boolean().optional(),
+    notes: z.string().max(2000).nullable().optional(),
+  })
+  .strict()
+  .refine(
+    (b) =>
+      b.started_at === undefined ||
+      b.ended_at === undefined ||
+      new Date(b.ended_at) > new Date(b.started_at),
+    { message: 'ended_at must be after started_at', path: ['ended_at'] },
+  );
+export type UpdateTimeEntryBody = z.infer<typeof updateTimeEntryBody>;

@@ -7,6 +7,45 @@ import type {
 } from '@cpa/schemas';
 import { apiFetch } from '@/lib/api';
 
+// =====================================================================
+// Activity create
+// =====================================================================
+
+/**
+ * POST /v1/activities body. Mirrors {@link CreateActivityBody} in
+ * packages/schemas/src/activity.ts. `tenant_id` is derived from the session
+ * server-side — clients never send it. `code` (CA-NN / SA-NN) is assigned
+ * server-side; callers do not supply it.
+ */
+export interface CreateActivityInput {
+  project_id: string;
+  claim_id: string;
+  kind: 'core' | 'supporting';
+  title: string;
+  description?: string;
+  hypothesis?: string;
+  technical_uncertainty?: string;
+  expected_outcome?: string;
+}
+
+/**
+ * POST /v1/activities. Returns the created activity row.
+ *
+ * Response shape: `{ activity: Activity }` — unwrapped to the inner Activity
+ * so callers can write `const created = await createActivity(input)`.
+ *
+ * Typed errors from apiFetch:
+ *   - 403 → ForbiddenError (viewer role)
+ *   - 404 → NotFoundError (claim_id or project_id not in firm)
+ */
+export async function createActivity(input: CreateActivityInput): Promise<Activity> {
+  const body = await apiFetch<{ activity: Activity }>('/v1/activities', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return body.activity;
+}
+
 /**
  * Typed fetch helpers for the activity detail surface (T-A5) and the
  * technical-uncertainty register (T-A6).

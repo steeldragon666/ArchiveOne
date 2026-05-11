@@ -7,7 +7,7 @@ import { DensityToggle } from '@/components/density-toggle';
 /**
  * Design system style guide.
  *
- * Single-page visual reference for the CPA Platform design system.
+ * Single-page visual reference for the Claimsure design system.
  * Renders every signature component with all states/variants,
  * documents color tokens and the type scale, and includes the
  * chain-verify-pulse signature animation in action.
@@ -33,7 +33,7 @@ export default function StyleguidePage() {
           Design System
         </h1>
         <p className="mt-2 max-w-2xl font-body text-lg text-[hsl(var(--brand-ink-muted))]">
-          Living reference for the CPA Platform&apos;s visual primitives. Source of truth lives in{' '}
+          Living reference for Claimsure&apos;s visual primitives. Source of truth lives in{' '}
           <code className="font-mono text-sm">docs/design/system.md</code>; this page renders the
           tokens and components in action.
         </p>

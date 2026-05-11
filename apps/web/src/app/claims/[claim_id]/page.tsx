@@ -3,11 +3,38 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { use } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { AuthGuard } from '@/components/auth-guard';
+import { AppShell } from '@/components/app-shell';
+import { TransitionBadge, type TransitionVariant } from '@/components/transition-badge';
 import { STAGE_LABELS } from '@/lib/claim-stage';
 import { ClaimTabs } from './_components/claim-tabs';
+import { EditClaimButton } from './_components/edit-claim-button';
+import { SubmitClaimButton } from './_components/submit-claim-button';
 import { getClaim } from './_lib/api';
 import { parseTab } from './_lib/url-params';
+import type { ClaimStage } from '@cpa/schemas';
+
+/**
+ * Map claim stage → TransitionBadge variant.
+ * Earlier stages = continuation (in progress), review = completion,
+ * submitted/audit_defence = completion as final states.
+ */
+function stageToVariant(stage: ClaimStage): TransitionVariant {
+  switch (stage) {
+    case 'engagement':
+    case 'activity_capture':
+    case 'narrative_drafting':
+    case 'expenditure_schedule':
+      return 'continuation';
+    case 'review':
+      return 'pivot';
+    case 'submitted':
+      return 'completion';
+    case 'audit_defence':
+      return 'abandoned';
+    default:
+      return 'continuation';
+  }
+}
 
 /**
  * /claims/[claim_id] — Swimlane C entry point for a single claim.
@@ -38,9 +65,9 @@ import { parseTab } from './_lib/url-params';
 export default function ClaimDetailPage({ params }: { params: Promise<{ claim_id: string }> }) {
   const { claim_id } = use(params);
   return (
-    <AuthGuard>
+    <AppShell>
       <Inner claimId={claim_id} />
-    </AuthGuard>
+    </AppShell>
   );
 }
 
@@ -57,23 +84,19 @@ function Inner({ claimId }: { claimId: string }) {
   });
 
   if (claim.isPending) {
-    return (
-      <main className="container mx-auto px-4 py-8">
-        <p className="text-sm text-muted-foreground">Loading claim…</p>
-      </main>
-    );
+    return <p className="text-sm text-muted-foreground">Loading claim…</p>;
   }
   if (claim.error || !claim.data) {
     return (
-      <main className="container mx-auto px-4 py-8">
-        <p className="text-sm text-red-600">
+      <div className="space-y-4">
+        <p className="text-sm text-destructive">
           Failed to load claim:{' '}
           {claim.error instanceof Error ? claim.error.message : 'Unknown error'}
         </p>
         <Link href="/pipeline" className="mt-4 inline-block text-sm text-primary underline">
           Back to pipeline
         </Link>
-      </main>
+      </div>
     );
   }
 
@@ -85,22 +108,32 @@ function Inner({ claimId }: { claimId: string }) {
   const claimantLabel = `Claim ${c.subject_tenant_id.slice(0, 8)}`;
 
   return (
-    <main className="container mx-auto space-y-6 px-4 py-8">
+    <div className="space-y-8">
       <div>
         <Link href="/pipeline" className="text-sm text-muted-foreground hover:underline">
           ← Pipeline
         </Link>
       </div>
 
-      <header className="flex flex-wrap items-center gap-3">
-        <h1 className="text-2xl font-bold">Claim FY{c.fiscal_year}</h1>
-        <span className="text-sm text-muted-foreground">{claimantLabel}</span>
-        <span className="inline-flex items-center rounded-full border border-input bg-muted/40 px-2 py-0.5 text-xs">
-          {STAGE_LABELS[c.stage]}
-        </span>
+      <header className="space-y-2">
+        <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+          Claim
+        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="font-display text-3xl font-semibold tracking-tight">
+            Claim FY{c.fiscal_year}
+          </h1>
+          <span className="font-mono text-xs text-muted-foreground">{claimantLabel}</span>
+          <TransitionBadge variant={stageToVariant(c.stage)} label={STAGE_LABELS[c.stage]} />
+          {/* Phase 4B: edit claim controls + R&DTI workflow */}
+          <div className="ml-auto flex items-center gap-2">
+            <EditClaimButton claim={c} />
+            <SubmitClaimButton claimId={claimId} />
+          </div>
+        </div>
       </header>
 
       <ClaimTabs claimId={claimId} activeTab={activeTab} />
-    </main>
+    </div>
   );
 }

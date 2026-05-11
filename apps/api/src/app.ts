@@ -19,6 +19,7 @@ import { registerActivities } from './routes/activities.js';
 import { registerActivityPdf } from './routes/activity-pdf.js';
 import { registerActivityRegister } from './routes/activity-register.js';
 import { registerNarrative } from './routes/narrative.js';
+import { registerPendingNarrative } from './routes/pending-narrative.js';
 import { registerApplyRules } from './routes/apply-rules.js';
 import { registerArtefactLinks } from './routes/artefact-links.js';
 import { registerGoogleAuth } from './routes/auth/google.js';
@@ -74,6 +75,7 @@ import { registerRemoveUser } from './routes/users/remove.js';
 import { registerUpdateUser } from './routes/users/update.js';
 import { registerWhoami } from './routes/whoami.js';
 import { registerFederation } from './routes/federation/index.js';
+import { registerCloudSync } from './routes/cloud-sync.js';
 
 const DEFAULT_DEV_SESSION_SECRET = 'dev-only-32-bytes-of-entropy-pad!';
 const DEFAULT_SESSION_COOKIE_NAME = 'cpa_session';
@@ -317,6 +319,10 @@ export function buildApp(options: BuildAppOptions = {}): App {
     done();
   });
   app.register((instance, _opts, done) => {
+    registerPendingNarrative(instance);
+    done();
+  });
+  app.register((instance, _opts, done) => {
     registerApplyRules(instance);
     done();
   });
@@ -351,6 +357,11 @@ export function buildApp(options: BuildAppOptions = {}): App {
   // P9.3 Federation routes — cross-tenant read sharing.
   app.register((instance, _opts, done) => {
     registerFederation(instance);
+    done();
+  });
+  // Cloud sync connector routes (Google Drive OAuth + connection CRUD).
+  app.register((instance, _opts, done) => {
+    registerCloudSync(instance);
     done();
   });
   // Prompt-suggestions routes require explicit deps (esp. `runContractTest`,

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { use } from 'react';
-import { AuthGuard } from '@/components/auth-guard';
+import { AppShell } from '@/components/app-shell';
 import { FormCompletenessGauge } from './_components/form-completeness-gauge';
 import { BeneficialOwnershipPanel } from './_components/beneficial-ownership-panel';
 import { KnowledgeSearchPanel } from './_components/knowledge-search-panel';
@@ -17,15 +17,15 @@ export default function CompliancePage({
 }) {
   const { subject, fy } = use(params);
   return (
-    <AuthGuard>
+    <AppShell>
       <Inner subject={subject} fy={fy} />
-    </AuthGuard>
+    </AppShell>
   );
 }
 
 function Inner({ subject, fy }: { subject: string; fy: string }) {
   return (
-    <main className="container mx-auto max-w-7xl py-8 px-4 space-y-6">
+    <div className="space-y-8">
       <div>
         <Link
           href={`/subject-tenants/${subject}`}
@@ -35,12 +35,15 @@ function Inner({ subject, fy }: { subject: string; fy: string }) {
         </Link>
       </div>
 
-      <div>
-        <h1 className="font-display text-2xl font-semibold">Compliance Dashboard</h1>
-        <p className="text-sm text-muted-foreground mt-1">
+      <header className="space-y-2">
+        <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+          Compliance
+        </p>
+        <h1 className="font-display text-3xl font-semibold tracking-tight">Compliance Dashboard</h1>
+        <p className="text-muted-foreground">
           Form readiness for <span className="font-mono text-xs tabular-nums">{fy}</span>
         </p>
-      </div>
+      </header>
 
       <FormCompletenessGauge subject={subject} fy={fy} />
 
@@ -51,6 +54,6 @@ function Inner({ subject, fy }: { subject: string; fy: string }) {
         <ForecastPanel subject={subject} fy={fy} />
         <SimilarityDashboardPanel subject={subject} fy={fy} />
       </div>
-    </main>
+    </div>
   );
 }

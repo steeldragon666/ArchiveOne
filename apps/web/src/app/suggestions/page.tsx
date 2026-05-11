@@ -1,7 +1,7 @@
 'use client';
 import { useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { AuthGuard } from '@/components/auth-guard';
+import { AppShell } from '@/components/app-shell';
 import { FlagSuggestionModal } from '@/components/flag-suggestion-modal';
 import { SuggestionList } from './_components/suggestion-list';
 import { parseSuggestionSourceKindFilter, parseSuggestionStatusFilter } from './_lib/url-params';
@@ -21,9 +21,9 @@ import { parseSuggestionSourceKindFilter, parseSuggestionStatusFilter } from './
  */
 export default function SuggestionsPage() {
   return (
-    <AuthGuard>
+    <AppShell>
       <Inner />
-    </AuthGuard>
+    </AppShell>
   );
 }
 
@@ -33,13 +33,14 @@ function Inner() {
   const sourceKind = parseSuggestionSourceKindFilter(searchParams.get('source_kind'));
 
   return (
-    <main className="container mx-auto py-8 px-4">
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="font-display text-3xl font-semibold text-foreground">
-            Prompt Suggestions
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
+    <div className="space-y-8">
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div className="space-y-2">
+          <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+            Workspace
+          </p>
+          <h1 className="font-display text-3xl font-semibold tracking-tight">Prompt Suggestions</h1>
+          <p className="text-muted-foreground max-w-2xl">
             Flagged issues with agent outputs. Reviewers triage each suggestion, optionally generate
             a PR, and the queue tracks the lifecycle through merge.
           </p>
@@ -47,8 +48,8 @@ function Inner() {
         <FlagSuggestionModal>
           <Button>New suggestion</Button>
         </FlagSuggestionModal>
-      </div>
+      </header>
       <SuggestionList status={status} sourceKind={sourceKind} />
-    </main>
+    </div>
   );
 }

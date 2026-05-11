@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { use } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { LIST_PAGE_SIZE } from '@cpa/schemas';
-import { AuthGuard } from '@/components/auth-guard';
+import { AppShell } from '@/components/app-shell';
 import { REGISTER_KINDS } from '@/lib/summarise-event';
 import { getActivity, listActivityEvents } from '../../_lib/api';
 import { UncertaintyFeed } from './_components/uncertainty-feed';
@@ -44,9 +44,9 @@ export default function ActivityRegisterPage({
 }) {
   const { claim_id, activity_id } = use(params);
   return (
-    <AuthGuard>
+    <AppShell>
       <Inner claimId={claim_id} activityId={activity_id} />
-    </AuthGuard>
+    </AppShell>
   );
 }
 
@@ -75,16 +75,12 @@ function Inner({ claimId, activityId }: { claimId: string; activityId: string })
   });
 
   if (detail.isPending) {
-    return (
-      <main className="container mx-auto py-8 px-4">
-        <p className="text-slate-500">Loading activity…</p>
-      </main>
-    );
+    return <p className="text-sm text-muted-foreground">Loading activity…</p>;
   }
   if (detail.error || !detail.data) {
     return (
-      <main className="container mx-auto py-8 px-4 space-y-4">
-        <p className="text-red-600">
+      <div className="space-y-4">
+        <p className="text-sm text-destructive">
           Failed to load activity:{' '}
           {detail.error instanceof Error ? detail.error.message : 'Unknown error'}
         </p>
@@ -94,7 +90,7 @@ function Inner({ claimId, activityId }: { claimId: string; activityId: string })
         >
           Back to claim
         </Link>
-      </main>
+      </div>
     );
   }
 
@@ -102,7 +98,7 @@ function Inner({ claimId, activityId }: { claimId: string; activityId: string })
   const kindLabel = activity.kind === 'core' ? 'Core activity' : 'Supporting activity';
 
   return (
-    <main className="container mx-auto py-8 px-4 space-y-8">
+    <div className="space-y-8">
       <div>
         <Link
           href={`/claims/${claimId}/activities/${activityId}`}
@@ -112,20 +108,25 @@ function Inner({ claimId, activityId }: { claimId: string; activityId: string })
         </Link>
       </div>
 
-      <div className="space-y-2">
-        <h1 className="text-2xl font-bold">Technical Uncertainty Register</h1>
+      <header className="space-y-2">
+        <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+          Register
+        </p>
+        <h1 className="font-display text-3xl font-semibold tracking-tight">
+          Technical Uncertainty Register
+        </h1>
         <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
           <span>{activity.title}</span>
           <span className="font-mono rounded bg-muted px-2 py-0.5 text-xs">{activity.code}</span>
-          <span className="text-xs">{kindLabel}</span>
+          <span className="font-mono text-[10px] uppercase tracking-widest">{kindLabel}</span>
         </div>
-      </div>
+      </header>
 
       <section className="space-y-3">
         {feed.isPending ? (
           <p className="text-sm text-muted-foreground">Loading register…</p>
         ) : feed.error ? (
-          <p className="text-sm text-red-600">
+          <p className="text-sm text-destructive">
             Failed to load register:{' '}
             {feed.error instanceof Error ? feed.error.message : 'Unknown error'}
           </p>
@@ -133,6 +134,6 @@ function Inner({ claimId, activityId }: { claimId: string; activityId: string })
           <UncertaintyFeed events={feed.data.events} />
         )}
       </section>
-    </main>
+    </div>
   );
 }

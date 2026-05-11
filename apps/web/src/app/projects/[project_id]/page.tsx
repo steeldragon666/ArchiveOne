@@ -3,13 +3,14 @@ import Link from 'next/link';
 import { use } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { AuthGuard } from '@/components/auth-guard';
+import { AppShell } from '@/components/app-shell';
 import { useWhoami } from '@/hooks/use-whoami';
 import { NotFoundError } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { getProject } from '../_lib/api';
 import { parseProjectTab } from '../_lib/url-params';
 import { ClaimsTab } from './_components/claims-tab';
+import { IntakeTab } from './_components/intake-tab';
 import { ProjectTabs } from './_components/project-tabs';
 import { SettingsTab } from './_components/settings-tab';
 import { TimelineTab } from './_components/timeline-tab';
@@ -31,9 +32,9 @@ import { TimelineTab } from './_components/timeline-tab';
 export default function ProjectDetailPage({ params }: { params: Promise<{ project_id: string }> }) {
   const { project_id } = use(params);
   return (
-    <AuthGuard>
+    <AppShell>
       <Inner projectId={project_id} />
-    </AuthGuard>
+    </AppShell>
   );
 }
 
@@ -55,11 +56,7 @@ function Inner({ projectId }: { projectId: string }) {
   });
 
   if (project.isPending) {
-    return (
-      <main className="container mx-auto py-8 px-4">
-        <p className="text-slate-500">Loading project…</p>
-      </main>
-    );
+    return <p className="text-sm text-muted-foreground">Loading project…</p>;
   }
   if (project.error || !project.data) {
     // Distinguish "deleted/archived/wrong-firm" (NotFoundError, 404) from
@@ -77,27 +74,27 @@ function Inner({ projectId }: { projectId: string }) {
 
     if (isNotFound) {
       return (
-        <main className="container mx-auto py-8 px-4 space-y-4">
-          <h1 className="text-xl font-semibold">Project not found</h1>
+        <div className="space-y-4">
+          <h1 className="font-display text-xl font-semibold">Project not found</h1>
           <p className="text-sm text-muted-foreground">
             This project may have been archived, removed, or never existed for your firm.
           </p>
           <Link href="/projects" className="text-sm text-primary underline mt-4 inline-block">
             ← Back to projects
           </Link>
-        </main>
+        </div>
       );
     }
 
     return (
-      <main className="container mx-auto py-8 px-4 space-y-4">
-        <p className="text-red-600">
+      <div className="space-y-4">
+        <p className="text-sm text-destructive">
           Failed to load project: {err instanceof Error ? err.message : 'Unknown error'}
         </p>
         <Link href="/projects" className="text-sm text-primary underline mt-4 inline-block">
           Back to projects
         </Link>
-      </main>
+      </div>
     );
   }
 
@@ -105,7 +102,7 @@ function Inner({ projectId }: { projectId: string }) {
   const isArchived = p.archived_at !== null;
 
   return (
-    <main className="container mx-auto py-8 px-4 space-y-8">
+    <div className="space-y-8">
       <div>
         <Link href="/projects" className="text-sm text-muted-foreground hover:underline">
           ← Back to projects
@@ -113,8 +110,11 @@ function Inner({ projectId }: { projectId: string }) {
       </div>
 
       <header className="space-y-2">
+        <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+          Project
+        </p>
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-bold">{p.name}</h1>
+          <h1 className="font-display text-3xl font-semibold tracking-tight">{p.name}</h1>
           <span className="font-mono text-xs rounded bg-muted px-2 py-0.5" title={p.id}>
             {p.id.slice(0, 8)}
           </span>
@@ -122,14 +122,14 @@ function Inner({ projectId }: { projectId: string }) {
             className={cn(
               'inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium',
               isArchived
-                ? 'border-slate-200 bg-slate-50 text-slate-600'
-                : 'border-emerald-200 bg-emerald-50 text-emerald-700',
+                ? 'border-border bg-muted text-muted-foreground'
+                : 'border-primary/30 bg-primary/10 text-primary',
             )}
           >
             {isArchived ? 'Archived' : 'Active'}
           </span>
         </div>
-        <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-3 font-mono text-xs text-muted-foreground">
           <span>Started {new Date(p.started_at).toLocaleDateString()}</span>
           {p.ended_at ? <span>· Ended {new Date(p.ended_at).toLocaleDateString()}</span> : null}
         </div>
@@ -140,12 +140,14 @@ function Inner({ projectId }: { projectId: string }) {
       <section className="pt-2">
         {tab === 'claims' ? (
           <ClaimsTab project={p} />
+        ) : tab === 'intake' ? (
+          <IntakeTab project={p} />
         ) : tab === 'timeline' ? (
           <TimelineTab project={p} />
         ) : (
           <SettingsTab project={p} />
         )}
       </section>
-    </main>
+    </div>
   );
 }

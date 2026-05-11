@@ -44,6 +44,7 @@ import { user } from './user.js';
  */
 export const TIME_ENTRY_SOURCES = [
   'manual',
+  'consultant_manual',
   'employment_hero',
   'keypay',
   'deputy',
@@ -78,6 +79,7 @@ export const timeEntry = pgTable(
     notes: text('notes'),
     flaggedAt: timestamp('flagged_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
   },
   (t) => ({
     payrollSourceDedupeUnique: uniqueIndex('time_entry_payroll_source_dedupe_unique')

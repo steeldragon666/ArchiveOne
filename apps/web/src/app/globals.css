@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 /*
- * CPA Platform — design system tokens.
+ * Claimsure — design system tokens.
  * Source of truth: docs/design/system.md + docs/design/tokens.json
  *
  * shadcn semantic tokens (--background, --primary, etc.) are populated
@@ -55,7 +55,7 @@
     /* Radius — sharper than shadcn 8px default; matches design system spec */
     --radius: 0.25rem; /* 4px — buttons, inputs */
 
-    /* CPA Platform brand-specific tokens (not part of shadcn surface) */
+    /* Claimsure brand-specific tokens (not part of shadcn surface) */
     --brand-base: 43 36% 97%;
     --brand-ink: 36 9% 9%;
     --brand-ink-muted: 33 10% 38%;

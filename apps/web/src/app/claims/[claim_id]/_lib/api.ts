@@ -1,13 +1,26 @@
 import type { Activity, Claim, Uuid } from '@cpa/schemas';
-import {
-  filterExpenditures,
-  STUB_ACTIVITY_IDS,
-  STUB_EXPENDITURES,
-  type ExpenditureRow,
-} from './expenditure-stub';
+import { filterExpenditures, STUB_EXPENDITURES, type ExpenditureRow } from './expenditure-stub';
 import { isValidAllocationSet, type ValidatedAllocation } from './apportionment';
 import type { ExpenditureFilter } from './url-params';
-// import { apiFetch } from '@/lib/api'; // TODO(A2/A3): wire when A2 + A3 ship.
+import { apiFetch } from '@/lib/api';
+
+/**
+ * Activity extended with the narrative-approval review metadata.
+ *
+ * The base `Activity` type in `@cpa/schemas` does not yet include the three
+ * columns added by migration 0079 (`needs_review`, `proposal_confidence`,
+ * `proposed_from_event_id`). They land on the wire once the backend route
+ * starts SELECTing them. Until then, both fields are `undefined` on existing
+ * rows and the chip simply doesn't render — no UI breakage.
+ *
+ * TODO: once `@cpa/schemas`'s Activity zod schema picks up these fields,
+ * delete this local type and import directly.
+ */
+export interface ActivityWithReview extends Activity {
+  needs_review?: boolean;
+  proposal_confidence?: number | null;
+  proposed_from_event_id?: string | null;
+}
 
 /**
  * Claim-detail-scoped fetch helpers.
@@ -24,132 +37,32 @@ import type { ExpenditureFilter } from './url-params';
  */
 
 export async function getClaim(id: string): Promise<Claim> {
-  // TODO(A2): replace with `apiFetch<Claim>(`/v1/claims/${id}`)`.
-  //
-  // Returning a fixture-shaped object (rather than null/throw) keeps the
-  // page renderable pre-A2 — the user lands on /claims/<id> from the
-  // pipeline kanban or table and sees the tab shell against placeholder
-  // header data. The tenant_id is the all-zeros sentinel used elsewhere
-  // in the workspace (see use-pipeline-claims.ts test fixtures); the
-  // subject_tenant_id is intentionally distinct so it doesn't collide.
-  return Promise.resolve<Claim>({
-    id,
-    tenant_id: '00000000-0000-0000-0000-000000000001',
-    subject_tenant_id: '00000000-0000-0000-0000-0000000000aa',
-    fiscal_year: 2026,
-    stage: 'engagement',
-    ausindustry_reference: null,
-    submitted_at: null,
-    submitted_by_user_id: null,
-    created_at: '2026-04-01T00:00:00.000Z',
-    updated_at: '2026-04-01T00:00:00.000Z',
-  });
+  // GET /v1/claims/:id — returns `{ claim, counts }`; we unwrap to Claim.
+  // (Earlier this was a hard-coded fixture pre-A2; the real route landed
+  // and the wire shape stabilised, so it's now a thin pass-through.)
+  const body = await apiFetch<{ claim: Claim }>(`/v1/claims/${id}`);
+  return body.claim;
 }
 
-export async function listActivities(claimId: string): Promise<Activity[]> {
-  // TODO(A3): replace with `apiFetch<{ activities: Activity[] }>(`/v1/activities?claim_id=${claimId}`)`
-  // and return `body.activities`. Swimlane A owns this endpoint — see
-  // the P4 plan task A3. The query key in claim-tabs.tsx is shaped to
-  // match the eventual cache shape so swap-in is a one-liner.
-  //
-  // C5 needs a non-empty list so the expenditure-tab activity picker
-  // has options to render. The IDs match the deterministic UUIDs in
-  // `expenditure-stub.ts` so re-map flows show real-looking
-  // "→ CA-001 ..." labels out of the box. Five entries (3 CA + 2 SA) is
-  // enough to make the picker UX feel real without a scrollbar (the
-  // Radix Select handles >5 entries with a viewport, but a pre-scroll
-  // list is the more useful default).
-  const tenant_id = '00000000-0000-0000-0000-000000000001';
-  const project_id = '00000000-0000-0000-0000-0000000000a0';
-  const created_at = '2026-04-01T00:00:00.000Z';
-  const updated_at = '2026-04-01T00:00:00.000Z';
-  return Promise.resolve<Activity[]>([
-    {
-      id: STUB_ACTIVITY_IDS.CA_001,
-      tenant_id,
-      project_id,
-      claim_id: claimId,
-      code: 'CA-001',
-      kind: 'core',
-      title: 'Adaptive scaffolding algorithm',
-      description: null,
-      hypothesis: null,
-      technical_uncertainty: null,
-      experimentation_log: null,
-      expected_outcome: null,
-      actual_outcome: null,
-      created_at,
-      updated_at,
-    },
-    {
-      id: STUB_ACTIVITY_IDS.CA_002,
-      tenant_id,
-      project_id,
-      claim_id: claimId,
-      code: 'CA-002',
-      kind: 'core',
-      title: 'Sensor calibration trial',
-      description: null,
-      hypothesis: null,
-      technical_uncertainty: null,
-      experimentation_log: null,
-      expected_outcome: null,
-      actual_outcome: null,
-      created_at,
-      updated_at,
-    },
-    {
-      id: STUB_ACTIVITY_IDS.CA_003,
-      tenant_id,
-      project_id,
-      claim_id: claimId,
-      code: 'CA-003',
-      kind: 'core',
-      title: 'Closed-loop control prototype',
-      description: null,
-      hypothesis: null,
-      technical_uncertainty: null,
-      experimentation_log: null,
-      expected_outcome: null,
-      actual_outcome: null,
-      created_at,
-      updated_at,
-    },
-    {
-      id: STUB_ACTIVITY_IDS.SA_001,
-      tenant_id,
-      project_id,
-      claim_id: claimId,
-      code: 'SA-001',
-      kind: 'supporting',
-      title: 'Literature review and prior-art search',
-      description: null,
-      hypothesis: null,
-      technical_uncertainty: null,
-      experimentation_log: null,
-      expected_outcome: null,
-      actual_outcome: null,
-      created_at,
-      updated_at,
-    },
-    {
-      id: STUB_ACTIVITY_IDS.SA_002,
-      tenant_id,
-      project_id,
-      claim_id: claimId,
-      code: 'SA-002',
-      kind: 'supporting',
-      title: 'Test rig fabrication and instrumentation',
-      description: null,
-      hypothesis: null,
-      technical_uncertainty: null,
-      experimentation_log: null,
-      expected_outcome: null,
-      actual_outcome: null,
-      created_at,
-      updated_at,
-    },
-  ]);
+/**
+ * GET /v1/activities?claim_id=...
+ *
+ * Real endpoint, RLS-scoped. Returns every activity row for this claim, sorted
+ * by `code` ASC (CA-001, CA-002, ..., SA-001, SA-002, ...). The wire shape is
+ * `{ activities: Activity[] }` per the route handler in
+ * `apps/api/src/routes/activities.ts`.
+ *
+ * Once migration 0079 lands and the SELECT picks up `needs_review`,
+ * `proposal_confidence`, `proposed_from_event_id`, those fields will arrive
+ * automatically and the 🤖 review chip on the Activities tab will start
+ * rendering for low-confidence AI-auto-created rows. No frontend changes
+ * needed at that point.
+ */
+export async function listActivities(claimId: string): Promise<ActivityWithReview[]> {
+  const body = await apiFetch<{ activities: ActivityWithReview[] }>(
+    `/v1/activities?claim_id=${claimId}`,
+  );
+  return body.activities;
 }
 
 /**

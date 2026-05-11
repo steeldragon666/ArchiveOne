@@ -1,30 +1,38 @@
 'use client';
-import { AuthGuard } from '@/components/auth-guard';
+import { AppShell } from '@/components/app-shell';
 import { CreateClaimantButton } from './_components/create-claimant-button';
 import { SubjectTenantList } from './_components/subject-tenant-list';
 
 /**
  * /subject-tenants — list of the active firm's claimants + Create CTA.
  *
- * Wraps the inner content in the project-standard AuthGuard (matches
- * /users and /tenants — P1 doesn't use a (authed) route group).
+ * Wrapped in <AppShell /> which provides the global header + persistent left
+ * nav and embeds AuthGuard internally.
  */
 export default function SubjectTenantsPage() {
   return (
-    <AuthGuard>
+    <AppShell>
       <Inner />
-    </AuthGuard>
+    </AppShell>
   );
 }
 
 function Inner() {
   return (
-    <main className="container mx-auto py-8 px-4">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Claimants</h1>
+    <div className="space-y-8">
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div className="space-y-2">
+          <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+            Workspace
+          </p>
+          <h1 className="font-display text-3xl font-semibold tracking-tight">Client firms</h1>
+          <p className="text-muted-foreground max-w-2xl">
+            Subject (claimant) firms your firm advises on R&amp;DTI matters.
+          </p>
+        </div>
         <CreateClaimantButton />
-      </div>
+      </header>
       <SubjectTenantList />
-    </main>
+    </div>
   );
 }
