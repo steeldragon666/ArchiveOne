@@ -99,7 +99,11 @@ export function registerBillingWebhookPlugin(
       // ---------------------------------------------------------------
       // Route to event-specific handler
       // ---------------------------------------------------------------
-      const obj = event.data.object as Record<string, unknown>;
+      // Stripe's event.data.object is a union of all event payload shapes;
+      // each handler narrows it. Cast through `unknown` per TS's own suggestion
+      // (TS2352): the union doesn't structurally overlap with a plain
+      // Record<string, unknown> even though every member is dictionary-like.
+      const obj = event.data.object as unknown as Record<string, unknown>;
 
       switch (event.type) {
         case 'checkout.session.completed':
