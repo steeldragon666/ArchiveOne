@@ -10,6 +10,20 @@ const STEP_LABELS = [
   'Generate Documents',
 ] as const;
 
+/**
+ * WizardStepper — 5-pill progress bar for the claim wizard.
+ *
+ * NAVIGATION POLICY (W4): clicking any step's button always fires
+ * `onJumpTo(stepNum)`, including for unreached future steps. This is
+ * deliberate — the wizard supports free preview navigation so consultants
+ * can peek ahead at upcoming work without committing. The server-side
+ * `canAdvance` gating remains the source of truth for what can be agreed;
+ * the stepper is purely view-state.
+ *
+ * If a stricter "locked future steps" policy is needed later, add a
+ * `lockedFrom` prop and gate the button's `onClick` here — but server-side
+ * gating still applies regardless.
+ */
 export function WizardStepper({
   state,
   currentStep,
