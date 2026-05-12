@@ -13,6 +13,22 @@
 import type { WorkflowState } from '@cpa/schemas';
 
 /**
+ * Structural type for a `postgres`-js query client (either the top-level
+ * `sql` or a `TransactionSql` from inside `sql.begin`). Declared inline
+ * to avoid adding `postgres` as a direct dep of `@cpa/api` — it lives
+ * under `@cpa/db` and the wider codebase only imports the runtime `sql`
+ * binding, not the type.
+ *
+ * The shape covers exactly what `loadWorkflowSnapshot` needs: tagged-
+ * template invocation returning a `Promise` of a typed row array. If
+ * postgres-js's surface ever drifts, we widen here.
+ */
+type SqlClient = <T>(
+  strings: TemplateStringsArray,
+  ...args: unknown[]
+) => Promise<T> & PromiseLike<T>;
+
+/**
  * Lookup table from the numeric step type used by the wizard to the
  * literal string keys used in `WorkflowState.steps`. Keeps the literal-
  * key precision intact — if the step union ever drifts (e.g. someone
@@ -120,5 +136,200 @@ export function applyReopen(state: WorkflowState, step: 1 | 2 | 3 | 4 | 5): Work
   return {
     ...state,
     steps: { ...state.steps, [STEP_KEY[step]]: null },
+  };
+}
+
+/**
+ * Load the data points {@link canAdvance} needs for a given claim. Runs
+ * inside RLS scope — the caller MUST have set `app.current_tenant_id`
+ * before invoking this (the wizard route's `sql.begin` wrapper does so).
+ *
+ * Five small queries against event-sourced data:
+ *
+ *   1. eventsClassified — count of `event` rows for the claim's
+ *      subject_tenant where `kind` is set (i.e. the AI classifier has
+ *      run on the raw ingest event). The wizard's step-1 gate fires
+ *      once any evidence has been classified at all.
+ *
+ *   2. proposedActivitiesTotal — sum of `proposed_activities` array
+ *      lengths across the LATEST `ACTIVITY_REGISTER_DRAFTED` event per
+ *      project that belongs to this claim. The synthesizer can re-run
+ *      (a draft refresh), so we deduplicate to the most-recent event
+ *      per project — same rule that `loadLatestDraft` in
+ *      `routes/activity-register.ts` uses for the single-project view.
+ *
+ *   3. proposedActivitiesPending — proposed_id values from query 2's
+ *      latest drafts that have NOT been promoted to a real `activity`
+ *      row via the accept flow. Promotion writes an `ACTIVITY_CREATED`
+ *      event carrying `payload.proposed_id`, so "pending" = LEFT JOIN
+ *      against that event set yielding NULL. Mirrors the `accepted_count`
+ *      logic in `routes/activity-register.ts:loadLatestDraft` consumer.
+ *
+ *   4. agreedActivitiesTotal — count of `activity` rows for the claim.
+ *
+ *   5. agreedActivitiesWithoutBinding — activities with zero live
+ *      artefact links. We fold `ARTEFACT_LINKED` minus `ARTEFACT_UNLINKED`
+ *      in SQL (the same algorithm `lib/activity-artefacts.ts:getActivityArtefacts`
+ *      does in TS, but applied across every activity in one shot rather
+ *      than per-activity round trips). A `(activity_id, artefact_kind,
+ *      artefact_id)` triple is live iff its most-recent event is
+ *      `ARTEFACT_LINKED`. We don't reuse `getActivityArtefacts` here
+ *      because doing so would be N round-trips for N activities; one
+ *      SQL aggregate is materially cleaner for the dashboard query.
+ *
+ *   6. narrativeSectionsApproved — count of DISTINCT `section_kind`
+ *      values in `narrative_draft` reachable through `activity.claim_id`
+ *      where `status = 'accepted'` (the storage equivalent of the
+ *      wizard's "approved"). `narrative_draft` has no `claim_id` of
+ *      its own — it joins via `activity_id`.
+ *
+ * Why six small queries instead of one CTE: each is independently
+ * debuggable, the endpoint only fires on page-load + after mutations
+ * (not a hot path), and the SQL stays legible. If perf ever matters,
+ * collapsing them is a localised refactor.
+ */
+export async function loadWorkflowSnapshot(
+  sql: SqlClient,
+  claimId: string,
+): Promise<WorkflowSnapshot> {
+  // ---------------------------------------------------------------------
+  // 1. Classified events for the claim's subject_tenant.
+  // ---------------------------------------------------------------------
+  const eventsRows = await sql<{ n: string }[]>`
+    SELECT COUNT(*)::text AS n
+      FROM event
+     WHERE subject_tenant_id IN (
+             SELECT subject_tenant_id FROM claim WHERE id = ${claimId}
+           )
+       AND kind IS NOT NULL
+  `;
+  const eventsClassified = Number(eventsRows[0]?.n ?? 0);
+
+  // ---------------------------------------------------------------------
+  // 2 + 3. Proposed activities: total + pending.
+  //
+  // For each project under the claim, find the LATEST
+  // `ACTIVITY_REGISTER_DRAFTED` event, unnest its `proposed_activities[]`,
+  // and LEFT JOIN against ACTIVITY_CREATED events that carry a matching
+  // `payload.proposed_id`. A NULL right-hand side = pending.
+  //
+  // Project-set derivation: a claim's activities all share `claim_id` and
+  // also carry `project_id` — but a claim with zero accepted activities
+  // yet has no rows there. Fall back to `claim.project_id` (the direct
+  // FK added in migration 0019) so we still see proposals before the
+  // first acceptance.
+  // ---------------------------------------------------------------------
+  const proposedRows = await sql<{ proposed_id: string; accepted_activity_id: string | null }[]>`
+    WITH claim_projects AS (
+      SELECT DISTINCT project_id FROM (
+        SELECT project_id FROM claim    WHERE id = ${claimId} AND project_id IS NOT NULL
+        UNION
+        SELECT project_id FROM activity WHERE claim_id = ${claimId}
+      ) p
+      WHERE project_id IS NOT NULL
+    ),
+    latest_draft AS (
+      SELECT DISTINCT ON (e.project_id)
+             e.id,
+             e.project_id,
+             e.tenant_id,
+             e.payload
+        FROM event e
+        JOIN claim_projects cp ON cp.project_id = e.project_id
+       WHERE e.kind = 'ACTIVITY_REGISTER_DRAFTED'
+       ORDER BY e.project_id, e.captured_at DESC, e.received_at DESC, e.id DESC
+    ),
+    proposed AS (
+      SELECT ld.tenant_id,
+             ld.project_id,
+             (pa ->> 'proposed_id') AS proposed_id
+        FROM latest_draft ld,
+             LATERAL jsonb_array_elements(ld.payload -> 'proposed_activities') AS pa
+    )
+    SELECT p.proposed_id,
+           (ac.payload ->> 'activity_id') AS accepted_activity_id
+      FROM proposed p
+      LEFT JOIN event ac
+             ON ac.kind = 'ACTIVITY_CREATED'
+            AND ac.tenant_id = p.tenant_id
+            AND ac.project_id = p.project_id
+            AND (ac.payload ->> 'proposed_id') = p.proposed_id
+  `;
+  const proposedActivitiesTotal = proposedRows.length;
+  const proposedActivitiesPending = proposedRows.filter(
+    (r) => r.accepted_activity_id === null,
+  ).length;
+
+  // ---------------------------------------------------------------------
+  // 4 + 5. Agreed activities: total + without binding.
+  //
+  // "Live link" = the most-recent ARTEFACT_LINKED / ARTEFACT_UNLINKED
+  // event for a given (activity_id, artefact_kind, artefact_id) triple
+  // is ARTEFACT_LINKED. We DISTINCT ON to take the last event per triple
+  // and keep only the LINKED ones, then check existence per activity.
+  // ---------------------------------------------------------------------
+  const activityRows = await sql<{ id: string; live_link_count: string }[]>`
+    WITH activities AS (
+      SELECT id, tenant_id FROM activity WHERE claim_id = ${claimId}
+    ),
+    link_events AS (
+      SELECT (payload ->> 'activity_id')   AS activity_id,
+             (payload ->> 'artefact_kind') AS artefact_kind,
+             (payload ->> 'artefact_id')   AS artefact_id,
+             kind,
+             captured_at,
+             received_at,
+             id
+        FROM event
+       WHERE kind IN ('ARTEFACT_LINKED', 'ARTEFACT_UNLINKED')
+         AND (payload ->> 'activity_id') IN (SELECT id::text FROM activities)
+    ),
+    latest_per_triple AS (
+      SELECT DISTINCT ON (activity_id, artefact_kind, artefact_id)
+             activity_id, artefact_kind, artefact_id, kind
+        FROM link_events
+       ORDER BY activity_id, artefact_kind, artefact_id,
+                captured_at DESC, received_at DESC, id DESC
+    ),
+    live_links AS (
+      SELECT activity_id, COUNT(*)::text AS live_link_count
+        FROM latest_per_triple
+       WHERE kind = 'ARTEFACT_LINKED'
+       GROUP BY activity_id
+    )
+    SELECT a.id::text AS id,
+           COALESCE(ll.live_link_count, '0') AS live_link_count
+      FROM activities a
+      LEFT JOIN live_links ll ON ll.activity_id = a.id::text
+  `;
+  const agreedActivitiesTotal = activityRows.length;
+  const agreedActivitiesWithoutBinding = activityRows.filter(
+    (r) => Number(r.live_link_count) === 0,
+  ).length;
+
+  // ---------------------------------------------------------------------
+  // 6. Narrative sections accepted (= "approved" in wizard parlance).
+  //
+  // narrative_draft has no claim_id — join through activity. DISTINCT on
+  // section_kind so multiple activities each contributing the same
+  // section don't double-count: the wizard's step-4 gate expects four
+  // sections done, period, across the claim.
+  // ---------------------------------------------------------------------
+  const narrRows = await sql<{ accepted: string }[]>`
+    SELECT COUNT(DISTINCT nd.section_kind)::text AS accepted
+      FROM narrative_draft nd
+      JOIN activity a ON a.id = nd.activity_id
+     WHERE a.claim_id = ${claimId}
+       AND nd.status  = 'accepted'
+  `;
+  const narrativeSectionsApproved = Number(narrRows[0]?.accepted ?? 0);
+
+  return {
+    eventsClassified,
+    proposedActivitiesTotal,
+    proposedActivitiesPending,
+    agreedActivitiesTotal,
+    agreedActivitiesWithoutBinding,
+    narrativeSectionsApproved,
   };
 }
