@@ -10,6 +10,7 @@
  * ok=false with a reason — the wizard surfaces this as a "data changed
  * since you last agreed" banner.
  */
+import type { WorkflowState } from '@cpa/schemas';
 
 /**
  * Narrative drafter produces four sections (Hypothesis / Experiment /
@@ -63,4 +64,35 @@ export function canAdvance(step: 1 | 2 | 3 | 4 | 5, snap: WorkflowSnapshot): Can
       throw new Error(`canAdvance: unhandled step ${_exhaustive as number}`);
     }
   }
+}
+
+export function initialWorkflowState(initializedAt: string): WorkflowState {
+  return {
+    initialized_at: initializedAt,
+    steps: { '1': null, '2': null, '3': null, '4': null, '5': null },
+  };
+}
+
+export function applyAgree(
+  state: WorkflowState,
+  step: 1 | 2 | 3 | 4 | 5,
+  userId: string,
+  now: string,
+): WorkflowState {
+  return {
+    ...state,
+    steps: {
+      ...state.steps,
+      [String(step)]: { agreed_at: now, agreed_by: userId },
+    },
+  };
+}
+
+export function applyReopen(state: WorkflowState, step: 1 | 2 | 3 | 4 | 5): WorkflowState {
+  // No cascade per Q5.b — downstream steps keep their agreed_at; UI shows
+  // a soft "data changed since" warning instead.
+  return {
+    ...state,
+    steps: { ...state.steps, [String(step)]: null },
+  };
 }

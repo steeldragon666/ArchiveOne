@@ -1,6 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { canAdvance, type WorkflowSnapshot } from './workflow.js';
+import {
+  applyAgree,
+  applyReopen,
+  canAdvance,
+  initialWorkflowState,
+  type WorkflowSnapshot,
+} from './workflow.js';
 
 const empty: WorkflowSnapshot = {
   eventsClassified: 0,
@@ -49,4 +55,32 @@ test('canAdvance step 5 is terminal — always returns ok=false with terminal re
   const r = canAdvance(5, empty);
   assert.equal(r.ok, false);
   assert.match(r.reason ?? '', /terminal/i);
+});
+
+test('applyAgree writes timestamp + actor on the named step', () => {
+  const state = initialWorkflowState('2026-05-12T00:00:00Z');
+  const next = applyAgree(state, 2, '00000000-0000-4000-8000-000000000001', '2026-05-12T01:00:00Z');
+  assert.equal(next.steps['2']?.agreed_at, '2026-05-12T01:00:00Z');
+  assert.equal(next.steps['2']?.agreed_by, '00000000-0000-4000-8000-000000000001');
+  // Untouched steps remain null
+  assert.equal(next.steps['3'], null);
+  // Pure: original untouched
+  assert.equal(state.steps['2'], null);
+});
+
+test('applyReopen clears the named step (no cascade)', () => {
+  const s0 = initialWorkflowState('2026-05-12T00:00:00Z');
+  const s1 = applyAgree(s0, 2, '00000000-0000-4000-8000-000000000001', '2026-05-12T01:00:00Z');
+  const s2 = applyAgree(s1, 3, '00000000-0000-4000-8000-000000000001', '2026-05-12T02:00:00Z');
+  // Reopen step 2 — step 3 stays agreed (no cascade per Q5.b)
+  const s3 = applyReopen(s2, 2);
+  assert.equal(s3.steps['2'], null);
+  assert.equal(s3.steps['3']?.agreed_at, '2026-05-12T02:00:00Z');
+});
+
+test('initialWorkflowState fills all five steps with null', () => {
+  const s = initialWorkflowState('2026-05-12T00:00:00Z');
+  for (const k of ['1', '2', '3', '4', '5'] as const) {
+    assert.equal(s.steps[k], null);
+  }
 });
