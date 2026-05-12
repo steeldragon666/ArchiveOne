@@ -59,20 +59,16 @@ export function WizardStep4ReviewNarrative({
             R&amp;D Narrative
           </p>
 
-          {eventsQuery.isPending && (
+          {eventsQuery.isPending ? (
             <p className="text-sm text-muted-foreground">Loading narrative...</p>
-          )}
-
-          {eventsQuery.error && (
+          ) : eventsQuery.error ? (
             <p className="text-sm text-destructive">
               Failed to load events:{' '}
               {eventsQuery.error instanceof Error ? eventsQuery.error.message : 'Unknown error'}
             </p>
-          )}
-
-          {eventsQuery.data && (
+          ) : eventsQuery.data ? (
             <NarrativeStream claimId={claimId} events={eventsQuery.data} live={false} />
-          )}
+          ) : null}
         </div>
 
         {/* Right pane: Timeline */}

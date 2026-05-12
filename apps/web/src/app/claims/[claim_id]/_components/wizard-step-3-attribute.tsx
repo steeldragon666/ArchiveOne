@@ -51,30 +51,24 @@ export function WizardStep3AttributeEvidence({
         </p>
       </header>
 
-      {/* Activity cards */}
-      {activitiesQuery.isPending && (
+      {/* Activity cards — exclusive branching to avoid stale-data overlap */}
+      {activitiesQuery.isPending ? (
         <p className="text-sm text-muted-foreground">Loading activities...</p>
-      )}
-
-      {activitiesQuery.error && (
+      ) : activitiesQuery.error ? (
         <p className="text-sm text-destructive">
           Failed to load activities:{' '}
           {activitiesQuery.error instanceof Error ? activitiesQuery.error.message : 'Unknown error'}
         </p>
-      )}
-
-      {activitiesQuery.data && activitiesQuery.data.activities.length === 0 && (
+      ) : activitiesQuery.data?.activities.length === 0 ? (
         <div className="rounded border border-[hsl(var(--brand-line))] p-6 text-center">
           <p className="text-sm text-muted-foreground">
             No activities have been created yet. Go back to Step 2 and approve the AI narrative to
             auto-create activities.
           </p>
         </div>
-      )}
-
-      {activitiesQuery.data && activitiesQuery.data.activities.length > 0 && (
+      ) : (
         <div className="space-y-3">
-          {activitiesQuery.data.activities.map((activity) => (
+          {(activitiesQuery.data?.activities ?? []).map((activity) => (
             <div
               key={activity.id}
               className="flex flex-wrap items-start gap-3 rounded border border-[hsl(var(--brand-line))] bg-[hsl(var(--brand-paper))] p-4"
@@ -95,12 +89,18 @@ export function WizardStep3AttributeEvidence({
                 <p className="text-sm font-medium leading-tight">{activity.title}</p>
               </div>
 
+              {/* TODO: BindToActivityButton needs a real eventId. In Step 3's
+                 activity-first context, the flow should list bound events per
+                 activity and offer "add evidence" from the event list — not
+                 from the activity card. Placeholder until the binding UX is
+                 finalised. The button opens the dialog but submitting will
+                 fail (empty artefact_id). */}
               <div className="shrink-0">
                 <BindToActivityButton
                   eventId=""
                   filename="evidence"
                   subjectTenantId={subjectTenantId}
-                  triggerLabel="Link evidence"
+                  triggerLabel="Add evidence"
                 />
               </div>
             </div>

@@ -28,6 +28,7 @@ export function StaleStepBanner({
   });
 
   return (
+    // TODO: replace raw yellow-* utilities with --brand-warning token once defined in design system
     <div
       className="rounded border border-yellow-300 bg-yellow-50 px-4 py-3 text-sm text-yellow-800"
       role="alert"

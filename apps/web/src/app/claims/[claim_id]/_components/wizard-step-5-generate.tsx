@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { WorkflowStepEntry } from '@cpa/schemas';
-import { Loader2, CheckCircle2, FileText } from 'lucide-react';
+import { Loader2, Circle, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { CanAdvance } from '../_lib/workflow-client';
 import { StaleStepBanner } from './stale-step-banner';
@@ -48,17 +48,23 @@ export function WizardStep5GenerateDocuments({
 }) {
   const [docs, setDocs] = useState<DocItem[]>(INITIAL_DOCS);
   const [hasTriggered, setHasTriggered] = useState(false);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current !== null) clearTimeout(timeoutRef.current);
+    };
+  }, []);
 
   const isGenerating = docs.some((d) => d.status === 'generating');
   const allUnavailable = hasTriggered && docs.every((d) => d.status === 'unavailable');
 
   const handleGenerate = () => {
     setHasTriggered(true);
-    // Set all to "generating"
     setDocs((prev) => prev.map((d) => ({ ...d, status: 'generating' as const })));
 
-    // After 2s, set to "unavailable" since the endpoints don't exist yet.
-    setTimeout(() => {
+    // Simulate backend delay — replace with real POST calls when endpoints ship.
+    timeoutRef.current = setTimeout(() => {
       setDocs((prev) => prev.map((d) => ({ ...d, status: 'unavailable' as const })));
     }, 2000);
   };
@@ -156,7 +162,7 @@ function StatusIndicator({ status }: { status: DocStatus }) {
     case 'generating':
       return <Loader2 className="h-5 w-5 animate-spin text-[hsl(var(--brand-accent))]" />;
     case 'unavailable':
-      return <CheckCircle2 className="h-5 w-5 text-muted-foreground/50" />;
+      return <Circle className="h-5 w-5 text-muted-foreground/30" />;
     default:
       return null;
   }
