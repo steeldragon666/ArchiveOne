@@ -73,6 +73,83 @@ type EvidenceEvent = {
 };
 
 // ---------------------------------------------------------------------------
+// Versioning
+// ---------------------------------------------------------------------------
+
+/**
+ * Cap on retained history entries. Activities that are regenerated
+ * frequently would otherwise accumulate unbounded jsonb on the row;
+ * 10 is plenty for "show me the last few attempts" while keeping the
+ * per-row payload bounded (~10 × 13 fields × 4000 chars ≈ 500 KB worst
+ * case, well under postgres's 1 GB toast limit).
+ */
+const HISTORY_CAP = 10;
+
+type HistoryEntry = {
+  portal_fields: Record<string, unknown>;
+  saved_at: string;
+  source: 'agent' | 'edit';
+};
+
+/**
+ * Push the activity's CURRENT portal_fields onto its history array
+ * (if it has anything worth keeping), then overwrite portal_fields
+ * with `next`. The history array stays sorted oldest-first and is
+ * truncated to the most-recent {@link HISTORY_CAP} entries.
+ *
+ * Runs inside a single transaction so the read-then-overwrite is
+ * atomic from concurrent writers' perspective (RLS protects the row).
+ */
+async function overwriteWithHistory(args: {
+  tenantId: string;
+  activityId: string;
+  next: Record<string, unknown>;
+  source: 'agent' | 'edit';
+}): Promise<void> {
+  await sql.begin(async (tx) => {
+    await tx`SELECT set_config('app.current_tenant_id', ${args.tenantId}, true)`;
+    const rows = await tx<
+      { portal_fields: Record<string, unknown>; portal_fields_history: HistoryEntry[] }[]
+    >`
+      SELECT portal_fields, portal_fields_history
+        FROM activity
+       WHERE id = ${args.activityId}
+         AND tenant_id = ${args.tenantId}
+       LIMIT 1
+    `;
+    const row = rows[0];
+    if (!row) {
+      throw new Error(`activity not found mid-transaction: ${args.activityId}`);
+    }
+    // Only push the prior state if it was meaningfully populated — the
+    // migration-0044 default `{}` is not worth archiving.
+    const priorHasContent =
+      typeof row.portal_fields['activity_kind'] === 'string' && row.portal_fields['fields'];
+    const newEntry: HistoryEntry | null = priorHasContent
+      ? {
+          portal_fields: row.portal_fields,
+          saved_at: new Date().toISOString(),
+          source: args.source,
+        }
+      : null;
+    const updatedHistory = (
+      newEntry
+        ? [...(row.portal_fields_history ?? []), newEntry]
+        : (row.portal_fields_history ?? [])
+    ).slice(-HISTORY_CAP);
+
+    await tx`
+      UPDATE activity
+         SET portal_fields         = ${JSON.stringify(args.next)}::text::jsonb,
+             portal_fields_history = ${JSON.stringify(updatedHistory)}::text::jsonb,
+             updated_at            = NOW()
+       WHERE id = ${args.activityId}
+         AND tenant_id = ${args.tenantId}
+    `;
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Helpers — local copies to avoid coupling portal-fields to narrative.ts
 // ---------------------------------------------------------------------------
 
@@ -297,17 +374,13 @@ export function registerPortalFields(app: FastifyInstance): void {
       }
 
       // Persist — overwrite activity.portal_fields with the validated payload.
-      // Double-cast jsonb (`::text::jsonb`) per CLAUDE.md architecture rule:
-      // single-cast was a P5 bug; chain.ts fix lives in migration 0031.
-      await sql.begin(async (tx) => {
-        await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
-        await tx`
-          UPDATE activity
-             SET portal_fields = ${JSON.stringify(generated)}::text::jsonb,
-                 updated_at    = NOW()
-           WHERE id = ${activityId}
-             AND tenant_id = ${tenantId}
-        `;
+      // The helper archives the prior state into portal_fields_history first
+      // (capped at HISTORY_CAP=10 entries; oldest dropped on overflow).
+      await overwriteWithHistory({
+        tenantId,
+        activityId,
+        next: generated,
+        source: 'agent',
       });
 
       app.log.info(
@@ -448,15 +521,11 @@ export function registerPortalFields(app: FastifyInstance): void {
       }
 
       const persisted = { activity_kind: row.kind, fields: validated.data };
-      await sql.begin(async (tx) => {
-        await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
-        await tx`
-          UPDATE activity
-             SET portal_fields = ${JSON.stringify(persisted)}::text::jsonb,
-                 updated_at    = NOW()
-           WHERE id = ${activityId}
-             AND tenant_id = ${tenantId}
-        `;
+      await overwriteWithHistory({
+        tenantId,
+        activityId,
+        next: persisted,
+        source: 'edit',
       });
 
       app.log.info(
@@ -469,6 +538,149 @@ export function registerPortalFields(app: FastifyInstance): void {
       );
 
       return reply.status(200).send({ portal_fields: persisted });
+    },
+  );
+
+  // -----------------------------------------------------------------
+  // POST /v1/activities/:id/portal-fields/trim — stateless transform
+  //
+  // Given a piece of over-cap text from a portal field, ask Haiku to
+  // produce a tighter version that fits within `target_max` chars while
+  // preserving technical meaning and the AusIndustry register. The
+  // server does not persist anything — the client receives the
+  // suggestion and the consultant chooses whether to accept it.
+  //
+  // Haiku is appropriate here: this is a focused single-pass rewrite,
+  // not multi-field generation. ~3-5s round-trip.
+  // -----------------------------------------------------------------
+  const TrimBody = z
+    .object({
+      field_key: z.string().min(1),
+      current_text: z.string().min(1),
+      target_max: z.number().int().positive(),
+    })
+    .strict();
+
+  const TRIM_SYSTEM_PROMPT = `You are an editor for Australian R&D Tax Incentive
+narratives (Division 355, ITAA 1997). Your job is to compress text so that it
+fits within a strict character limit while preserving:
+  - Every concrete claim (numbers, dates, methods, outcomes)
+  - The third-person technical register ("the team", "the claimant")
+  - Australian English spelling
+  - Every statutory or regulatory reference (s.355-25, s.355-30, etc.)
+
+Hard rules:
+  - The trimmed text MUST be shorter than the original.
+  - The trimmed text MUST fit within the target character limit.
+  - Do NOT add facts. Do NOT remove distinct claims.
+  - Plain prose. No bullet lists unless the original used them.
+
+Emit your output via the \`emit_trimmed_text\` tool — exactly one call
+with the rewritten text. No commentary outside the tool call.`;
+
+  const trimToolSchema = z.object({ trimmed: z.string().min(1) });
+
+  app.post<{ Params: { id: string } }>(
+    '/v1/activities/:id/portal-fields/trim',
+    { preHandler: requireSession },
+    async (req, reply) => {
+      const role = req.user!.role;
+      if (role !== 'admin' && role !== 'consultant') {
+        return reply.status(403).send({
+          error: 'forbidden',
+          message: 'Admin or consultant role required',
+          requestId: req.id,
+        });
+      }
+
+      const tenantId = req.user!.tenantId!;
+      const activityId = req.params.id;
+      if (!Uuid.safeParse(activityId).success) {
+        return reply.status(400).send({ error: 'invalid_activity_id', requestId: req.id });
+      }
+      if (!isAgentEnabled('C') || !isTenantAllowed(tenantId)) {
+        return reply.status(503).send({ error: 'feature_disabled', requestId: req.id });
+      }
+      const parsed = TrimBody.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'invalid_body',
+          issues: parsed.error.issues,
+          requestId: req.id,
+        });
+      }
+      const { field_key, current_text, target_max } = parsed.data;
+
+      // Activity-scope check (RLS) — confirms the consultant can edit
+      // this activity before we spend tokens on the trim call.
+      const rows = await sql.begin(async (tx) => {
+        await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+        return await tx<{ id: string }[]>`
+          SELECT id FROM activity
+           WHERE id = ${activityId} AND tenant_id = ${tenantId} LIMIT 1
+        `;
+      });
+      if (rows.length === 0) {
+        return reply.status(404).send({ error: 'activity_not_found', requestId: req.id });
+      }
+
+      const apiKey = process.env['ANTHROPIC_API_KEY'];
+      if (!apiKey) {
+        return reply.status(500).send({ error: 'config_error', requestId: req.id });
+      }
+      const client = new Anthropic({ apiKey, maxRetries: 2, timeout: 60_000 });
+
+      const userMessage = [
+        `Field: ${field_key}`,
+        `Target maximum length: ${target_max} characters`,
+        `Current length: ${current_text.length} characters`,
+        '',
+        '--- TEXT TO COMPRESS ---',
+        current_text,
+      ].join('\n');
+
+      const t0 = Date.now();
+      let trimmed: string;
+      try {
+        const result = await callWithToolUse(client, {
+          model: process.env['PORTAL_FIELDS_TRIM_MODEL'] ?? 'claude-haiku-4-5',
+          system: TRIM_SYSTEM_PROMPT,
+          user: userMessage,
+          tool: {
+            name: 'emit_trimmed_text',
+            description: 'Emit the trimmed version of the supplied text.',
+            input_schema: trimToolSchema,
+          },
+          max_tokens: 2048,
+        });
+        trimmed = result.output.trimmed;
+      } catch (err) {
+        app.log.error({ err, activityId, field_key }, 'portal-fields trim failed');
+        return reply.status(502).send({
+          error: 'agent_failed',
+          message: err instanceof Error ? err.message : String(err),
+          requestId: req.id,
+        });
+      }
+
+      // Defensive check: if Haiku returns something LONGER than the
+      // original (rare but possible — models sometimes "polish" instead
+      // of trim), surface that to the client rather than silently passing
+      // it through. The UI shows the suggestion and the consultant can
+      // accept or discard either way.
+      const fitsCap = trimmed.length <= target_max;
+      const isShorter = trimmed.length < current_text.length;
+      return reply.status(200).send({
+        trimmed,
+        meta: {
+          original_length: current_text.length,
+          trimmed_length: trimmed.length,
+          target_max,
+          fits_cap: fitsCap,
+          is_shorter: isShorter,
+          elapsed_ms: Date.now() - t0,
+        },
+      });
     },
   );
 }

@@ -96,6 +96,10 @@ export const activity = pgTable(
     // (packages/schemas/src/portal-fields.ts). Default empty object for
     // backward compatibility with pre-Sprint-A activities.
     portalFields: jsonb('portal_fields').notNull().default({}),
+    // Versioning (migration 0080). Array of prior portal_fields snapshots
+    // (newest at the end). Each entry: { portal_fields, saved_at, source }.
+    // Server caps at the most-recent 10 entries.
+    portalFieldsHistory: jsonb('portal_fields_history').notNull().default([]),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true })
       .notNull()

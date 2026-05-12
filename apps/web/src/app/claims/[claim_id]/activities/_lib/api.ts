@@ -203,3 +203,33 @@ export async function editPortalFields(
     body: JSON.stringify({ fields }),
   });
 }
+
+/**
+ * POST /v1/activities/:id/portal-fields/trim — stateless transform that
+ * asks Haiku to compress an over-cap text field into a shorter version
+ * preserving meaning + statutory register.
+ *
+ * Does NOT persist — caller must apply the suggestion to the editor draft
+ * and Save via PATCH if they accept it.
+ */
+export type TrimPortalFieldResponse = {
+  trimmed: string;
+  meta: {
+    original_length: number;
+    trimmed_length: number;
+    target_max: number;
+    fits_cap: boolean;
+    is_shorter: boolean;
+    elapsed_ms: number;
+  };
+};
+
+export async function trimPortalField(
+  activityId: string,
+  args: { field_key: string; current_text: string; target_max: number },
+): Promise<TrimPortalFieldResponse> {
+  return apiFetch<TrimPortalFieldResponse>(`/v1/activities/${activityId}/portal-fields/trim`, {
+    method: 'POST',
+    body: JSON.stringify(args),
+  });
+}

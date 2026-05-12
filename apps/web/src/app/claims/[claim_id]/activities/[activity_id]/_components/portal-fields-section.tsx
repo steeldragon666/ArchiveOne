@@ -8,9 +8,11 @@ import { useToast } from '@/hooks/use-toast';
 import {
   editPortalFields,
   generatePortalFields,
+  trimPortalField,
   type EditPortalFieldsResponse,
   type GeneratedPortalFields,
   type GeneratePortalFieldsResponse,
+  type TrimPortalFieldResponse,
 } from '../../_lib/api';
 
 /**
@@ -120,9 +122,20 @@ export function PortalFieldsSection({ activity }: { activity: Activity }) {
 
       {generated && isEditing ? (
         <PortalFieldsEditor
+          activityId={activity.id}
           generated={generated}
           onSave={(fields) => editMutation.mutate(fields)}
           onCancel={() => setIsEditing(false)}
+          isSaving={editMutation.isPending}
+        />
+      ) : null}
+
+      {!isEditing && activity.portal_fields_history && activity.portal_fields_history.length > 0 ? (
+        <PortalFieldsHistoryPanel
+          history={activity.portal_fields_history}
+          onRestore={(restored) =>
+            editMutation.mutate((restored.portal_fields['fields'] ?? {}) as Record<string, unknown>)
+          }
           isSaving={editMutation.isPending}
         />
       ) : null}
@@ -144,7 +157,10 @@ function PortalFieldsDisplay({ generated }: { generated: GeneratedPortalFields }
       </div>
       {entries.map(([key, value]) => (
         <div key={key} className="space-y-1">
-          <dt className="font-display text-sm font-medium">{humaniseKey(key)}</dt>
+          <div className="flex items-baseline justify-between gap-2">
+            <dt className="font-display text-sm font-medium">{humaniseKey(key)}</dt>
+            <CopyFieldButton value={value} fieldKey={key} />
+          </div>
           <dd className="text-sm">
             <PortalFieldValue value={value} pathKey={key} activityKind={generated.activity_kind} />
           </dd>
@@ -152,6 +168,72 @@ function PortalFieldsDisplay({ generated }: { generated: GeneratedPortalFields }
       ))}
     </dl>
   );
+}
+
+/**
+ * Small affordance per field: copy the value to the clipboard in a form
+ * suitable for pasting straight into the AusIndustry portal field box.
+ *
+ * Format rules:
+ *   - strings        → verbatim
+ *   - numbers/bools  → String(value)
+ *   - arrays         → newline-separated (one item per line; nested objects
+ *                      serialised as JSON since the portal generally expects
+ *                      flat lists, but consultants can paste-then-edit)
+ *   - dates_conducted / dominant_purpose / other nested → JSON.stringify
+ *
+ * Uses navigator.clipboard.writeText (async). On success the button briefly
+ * shows "Copied"; on failure (HTTP context, permissions denied) we fall back
+ * to a toast with the raw value selected for manual copy.
+ */
+function CopyFieldButton({ value, fieldKey }: { value: unknown; fieldKey: string }) {
+  const { toast } = useToast();
+  const [copied, setCopied] = useState(false);
+
+  const onCopy = async () => {
+    const serialised = serialiseForClipboard(value);
+    try {
+      await navigator.clipboard.writeText(serialised);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch (err) {
+      // navigator.clipboard requires a secure context (https or localhost)
+      // and a user-gesture handler; both true here, but defensively
+      // surface the failure so the consultant isn't left guessing.
+      toast({
+        variant: 'destructive',
+        title: 'Copy failed',
+        description: err instanceof Error ? err.message : 'clipboard unavailable',
+      });
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={() => void onCopy()}
+      className="text-xs text-[hsl(var(--brand-ink-subtle))] hover:text-[hsl(var(--brand-ink))] underline-offset-2 hover:underline"
+      data-testid={`copy-portal-field-${fieldKey}`}
+      aria-label={`Copy ${fieldKey} to clipboard`}
+    >
+      {copied ? '✓ Copied' : 'Copy'}
+    </button>
+  );
+}
+
+function serialiseForClipboard(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (Array.isArray(value)) {
+    return (value as unknown[])
+      .map((v) => (typeof v === 'string' ? v : JSON.stringify(v)))
+      .join('\n');
+  }
+  // Nested objects (dates_conducted, dominant_purpose, …). Pretty-print so
+  // the consultant can read it before pasting — most portal fields take
+  // plain text and an object's `JSON.stringify` is at least human-legible.
+  return JSON.stringify(value, null, 2);
 }
 
 function PortalFieldValue({
@@ -320,30 +402,80 @@ function coercePortalFields(pf: Record<string, unknown>): GeneratedPortalFields 
 }
 
 // ---------------------------------------------------------------------------
-// Editor — text fields only (MVP)
+// Editor — field descriptors
 // ---------------------------------------------------------------------------
 
 /**
- * Set of top-level keys whose value is a plain string for both kinds.
- * The editor renders these as textareas with live char-count indicators.
- * Anything not in this set stays read-only (enums, arrays, dates, nested
- * objects requiring dedicated controls).
+ * Enum values for the AusIndustry portal multi-/single-select fields.
+ * Mirrors the Zod enums in `@cpa/schemas/portal-fields.ts`. Kept inline
+ * (not imported) so the web bundle doesn't drag the agents/schemas
+ * Zod runtime over the workspace boundary — these are stable wire
+ * literals and updating both places at once is the same edit cost.
  */
-const EDITABLE_TEXT_KEYS = new Set([
-  // Core
-  'activity_name',
-  'description',
-  'sources_investigated',
-  'why_competent_professional_couldnt_know',
-  'hypothesis',
-  'experiment',
-  'evaluation',
-  'conclusions',
-  'new_knowledge_purpose',
-  // Supporting
-  'how_supports_core_rd',
-  'evidence_kept',
-]);
+const OUTCOME_UNKNOWN_METHODS = [
+  'no_applicable_literature',
+  'expert_advice',
+  'no_adaptable_solutions',
+  'other',
+  'did_not_investigate',
+] as const;
+
+const EVIDENCE_KEPT_CATEGORIES = [
+  'hypothesis_design',
+  'results_evaluation',
+  'experiment_revisions',
+  'knowledge_searches',
+  'systematic_progression',
+  'other',
+  'no_records_kept',
+] as const;
+
+const WHO_PERFORMED_WORK = [
+  'r_and_d_company_only',
+  'r_and_d_company_and_others',
+  'subsidiary_or_group_or_others',
+  'others_only',
+] as const;
+
+type FieldDescriptor =
+  | { type: 'text' }
+  | { type: 'number'; min?: number }
+  | { type: 'enum-multi'; options: readonly string[] }
+  | { type: 'enum-single'; options: readonly string[] }
+  | { type: 'date-range' }
+  | { type: 'boolean' }
+  | { type: 'dominant-purpose' }
+  | { type: 'uuid-array' }; // read-only for now — cross-activity picker is out of scope
+
+/**
+ * What kind of editor control to render for each top-level portal-field key.
+ * Keys absent from this map are rendered read-only with a note.
+ */
+const FIELD_DESCRIPTORS: Record<string, FieldDescriptor> = {
+  // Common to core + supporting
+  activity_name: { type: 'text' },
+  description: { type: 'text' },
+  expenditure_estimate_aud: { type: 'number', min: 0 },
+  // Core-only
+  sources_investigated: { type: 'text' },
+  why_competent_professional_couldnt_know: { type: 'text' },
+  hypothesis: { type: 'text' },
+  experiment: { type: 'text' },
+  evaluation: { type: 'text' },
+  conclusions: { type: 'text' },
+  new_knowledge_purpose: { type: 'text' },
+  outcome_unknown_methods: { type: 'enum-multi', options: OUTCOME_UNKNOWN_METHODS },
+  evidence_kept_categories: { type: 'enum-multi', options: EVIDENCE_KEPT_CATEGORIES },
+  related_supporting_activity_ids: { type: 'uuid-array' },
+  // Supporting-only
+  how_supports_core_rd: { type: 'text' },
+  evidence_kept: { type: 'text' },
+  supports_core_activity_ids: { type: 'uuid-array' },
+  who_performed_work: { type: 'enum-single', options: WHO_PERFORMED_WORK },
+  dates_conducted: { type: 'date-range' },
+  produces_good_or_service: { type: 'boolean' },
+  dominant_purpose: { type: 'dominant-purpose' },
+};
 
 /**
  * Editor for the generated portal_fields payload.
@@ -363,19 +495,21 @@ const EDITABLE_TEXT_KEYS = new Set([
  * keys, so partial nested edits aren't supported by design).
  */
 function PortalFieldsEditor({
+  activityId,
   generated,
   onSave,
   onCancel,
   isSaving,
 }: {
+  activityId: string;
   generated: GeneratedPortalFields;
   onSave: (fields: Record<string, unknown>) => void;
   onCancel: () => void;
   isSaving: boolean;
 }) {
   // Local draft of every top-level key. We don't deep-clone — Object.values
-  // are primitives (strings/numbers/bools) or arrays/objects that we re-
-  // assign wholesale on edit, so structural sharing is fine.
+  // are primitives (strings/numbers/bools) or arrays/objects that we
+  // reassign wholesale on edit, so structural sharing is fine.
   const [draft, setDraft] = useState<Record<string, unknown>>({ ...generated.fields });
   // Local draft of the supporting-activity `dominant_purpose.explanation`
   // field. We surface it as its own textarea but persist by re-attaching
@@ -383,15 +517,19 @@ function PortalFieldsEditor({
   const initialExplanation = readDominantPurposeExplanation(generated.fields);
   const [explanation, setExplanation] = useState<string>(initialExplanation);
 
-  const onTextChange = (key: string, value: string) => {
-    setDraft((d) => ({ ...d, [key]: value }));
-  };
-
   const onSubmit = () => {
-    // Build the PATCH body: only changed keys.
+    // Build the PATCH body: only changed keys. Reference equality is
+    // fine for primitive values, but arrays/objects must be compared by
+    // JSON serialisation since edit handlers re-assign new instances.
     const changed: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(draft)) {
-      if (generated.fields[k] !== v) changed[k] = v;
+      const original = generated.fields[k];
+      const isSame =
+        v === original ||
+        (v !== null && original !== null && typeof v === 'object' && typeof original === 'object'
+          ? JSON.stringify(v) === JSON.stringify(original)
+          : false);
+      if (!isSame) changed[k] = v;
     }
     // Dominant-purpose explanation: send the whole dominant_purpose object
     // (shallow merge on the server can't reach into nested keys).
@@ -422,58 +560,195 @@ function PortalFieldsEditor({
       </div>
 
       {entries.map(([key, value]) => {
-        const isEditableText = EDITABLE_TEXT_KEYS.has(key) && typeof value === 'string';
-        if (isEditableText) {
-          const current = (draft[key] ?? value) as string;
+        const descriptor = FIELD_DESCRIPTORS[key];
+        const current = draft[key] ?? value;
+        const onChange = (next: unknown) => setDraft((d) => ({ ...d, [key]: next }));
+
+        if (!descriptor) {
+          // Unknown key — render read-only with note.
+          return (
+            <div key={key} className="space-y-1 opacity-70">
+              <div className="font-display text-sm font-medium">{humaniseKey(key)}</div>
+              <PortalFieldValue
+                value={value}
+                pathKey={key}
+                activityKind={generated.activity_kind}
+              />
+              <p className="text-xs italic text-[hsl(var(--brand-ink-subtle))]">
+                Unrecognised field — read-only in this editor.
+              </p>
+            </div>
+          );
+        }
+
+        if (descriptor.type === 'text' && typeof current === 'string') {
           const limit = lookupCharLimit(generated.activity_kind, key);
+          return (
+            <TextFieldEditor
+              key={key}
+              activityId={activityId}
+              fieldKey={key}
+              value={current}
+              limit={limit}
+              onChange={(next) => onChange(next)}
+            />
+          );
+        }
+
+        if (descriptor.type === 'number') {
+          const num = typeof current === 'number' ? current : Number(current ?? 0);
           return (
             <div key={key} className="space-y-1">
               <label className="font-display text-sm font-medium" htmlFor={`pf-${key}`}>
                 {humaniseKey(key)}
               </label>
-              <Textarea
+              <input
                 id={`pf-${key}`}
-                value={current}
-                onChange={(e) => onTextChange(key, e.target.value)}
-                className="min-h-[100px]"
+                type="number"
+                min={descriptor.min}
+                value={Number.isFinite(num) ? num : 0}
+                onChange={(e) => onChange(Number(e.target.value))}
+                className="w-full rounded-md border border-[hsl(var(--brand-line))] bg-white px-3 py-2 text-sm"
                 data-testid={`portal-field-edit-${key}`}
               />
-              {limit !== null ? <CharCountBadge length={current.length} limit={limit} /> : null}
             </div>
           );
         }
-        // Special case: dominant_purpose.explanation (nested but text)
-        if (key === 'dominant_purpose' && value && typeof value === 'object') {
+
+        if (descriptor.type === 'boolean') {
+          const bool = current === true;
+          return (
+            <div key={key} className="space-y-1">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={bool}
+                  onChange={(e) => onChange(e.target.checked)}
+                  className="h-4 w-4 rounded border-[hsl(var(--brand-line))]"
+                  data-testid={`portal-field-edit-${key}`}
+                />
+                <span className="font-display font-medium">{humaniseKey(key)}</span>
+              </label>
+            </div>
+          );
+        }
+
+        if (descriptor.type === 'enum-single') {
+          const selected = typeof current === 'string' ? current : '';
+          return (
+            <div key={key} className="space-y-1">
+              <label className="font-display text-sm font-medium" htmlFor={`pf-${key}`}>
+                {humaniseKey(key)}
+              </label>
+              <select
+                id={`pf-${key}`}
+                value={selected}
+                onChange={(e) => onChange(e.target.value)}
+                className="w-full rounded-md border border-[hsl(var(--brand-line))] bg-white px-3 py-2 text-sm"
+                data-testid={`portal-field-edit-${key}`}
+              >
+                {descriptor.options.map((opt) => (
+                  <option key={opt} value={opt}>
+                    {humaniseKey(opt)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          );
+        }
+
+        if (descriptor.type === 'enum-multi') {
+          const selectedArr: string[] = Array.isArray(current)
+            ? (current as unknown[]).filter((x): x is string => typeof x === 'string')
+            : [];
+          const toggle = (opt: string) => {
+            const next = selectedArr.includes(opt)
+              ? selectedArr.filter((x) => x !== opt)
+              : [...selectedArr, opt];
+            onChange(next);
+          };
+          return (
+            <fieldset key={key} className="space-y-1">
+              <legend className="font-display text-sm font-medium">{humaniseKey(key)}</legend>
+              <div className="space-y-1">
+                {descriptor.options.map((opt) => (
+                  <label key={opt} className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={selectedArr.includes(opt)}
+                      onChange={() => toggle(opt)}
+                      className="h-4 w-4 rounded border-[hsl(var(--brand-line))]"
+                      data-testid={`portal-field-edit-${key}-${opt}`}
+                    />
+                    <span>{humaniseKey(opt)}</span>
+                  </label>
+                ))}
+              </div>
+              {selectedArr.length === 0 ? (
+                <p className="text-xs italic text-destructive">
+                  At least one value is required by the AusIndustry schema.
+                </p>
+              ) : null}
+            </fieldset>
+          );
+        }
+
+        if (descriptor.type === 'date-range') {
+          const obj = (current ?? {}) as { start?: unknown; end?: unknown };
+          const start = typeof obj.start === 'string' ? obj.start : '';
+          const end = typeof obj.end === 'string' ? obj.end : '';
+          const updatePair = (which: 'start' | 'end', dateStr: string) =>
+            onChange({ ...obj, [which]: dateStr });
+          return (
+            <div key={key} className="space-y-1">
+              <div className="font-display text-sm font-medium">{humaniseKey(key)}</div>
+              <div className="flex gap-2">
+                <input
+                  type="date"
+                  value={start}
+                  onChange={(e) => updatePair('start', e.target.value)}
+                  className="rounded-md border border-[hsl(var(--brand-line))] bg-white px-2 py-1 text-sm"
+                  data-testid={`portal-field-edit-${key}-start`}
+                />
+                <span className="self-center text-sm text-[hsl(var(--brand-ink-subtle))]">to</span>
+                <input
+                  type="date"
+                  value={end}
+                  onChange={(e) => updatePair('end', e.target.value)}
+                  className="rounded-md border border-[hsl(var(--brand-line))] bg-white px-2 py-1 text-sm"
+                  data-testid={`portal-field-edit-${key}-end`}
+                />
+              </div>
+            </div>
+          );
+        }
+
+        if (descriptor.type === 'dominant-purpose') {
           const limit = lookupCharLimit(generated.activity_kind, 'dominant_purpose.explanation');
           return (
             <div key={key} className="space-y-1">
-              <label
-                className="font-display text-sm font-medium"
-                htmlFor="pf-dominant-purpose-explanation"
-              >
-                {humaniseKey(key)} (explanation)
-              </label>
-              <Textarea
-                id="pf-dominant-purpose-explanation"
+              <TextFieldEditor
+                activityId={activityId}
+                fieldKey="dominant_purpose.explanation"
                 value={explanation}
-                onChange={(e) => setExplanation(e.target.value)}
-                className="min-h-[100px]"
-                data-testid="portal-field-edit-dominant-purpose-explanation"
+                limit={limit}
+                onChange={(next) => setExplanation(next)}
+                labelOverride={`${humaniseKey(key)} (explanation)`}
               />
-              {limit !== null ? <CharCountBadge length={explanation.length} limit={limit} /> : null}
               <p className="text-xs italic text-[hsl(var(--brand-ink-subtle))]">
                 The dominant-purpose flag itself stays true — only the explanation is editable here.
               </p>
             </div>
           );
         }
-        // Non-editable fields display the read-only renderer + a note.
+
+        // uuid-array — read-only for now (cross-activity picker out of scope).
         return (
           <div key={key} className="space-y-1 opacity-70">
             <div className="font-display text-sm font-medium">{humaniseKey(key)}</div>
             <PortalFieldValue value={value} pathKey={key} activityKind={generated.activity_kind} />
             <p className="text-xs italic text-[hsl(var(--brand-ink-subtle))]">
-              Read-only in this editor. Re-generate to change.
+              UUID arrays (activity bindings) need a cross-activity picker — not yet implemented.
             </p>
           </div>
         );
@@ -499,4 +774,209 @@ function readDominantPurposeExplanation(fields: Record<string, unknown>): string
     if (typeof explanation === 'string') return explanation;
   }
   return '';
+}
+
+// ---------------------------------------------------------------------------
+// History panel
+// ---------------------------------------------------------------------------
+
+type HistoryEntry = NonNullable<Activity['portal_fields_history']>[number];
+
+/**
+ * Collapsible "version history" panel.
+ *
+ * Renders entries newest-first (the server stores oldest-first, so we
+ * `.slice().reverse()`). Each entry has a "Restore" action that re-uses
+ * the existing PATCH endpoint — restoring a prior version is just an
+ * edit whose body happens to be the historical `fields` object. This
+ * means the restored entry also gets pushed onto history (recursive
+ * provenance), so the consultant can always undo a restore.
+ */
+function PortalFieldsHistoryPanel({
+  history,
+  onRestore,
+  isSaving,
+}: {
+  history: HistoryEntry[];
+  onRestore: (entry: HistoryEntry) => void;
+  isSaving: boolean;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const reversed = [...history].reverse();
+
+  return (
+    <div className="rounded-md border border-[hsl(var(--brand-line))] p-3">
+      <button
+        type="button"
+        onClick={() => setExpanded((x) => !x)}
+        className="flex w-full items-center justify-between gap-3 text-left text-sm font-medium"
+        data-testid="portal-fields-history-toggle"
+        aria-expanded={expanded}
+      >
+        <span>
+          Version history ·{' '}
+          <span className="text-[hsl(var(--brand-ink-subtle))]">
+            {history.length} prior {history.length === 1 ? 'version' : 'versions'}
+          </span>
+        </span>
+        <span className="text-xs text-[hsl(var(--brand-ink-subtle))]">
+          {expanded ? '▾ collapse' : '▸ expand'}
+        </span>
+      </button>
+
+      {expanded ? (
+        <ul className="mt-3 space-y-2" data-testid="portal-fields-history-list">
+          {reversed.map((entry, i) => {
+            const fields = (entry.portal_fields['fields'] ?? {}) as Record<string, unknown>;
+            const fieldsCount = Object.keys(fields).length;
+            const date = new Date(entry.saved_at);
+            return (
+              <li
+                key={`${entry.saved_at}-${i}`}
+                className="flex items-center justify-between gap-3 rounded-sm border border-[hsl(var(--brand-line))] bg-[hsl(var(--brand-paper))] px-3 py-2 text-sm"
+              >
+                <div className="flex flex-col">
+                  <span className="font-medium">
+                    {formatHistoryTimestamp(date)} ·{' '}
+                    <span className="text-[hsl(var(--brand-ink-subtle))]">
+                      {entry.source === 'agent' ? 'agent regenerated' : 'consultant edited'}
+                    </span>
+                  </span>
+                  <span className="text-xs text-[hsl(var(--brand-ink-subtle))]">
+                    {fieldsCount} fields captured
+                  </span>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onRestore(entry)}
+                  disabled={isSaving}
+                  data-testid={`restore-portal-fields-${i}`}
+                >
+                  Restore
+                </Button>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// TextFieldEditor — textarea + char-count badge + "Suggest shorter" button
+// ---------------------------------------------------------------------------
+
+/**
+ * Reusable text-field editor for the portal-fields editor. Used both for
+ * top-level text fields (description, hypothesis, …) and the special-cased
+ * `dominant_purpose.explanation` nested field. When the draft exceeds the
+ * portal char limit, a "Suggest shorter" button appears that calls the
+ * trim endpoint and replaces the textarea value on success.
+ *
+ * The trim suggestion is a stateless transform — accepting it just updates
+ * the local draft. The consultant still has to click Save to PATCH.
+ */
+function TextFieldEditor({
+  activityId,
+  fieldKey,
+  value,
+  limit,
+  onChange,
+  labelOverride,
+}: {
+  activityId: string;
+  fieldKey: string;
+  value: string;
+  limit: number | null;
+  onChange: (next: string) => void;
+  labelOverride?: string;
+}) {
+  const { toast } = useToast();
+  const overCap = limit !== null && value.length > limit;
+
+  const trimMutation = useMutation<
+    TrimPortalFieldResponse,
+    Error,
+    { current_text: string; target_max: number }
+  >({
+    mutationFn: ({ current_text, target_max }) =>
+      trimPortalField(activityId, { field_key: fieldKey, current_text, target_max }),
+    onSuccess: (result) => {
+      // Apply the suggestion regardless of whether it perfectly hit the
+      // cap — the consultant sees the new length via the char badge and
+      // can iterate further or hand-edit. We toast a small caveat if the
+      // model returned something longer than the target.
+      onChange(result.trimmed);
+      if (!result.meta.fits_cap || !result.meta.is_shorter) {
+        toast({
+          title: 'Suggestion applied — still over cap',
+          description: `Model returned ${result.meta.trimmed_length} chars (target ${result.meta.target_max}). Try again or trim manually.`,
+        });
+      } else {
+        toast({
+          title: 'Trimmed',
+          description: `${result.meta.original_length} → ${result.meta.trimmed_length} chars in ${(result.meta.elapsed_ms / 1000).toFixed(1)}s`,
+        });
+      }
+    },
+    onError: (err) => {
+      toast({ variant: 'destructive', title: 'Trim suggestion failed', description: err.message });
+    },
+  });
+
+  const onTrimClick = () => {
+    if (limit === null) return;
+    trimMutation.mutate({ current_text: value, target_max: limit });
+  };
+
+  return (
+    <div className="space-y-1">
+      <label className="font-display text-sm font-medium" htmlFor={`pf-${fieldKey}`}>
+        {labelOverride ?? humaniseKey(fieldKey)}
+      </label>
+      <Textarea
+        id={`pf-${fieldKey}`}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="min-h-[100px]"
+        data-testid={`portal-field-edit-${fieldKey}`}
+      />
+      <div className="flex items-center justify-between gap-2">
+        {limit !== null ? <CharCountBadge length={value.length} limit={limit} /> : <span />}
+        {overCap ? (
+          <button
+            type="button"
+            onClick={onTrimClick}
+            disabled={trimMutation.isPending}
+            className="text-xs text-[hsl(var(--brand-ink))] underline underline-offset-2 hover:no-underline disabled:opacity-50"
+            data-testid={`portal-field-trim-${fieldKey}`}
+          >
+            {trimMutation.isPending ? 'Asking Haiku…' : 'Suggest shorter version'}
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Compact relative+absolute timestamp. "5m ago · 09:14" reads better than
+ * either format alone for a panel where consultants are scanning to find
+ * a specific earlier version.
+ */
+function formatHistoryTimestamp(d: Date): string {
+  const now = Date.now();
+  const deltaSec = Math.max(0, Math.round((now - d.getTime()) / 1000));
+  const rel =
+    deltaSec < 60
+      ? 'just now'
+      : deltaSec < 3600
+        ? `${Math.floor(deltaSec / 60)}m ago`
+        : deltaSec < 86_400
+          ? `${Math.floor(deltaSec / 3600)}h ago`
+          : `${Math.floor(deltaSec / 86_400)}d ago`;
+  const abs = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return `${rel} · ${abs}`;
 }

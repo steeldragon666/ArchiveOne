@@ -69,6 +69,13 @@ interface RawActivityRow {
   // the DB (`NOT NULL DEFAULT '{}'::jsonb`) but optional on the row
   // because only the detail GET selects it — POST/PATCH/list don't yet.
   portal_fields?: Record<string, unknown>;
+  // Prior portal_fields snapshots (migration 0080). Same optional-on-row
+  // pattern — only detail GET selects it.
+  portal_fields_history?: Array<{
+    portal_fields: Record<string, unknown>;
+    saved_at: string;
+    source: 'agent' | 'edit';
+  }>;
 }
 
 const isoOf = (v: Date | string): string => (typeof v === 'string' ? v : v.toISOString());
@@ -113,6 +120,13 @@ const toApi = (r: RawActivityRow): Activity => ({
   // it up so list responses (which omit it for payload-size reasons) stay
   // small. When present, hand it through verbatim.
   ...(r.portal_fields !== undefined ? { portal_fields: r.portal_fields } : { portal_fields: {} }),
+  // portal_fields_history materialises as `[]` for activities that have
+  // never been regenerated. When the SELECT picks it up we hand it through
+  // verbatim; otherwise the default empty array keeps the wire shape
+  // consistent for clients.
+  ...(r.portal_fields_history !== undefined
+    ? { portal_fields_history: r.portal_fields_history }
+    : { portal_fields_history: [] }),
 });
 
 /**
@@ -454,7 +468,7 @@ export function registerActivities(app: FastifyInstance): void {
                  experimentation_log, expected_outcome, actual_outcome,
                  created_at, updated_at,
                  needs_review, proposal_confidence, proposed_from_event_id,
-                 portal_fields
+                 portal_fields, portal_fields_history
             FROM activity
            WHERE id = ${id}
              AND tenant_id = ${tenantId}

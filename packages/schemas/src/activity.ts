@@ -85,6 +85,24 @@ export const Activity = z.object({
    * or `SupportingPortalFieldsSchema` (selected by `activity_kind`).
    */
   portal_fields: z.record(z.unknown()).default({}),
+  /**
+   * Prior portal_fields snapshots, oldest first (migration 0080).
+   * Each entry: { portal_fields, saved_at: ISO, source: 'agent'|'edit' }.
+   * Server caps the array at the most-recent 10 entries.
+   *
+   * Default `[]` so old callers and rows from before the migration
+   * round-trip cleanly. Optional on the wire — GET/list endpoints may
+   * elide it for payload-size reasons even when populated.
+   */
+  portal_fields_history: z
+    .array(
+      z.object({
+        portal_fields: z.record(z.unknown()),
+        saved_at: z.string(),
+        source: z.enum(['agent', 'edit']),
+      }),
+    )
+    .default([]),
 });
 export type Activity = z.infer<typeof Activity>;
 

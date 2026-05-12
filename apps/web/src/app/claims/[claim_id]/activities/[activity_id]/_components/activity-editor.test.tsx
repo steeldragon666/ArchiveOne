@@ -38,6 +38,8 @@ const baseActivity: Activity = {
   // computeChangedFields doesn't touch portal_fields, so the empty default
   // is fine for these tests.
   portal_fields: {},
+  // portal_fields_history landed in migration 0080 with default `[]`.
+  portal_fields_history: [],
 };
 
 test('computeChangedFields: returns {} when no fields changed', () => {
