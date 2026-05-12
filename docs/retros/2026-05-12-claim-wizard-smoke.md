@@ -86,3 +86,33 @@
 ## Verdict
 
 The wizard skeleton is complete and navigable. Steps 1-4 render real components with real data queries. The two agent jobs (activity proposal on step-1 agree, evidence binding on step-2 agree) are wired and functional. Step 5 is a UI stub awaiting backend generation endpoints. Primary blocker for production use is document generation (Step 5).
+
+---
+
+## Post-Review Updates (2026-05-13)
+
+A code review of the wizard caught three critical gaps that this smoke retro did not surface — the wizard rendered correctly but the central mechanism never fired. Specifically:
+
+- **C1 — `agreeStep` had zero call sites.** The Next buttons in steps 1-4 just wrote `?step=N+1` to the URL with no server-side write. `workflow_state.steps[N].agreed_at` stayed null forever, so the stepper "agreed" checkmarks could never light up and pg-boss jobs never enqueued on step-1/step-2 agree (the two enqueue sites in `claim-workflow.ts` are inside the agree route).
+- **C2 — No workflow query was ever invalidated.** Even if agreeStep had been called, the wizard's `['workflow', claimId]` react-query cache wasn't being invalidated after mutations, so the orchestrator's `getWorkflow` snapshot stayed stale.
+- **I1 — Phase 7.1 auto-init was non-transactional.** The follow-on `initializeWorkflow(created.id)` call in `create-claim-button.tsx` ran after `POST /v1/claims` returned. The try/catch swallowed any failure silently — a network blip between the two writes left a claim with NULL `workflow_state` and the wizard's `GET /workflow` 404'd.
+
+### Fixed in this commit chain
+
+- **I1 fixed:** `POST /v1/claims` now writes `workflow_state` in the same transaction as the INSERT using the JSONB double-cast pattern. The client-side `initializeWorkflow` follow-on call is removed. Every newly-created claim is a wizard claim from the moment it lands; `GET /workflow` returns 200 on the very next request. New test in `claims.test.ts` asserts this.
+- **C1 + C2 fixed:** New `AgreeStepButton` component (`_components/agree-step-button.tsx`) wraps `agreeStep` in a `useMutation`, awaits `invalidateQueries(['workflow', claimId])` before advancing the URL, and surfaces errors via destructive toast. Wired into steps 1-4. Step 5 deliberately stays as-is — the reducer pins step 5 as terminal (`canAdvance(5) === { ok: false, reason: 'Step 5 is terminal' }`) and the F2 test in `claim-workflow.test.ts` enforces this; completion semantics for step 5 will be defined when the real document-generation endpoints land.
+
+### Resolved (moved from "Known Rough Edges")
+
+The following items from the Critical/Important/Minor lists above are now resolved in this commit chain:
+
+- ~~Stale banner never triggers~~ → resolved by C1+C2 fixes (agreed_at now becomes a real timestamp once a step is agreed, so the `stepEntry !== null && !canAdvance.ok` stale-banner condition can actually evaluate true).
+- ~~Auto-init is best-effort with swallowed catch~~ → resolved by I1 fix (init is now transactional inside POST /v1/claims).
+
+### Still NOT addressed (separate follow-up commits)
+
+The following critical items from the review are deliberately out of scope for this commit chain — they need their own focused fixes:
+
+- **C3 — Step 3 empty eventId.** `wizard-step-3-attribute.tsx:100` hardcodes `eventId=""` on the `BindToActivityButton`. The flow needs to list bound events per activity and offer "add evidence" from the event list, not from the activity card.
+- **C4 — Step 5 is a stub.** The 3 documents (Application Form, R&D Activities Schedule, Technical Report) are simulated with a 2-second timeout. No actual generation endpoints exist yet.
+- **I4 — No per-section narrative agree.** Step 4 has a single Next button instead of per-section approve actions; `canAdvance(4)` looks at `narrativeSectionsApproved` but there's no UI surface for the consultant to mark a section approved.
