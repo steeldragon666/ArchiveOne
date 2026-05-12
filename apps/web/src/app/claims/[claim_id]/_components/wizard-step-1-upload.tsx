@@ -1,11 +1,11 @@
 'use client';
 
 import type { WorkflowStepEntry } from '@cpa/schemas';
-import { Button } from '@/components/ui/button';
 import { UploadEvidenceButton } from '@/app/subject-tenants/[id]/_components/upload-evidence-button';
 import { EventFeed } from '@/app/subject-tenants/[id]/_components/event-feed';
 import type { CanAdvance } from '../_lib/workflow-client';
 import { StaleStepBanner } from './stale-step-banner';
+import { AgreeStepButton } from './agree-step-button';
 
 /**
  * Wizard Step 1 — Upload Evidence.
@@ -16,11 +16,13 @@ import { StaleStepBanner } from './stale-step-banner';
  * one evidence file exists on the claimant chain).
  */
 export function WizardStep1UploadEvidence({
+  claimId,
   subjectTenantId,
   stepEntry,
   canAdvance,
   onNext,
 }: {
+  claimId: string;
   subjectTenantId: string;
   stepEntry: WorkflowStepEntry | null;
   canAdvance: CanAdvance;
@@ -44,12 +46,13 @@ export function WizardStep1UploadEvidence({
       <EventFeed subjectTenantId={subjectTenantId} />
 
       <div className="flex items-center justify-end gap-3 border-t border-[hsl(var(--brand-line))] pt-4">
-        {!canAdvance.ok && (
-          <p className="mr-auto text-sm text-muted-foreground">{canAdvance.reason}</p>
-        )}
-        <Button onClick={onNext} disabled={!canAdvance.ok}>
-          Next: Review Activities &rarr;
-        </Button>
+        <AgreeStepButton
+          claimId={claimId}
+          step={1}
+          canAdvance={canAdvance}
+          onSuccess={onNext}
+          label="Next: Review Activities →"
+        />
       </div>
     </section>
   );

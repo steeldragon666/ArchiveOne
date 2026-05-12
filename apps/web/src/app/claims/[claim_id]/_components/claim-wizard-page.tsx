@@ -108,6 +108,7 @@ export function ClaimWizardPage({
 
       {currentStep === 1 && (
         <WizardStep1UploadEvidence
+          claimId={claimId}
           subjectTenantId={subjectTenantId}
           stepEntry={data.workflow_state.steps['1']}
           canAdvance={

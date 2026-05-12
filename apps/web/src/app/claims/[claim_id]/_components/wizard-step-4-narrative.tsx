@@ -2,12 +2,12 @@
 
 import { useQuery } from '@tanstack/react-query';
 import type { Claim, WorkflowStepEntry } from '@cpa/schemas';
-import { Button } from '@/components/ui/button';
 import { NarrativeStream } from './narrative-stream';
 import { FiscalYearTimeline } from './fiscal-year-timeline';
 import { fetchAnalysisEvents } from '../_lib/analysis-api';
 import type { CanAdvance } from '../_lib/workflow-client';
 import { StaleStepBanner } from './stale-step-banner';
+import { AgreeStepButton } from './agree-step-button';
 
 /**
  * Wizard Step 4 -- Narrative & Timeline.
@@ -81,12 +81,13 @@ export function WizardStep4ReviewNarrative({
       </div>
 
       <div className="flex items-center justify-end gap-3 border-t border-[hsl(var(--brand-line))] pt-4">
-        {!canAdvance.ok && (
-          <p className="mr-auto text-sm text-muted-foreground">{canAdvance.reason}</p>
-        )}
-        <Button onClick={onNext} disabled={!canAdvance.ok}>
-          Next: Generate Documents &rarr;
-        </Button>
+        <AgreeStepButton
+          claimId={claimId}
+          step={4}
+          canAdvance={canAdvance}
+          onSuccess={onNext}
+          label="Next: Generate Documents →"
+        />
       </div>
     </section>
   );

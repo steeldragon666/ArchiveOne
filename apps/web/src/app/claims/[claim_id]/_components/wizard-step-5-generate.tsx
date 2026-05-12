@@ -80,6 +80,11 @@ export function WizardStep5GenerateDocuments({
         </p>
       </header>
 
+      {/* NOTE: Step 5 does NOT call agreeStep(5). The reducer treats step 5 as
+         terminal (canAdvance(5) === { ok: false, reason: 'Step 5 is terminal' }).
+         Completion semantics for Step 5 will be defined when the real document
+         generation endpoints land (see TODO at workflow.ts:101). Until then, this
+         step renders a stub. */}
       {/* Generate button */}
       <div>
         <Button

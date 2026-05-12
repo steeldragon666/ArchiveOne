@@ -1,10 +1,10 @@
 'use client';
 
 import type { WorkflowStepEntry } from '@cpa/schemas';
-import { Button } from '@/components/ui/button';
 import { PendingNarrativePanel } from '@/app/subject-tenants/[id]/_components/pending-narrative-panel';
 import type { CanAdvance } from '../_lib/workflow-client';
 import { StaleStepBanner } from './stale-step-banner';
+import { AgreeStepButton } from './agree-step-button';
 
 /**
  * Wizard Step 2 -- Review Activities.
@@ -19,7 +19,7 @@ import { StaleStepBanner } from './stale-step-banner';
  * least one activity exists).
  */
 export function WizardStep2ReviewActivities({
-  claimId: _claimId,
+  claimId,
   subjectTenantId,
   stepEntry,
   canAdvance,
@@ -45,12 +45,13 @@ export function WizardStep2ReviewActivities({
       <PendingNarrativePanel subjectTenantId={subjectTenantId} />
 
       <div className="flex items-center justify-end gap-3 border-t border-[hsl(var(--brand-line))] pt-4">
-        {!canAdvance.ok && (
-          <p className="mr-auto text-sm text-muted-foreground">{canAdvance.reason}</p>
-        )}
-        <Button onClick={onNext} disabled={!canAdvance.ok}>
-          Next: Attribute Evidence &rarr;
-        </Button>
+        <AgreeStepButton
+          claimId={claimId}
+          step={2}
+          canAdvance={canAdvance}
+          onSuccess={onNext}
+          label="Next: Attribute Evidence →"
+        />
       </div>
     </section>
   );
