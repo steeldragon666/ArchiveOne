@@ -9,6 +9,16 @@ import type { AutoAllocatorInput, ActivitySummary } from '@cpa/agents';
 import { AGENT_B_SYSTEM_USER_ID, EVIDENCE_KINDS } from './activity-register-synthesize.js';
 
 /**
+ * Set of valid evidence kinds for quick membership checks. Used to guard
+ * the `classification.kind` value passed to the allocator — the
+ * classification column may carry a kind outside the evidence set (e.g.
+ * a human-overridden kind), so we fall back to the event's own `kind`
+ * (which is already constrained by the SQL `kind = ANY(EVIDENCE_KINDS)`
+ * filter).
+ */
+const EVIDENCE_KINDS_SET: ReadonlySet<string> = new Set(EVIDENCE_KINDS);
+
+/**
  * claim-evidence-binding pg-boss job (Task 3.2).
  *
  * Triggered when a consultant agrees Step 2 of the claim wizard (all
@@ -187,7 +197,10 @@ export async function runClaimEvidenceBindingJob(
 
     const { project_id, subject_tenant_id } = claim;
 
-    // Step d: load agreed activities for this claim.
+    // Step d: load agreed activities for this claim. Scoped to claim_id
+    // (not project_id) because each claim's fiscal year may carry different
+    // activities; the sibling proposal job uses project_id because it
+    // operates pre-acceptance when no claim-level activities exist yet.
     const activityRows = await privilegedSql<ActivityRow[]>`
       SELECT id, title, kind, code, hypothesis
         FROM activity
@@ -255,11 +268,17 @@ export async function runClaimEvidenceBindingJob(
     for (const event of unboundEvents) {
       try {
         const classification = extractClassification(event);
+        // Guard: if the classification's kind isn't a valid evidence kind
+        // (e.g. human override wrote an unexpected value), fall back to the
+        // event's own kind — which the SQL already constrained to EVIDENCE_KINDS.
+        const safeKind = EVIDENCE_KINDS_SET.has(classification.kind)
+          ? classification.kind
+          : event.kind;
         const allocatorInput: AutoAllocatorInput = {
           event_id: event.id,
           raw_text: extractRawText(event.payload),
           classification: {
-            kind: classification.kind as AutoAllocatorInput['classification']['kind'],
+            kind: safeKind as AutoAllocatorInput['classification']['kind'],
             confidence: classification.confidence,
             rationale: classification.rationale,
             statutory_anchor: classification.statutory_anchor,
@@ -267,7 +286,7 @@ export async function runClaimEvidenceBindingJob(
           activities,
         };
 
-        // Step h: wrap in withAgentSpan.
+        // Step f+h: call allocator wrapped in withAgentSpan.
         const result = await withAgentSpan(
           AGENT_NAME,
           {
@@ -288,7 +307,7 @@ export async function runClaimEvidenceBindingJob(
           },
         );
 
-        // Step g: emit ARTEFACT_LINKED if above confidence threshold.
+        // Step g: emit ARTEFACT_LINKED if matched and above confidence threshold.
         if (!result.unallocated && result.confidence >= AUTO_ALLOCATOR_MIN_CONFIDENCE) {
           const linkPayload = {
             activity_id: result.activity_id,

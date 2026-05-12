@@ -17,7 +17,8 @@ type StepNum = 1 | 2 | 3 | 4 | 5;
 function lowestUnagreedStep(data: WorkflowResponse): StepNum {
   const steps = data.workflow_state.steps;
   for (let i = 1; i <= 5; i++) {
-    if (steps[String(i) as '1'] == null) return i as StepNum;
+    const key = String(i) as '1' | '2' | '3' | '4' | '5';
+    if (steps[key] == null) return i as StepNum;
   }
   return 1;
 }
@@ -58,6 +59,7 @@ export function ClaimWizardPage({
   const workflow = useQuery({
     queryKey: ['workflow', claimId] as const,
     queryFn: () => getWorkflow(claimId),
+    staleTime: 30_000,
   });
 
   if (workflow.isPending) {
@@ -100,7 +102,9 @@ export function ClaimWizardPage({
       {currentStep === 1 && (
         <WizardStep1UploadEvidence
           subjectTenantId={subjectTenantId}
-          canAdvance={data.derived.canAdvance['1']}
+          canAdvance={
+            data.derived.canAdvance['1'] ?? { ok: false, reason: 'Workflow data unavailable' }
+          }
           onNext={handleNext}
         />
       )}

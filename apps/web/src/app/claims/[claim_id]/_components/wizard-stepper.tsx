@@ -23,7 +23,8 @@ export function WizardStepper({
     <ol className="flex items-center justify-between gap-2" data-testid="wizard-stepper">
       {STEP_LABELS.map((label, i) => {
         const stepNum = (i + 1) as 1 | 2 | 3 | 4 | 5;
-        const agreed = state.steps[String(stepNum) as '1'] != null;
+        const stepKey = String(stepNum) as '1' | '2' | '3' | '4' | '5';
+        const agreed = state.steps[stepKey] != null;
         const isCurrent = stepNum === currentStep;
         return (
           <li key={stepNum} className="flex flex-1 items-center gap-2">
