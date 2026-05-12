@@ -92,7 +92,7 @@ export const AGENT_B_SYSTEM_USER_ID = '00000000-0000-4000-8000-000000a90002';
  * lifecycle, not R&D content). Kept as a plain string-literal array so
  * the SQL `kind = ANY(...)` bind is straightforward.
  */
-const EVIDENCE_KINDS = [
+export const EVIDENCE_KINDS = [
   'HYPOTHESIS',
   'DESIGN',
   'EXPERIMENT',
