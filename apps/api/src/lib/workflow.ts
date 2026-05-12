@@ -11,6 +11,13 @@
  * since you last agreed" banner.
  */
 
+/**
+ * Narrative drafter produces four sections (Hypothesis / Experiment /
+ * Evaluation / Outcome) per draft-narrative@1.1.0. Step 4 requires every
+ * section to be approved before advance.
+ */
+const REQUIRED_NARRATIVE_SECTIONS = 4;
+
 export type WorkflowSnapshot = {
   eventsClassified: number;
   proposedActivitiesPending: number;
@@ -43,13 +50,17 @@ export function canAdvance(step: 1 | 2 | 3 | 4 | 5, snap: WorkflowSnapshot): Can
             reason: `${snap.agreedActivitiesWithoutBinding} agreed activit${snap.agreedActivitiesWithoutBinding === 1 ? 'y has' : 'ies have'} no bound evidence yet.`,
           };
     case 4:
-      return snap.narrativeSectionsApproved >= 4
+      return snap.narrativeSectionsApproved >= REQUIRED_NARRATIVE_SECTIONS
         ? { ok: true }
         : {
             ok: false,
-            reason: `Only ${snap.narrativeSectionsApproved} of 4 narrative sections approved.`,
+            reason: `${snap.narrativeSectionsApproved} of ${REQUIRED_NARRATIVE_SECTIONS} narrative sections approved — approve the remaining ${REQUIRED_NARRATIVE_SECTIONS - snap.narrativeSectionsApproved} to advance.`,
           };
     case 5:
       return { ok: false, reason: 'Step 5 is terminal — no further advance.' };
+    default: {
+      const _exhaustive: never = step;
+      throw new Error(`canAdvance: unhandled step ${_exhaustive as number}`);
+    }
   }
 }
