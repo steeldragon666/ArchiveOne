@@ -13,6 +13,22 @@
 import type { WorkflowState } from '@cpa/schemas';
 
 /**
+ * Lookup table from the numeric step type used by the wizard to the
+ * literal string keys used in `WorkflowState.steps`. Keeps the literal-
+ * key precision intact — if the step union ever drifts (e.g. someone
+ * widens to `number`), this conversion fails at compile time rather
+ * than producing a `WorkflowState` with an unexpected key that fails
+ * the strict zod validator at the persistence boundary.
+ */
+const STEP_KEY: Record<1 | 2 | 3 | 4 | 5, '1' | '2' | '3' | '4' | '5'> = {
+  1: '1',
+  2: '2',
+  3: '3',
+  4: '4',
+  5: '5',
+};
+
+/**
  * Narrative drafter produces four sections (Hypothesis / Experiment /
  * Evaluation / Outcome) per draft-narrative@1.1.0. Step 4 requires every
  * section to be approved before advance.
@@ -73,6 +89,16 @@ export function initialWorkflowState(initializedAt: string): WorkflowState {
   };
 }
 
+/**
+ * Pure reducer. Returns a new state with the named step recorded as
+ * agreed at `now` by `userId`. Input `state` is not mutated.
+ *
+ * Re-agreeing an already-agreed step overwrites the prior entry.
+ * This is intentional: per Q5.b, the wizard surfaces a "data changed
+ * since last agreed" banner and the consultant clicks Agree again to
+ * refresh the timestamp. Historical agree-events are recorded in the
+ * append-only audit-log chain — not here.
+ */
 export function applyAgree(
   state: WorkflowState,
   step: 1 | 2 | 3 | 4 | 5,
@@ -83,7 +109,7 @@ export function applyAgree(
     ...state,
     steps: {
       ...state.steps,
-      [String(step)]: { agreed_at: now, agreed_by: userId },
+      [STEP_KEY[step]]: { agreed_at: now, agreed_by: userId },
     },
   };
 }
@@ -93,6 +119,6 @@ export function applyReopen(state: WorkflowState, step: 1 | 2 | 3 | 4 | 5): Work
   // a soft "data changed since" warning instead.
   return {
     ...state,
-    steps: { ...state.steps, [String(step)]: null },
+    steps: { ...state.steps, [STEP_KEY[step]]: null },
   };
 }

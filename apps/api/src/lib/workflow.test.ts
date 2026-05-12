@@ -68,6 +68,16 @@ test('applyAgree writes timestamp + actor on the named step', () => {
   assert.equal(state.steps['2'], null);
 });
 
+test('applyAgree on an already-agreed step overwrites the prior entry', () => {
+  const s0 = initialWorkflowState('2026-05-12T00:00:00Z');
+  const s1 = applyAgree(s0, 2, '00000000-0000-4000-8000-000000000001', '2026-05-12T01:00:00Z');
+  const s2 = applyAgree(s1, 2, '00000000-0000-4000-8000-000000000002', '2026-05-12T02:00:00Z');
+  assert.equal(s2.steps['2']?.agreed_at, '2026-05-12T02:00:00Z');
+  assert.equal(s2.steps['2']?.agreed_by, '00000000-0000-4000-8000-000000000002');
+  // s1 still has the original
+  assert.equal(s1.steps['2']?.agreed_at, '2026-05-12T01:00:00Z');
+});
+
 test('applyReopen clears the named step (no cascade)', () => {
   const s0 = initialWorkflowState('2026-05-12T00:00:00Z');
   const s1 = applyAgree(s0, 2, '00000000-0000-4000-8000-000000000001', '2026-05-12T01:00:00Z');
@@ -76,6 +86,14 @@ test('applyReopen clears the named step (no cascade)', () => {
   const s3 = applyReopen(s2, 2);
   assert.equal(s3.steps['2'], null);
   assert.equal(s3.steps['3']?.agreed_at, '2026-05-12T02:00:00Z');
+  // Pure: original `s2` untouched by the reopen.
+  assert.equal(s2.steps['2']?.agreed_at, '2026-05-12T01:00:00Z');
+});
+
+test('applyReopen on an already-null step is a no-op', () => {
+  const s0 = initialWorkflowState('2026-05-12T00:00:00Z');
+  const s1 = applyReopen(s0, 3); // step 3 was already null
+  assert.equal(s1.steps['3'], null);
 });
 
 test('initialWorkflowState fills all five steps with null', () => {
