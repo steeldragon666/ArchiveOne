@@ -37,6 +37,8 @@ const CLAIM_A2 = '00000000-0000-4000-8000-0000000c6641';
 const CLAIM_LEGACY = '00000000-0000-4000-8000-0000000c6642';
 const CLAIM_B = '00000000-0000-4000-8000-0000000c6643';
 const CLAIM_UNKNOWN = '00000000-0000-4000-8000-0000000c66ff';
+const ACTIVITY_A1 = '00000000-0000-4000-8000-0000000c6650';
+const ACTIVITY_A2 = '00000000-0000-4000-8000-0000000c6651';
 
 const cleanup = async (): Promise<void> => {
   await privilegedSql`DELETE FROM event WHERE tenant_id IN (${TENANT_A}, ${TENANT_B})`;
@@ -134,6 +136,55 @@ const setWorkflowState = async (claimId: string, state: unknown): Promise<void> 
        SET workflow_state = ${JSON.stringify(state)}::text::jsonb,
            updated_at     = NOW()
      WHERE id = ${claimId}
+  `;
+};
+
+// Helper: seed an activity row under a claim. Used by the narrative-sections
+// tests below — narrative_draft FKs onto activity, and the workflow snapshot's
+// per-section query joins through activity.claim_id.
+const seedActivity = async (args: {
+  id: string;
+  tenantId: string;
+  projectId: string;
+  claimId: string;
+  code: string;
+  title: string;
+}): Promise<void> => {
+  await privilegedSql`
+    INSERT INTO activity (id, tenant_id, project_id, claim_id, code, kind, title,
+                          fy_label, hypothesis_formed_at)
+    VALUES (${args.id}, ${args.tenantId}, ${args.projectId}, ${args.claimId},
+            ${args.code}, 'core', ${args.title}, 'FY25',
+            '2025-01-01T00:00:00Z'::timestamptz)
+  `;
+};
+
+// Helper: insert one narrative_draft row at the given status. Mirrors the
+// seed pattern used in narrative-accept.test.ts.
+const seedNarrativeDraft = async (args: {
+  tenantId: string;
+  activityId: string;
+  sectionKind: 'new_knowledge' | 'hypothesis' | 'uncertainty' | 'experiments_and_results';
+  status: 'streaming' | 'complete' | 'accepted' | 'archived';
+}): Promise<void> => {
+  await privilegedSql`
+    INSERT INTO narrative_draft (
+      tenant_id, id, activity_id, section_kind, current_version,
+      status, segments, content_hash, model, prompt_version, created_by_user_id
+    )
+    VALUES (
+      ${args.tenantId},
+      gen_random_uuid(),
+      ${args.activityId},
+      ${args.sectionKind},
+      1,
+      ${args.status},
+      ${JSON.stringify([{ type: 'prose', text: 'seed' }])}::jsonb,
+      encode(digest('seed', 'sha256'), 'hex'),
+      'test-model-v1',
+      'test-prompt@1.0.0',
+      ${CONSULTANT_USER}
+    )
   `;
 };
 
@@ -709,5 +760,229 @@ test("POST /workflow/step/5/agree: 409 cannot_advance with reason 'Step 5 is ter
   assert.equal(body.error, 'cannot_advance');
   // Match the canAdvance reason verbatim from workflow.ts:101-102.
   assert.equal(body.message, 'Step 5 is terminal — no further advance.');
+  await app.close();
+});
+
+// =============================================================================
+// GET /workflow: derived.narrativeSections (I4)
+//
+// New field added in I4: per-section narrative status surfaced to the wizard.
+// Aggregation across all activities under the claim is "best progress wins"
+// per workflow.ts:NarrativeSectionStatus — accepted > complete > streaming >
+// absent. Mirrors the DISTINCT-section_kind semantic that canAdvance(4) uses
+// via narrativeSectionsApproved.
+// =============================================================================
+
+type NarrativeSectionsResponse = {
+  workflow_state: unknown;
+  derived: {
+    canAdvance: Record<'1' | '2' | '3' | '4' | '5', { ok: boolean; reason?: string }>;
+    narrativeSections: {
+      new_knowledge: 'streaming' | 'complete' | 'accepted' | 'absent';
+      hypothesis: 'streaming' | 'complete' | 'accepted' | 'absent';
+      uncertainty: 'streaming' | 'complete' | 'accepted' | 'absent';
+      experiments_and_results: 'streaming' | 'complete' | 'accepted' | 'absent';
+    };
+  };
+};
+
+test("GET /workflow: derived.narrativeSections is all 'absent' when no narrative_draft rows exist", async () => {
+  await setWorkflowState(CLAIM_A, {
+    initialized_at: '2025-01-01T00:00:00.000Z',
+    steps: { '1': null, '2': null, '3': null, '4': null, '5': null },
+  });
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'GET',
+    url: `/v1/claims/${CLAIM_A}/workflow`,
+    cookies: { cpa_session: await consultantJwt() },
+  });
+  assert.equal(res.statusCode, 200);
+  const body = res.json<NarrativeSectionsResponse>();
+  assert.deepEqual(body.derived.narrativeSections, {
+    new_knowledge: 'absent',
+    hypothesis: 'absent',
+    uncertainty: 'absent',
+    experiments_and_results: 'absent',
+  });
+  await app.close();
+});
+
+test("GET /workflow: derived.narrativeSections reflects 'complete' status after narrative drafting", async () => {
+  await setWorkflowState(CLAIM_A, {
+    initialized_at: '2025-01-01T00:00:00.000Z',
+    steps: { '1': null, '2': null, '3': null, '4': null, '5': null },
+  });
+  await seedActivity({
+    id: ACTIVITY_A1,
+    tenantId: TENANT_A,
+    projectId: PROJECT_A,
+    claimId: CLAIM_A,
+    code: 'CA-01',
+    title: 'C66 Activity 1',
+  });
+  // Two sections completed, two still absent.
+  await seedNarrativeDraft({
+    tenantId: TENANT_A,
+    activityId: ACTIVITY_A1,
+    sectionKind: 'hypothesis',
+    status: 'complete',
+  });
+  await seedNarrativeDraft({
+    tenantId: TENANT_A,
+    activityId: ACTIVITY_A1,
+    sectionKind: 'new_knowledge',
+    status: 'streaming',
+  });
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'GET',
+    url: `/v1/claims/${CLAIM_A}/workflow`,
+    cookies: { cpa_session: await consultantJwt() },
+  });
+  assert.equal(res.statusCode, 200);
+  const body = res.json<NarrativeSectionsResponse>();
+  assert.equal(body.derived.narrativeSections.hypothesis, 'complete');
+  assert.equal(body.derived.narrativeSections.new_knowledge, 'streaming');
+  assert.equal(body.derived.narrativeSections.uncertainty, 'absent');
+  assert.equal(body.derived.narrativeSections.experiments_and_results, 'absent');
+  await app.close();
+});
+
+test("GET /workflow: derived.narrativeSections reflects 'accepted' after narrative-accept route runs", async () => {
+  await setWorkflowState(CLAIM_A, {
+    initialized_at: '2025-01-01T00:00:00.000Z',
+    steps: { '1': null, '2': null, '3': null, '4': null, '5': null },
+  });
+  await seedActivity({
+    id: ACTIVITY_A1,
+    tenantId: TENANT_A,
+    projectId: PROJECT_A,
+    claimId: CLAIM_A,
+    code: 'CA-01',
+    title: 'C66 Activity 1',
+  });
+  // Seed a draft at 'complete' then call the accept route to flip it.
+  await seedNarrativeDraft({
+    tenantId: TENANT_A,
+    activityId: ACTIVITY_A1,
+    sectionKind: 'hypothesis',
+    status: 'complete',
+  });
+
+  const app = buildApp();
+  const acceptRes = await app.inject({
+    method: 'POST',
+    url: `/v1/claims/${CLAIM_A}/narrative/sections/hypothesis/accept`,
+    cookies: { cpa_session: await consultantJwt() },
+  });
+  assert.equal(acceptRes.statusCode, 200);
+
+  const res = await app.inject({
+    method: 'GET',
+    url: `/v1/claims/${CLAIM_A}/workflow`,
+    cookies: { cpa_session: await consultantJwt() },
+  });
+  assert.equal(res.statusCode, 200);
+  const body = res.json<NarrativeSectionsResponse>();
+  assert.equal(body.derived.narrativeSections.hypothesis, 'accepted');
+  await app.close();
+});
+
+test("GET /workflow: derived.narrativeSections aggregates 'accepted' across multiple activities (any activity accepted → kind accepted)", async () => {
+  // Two activities under the same claim. For 'hypothesis': activity A1 is
+  // 'complete' and activity A2 is 'accepted'. The aggregated status must
+  // be 'accepted' (any-accepted-wins) even though one activity hasn't
+  // signed off — this mirrors the DISTINCT-section_kind semantic the
+  // gate counter uses.
+  await setWorkflowState(CLAIM_A, {
+    initialized_at: '2025-01-01T00:00:00.000Z',
+    steps: { '1': null, '2': null, '3': null, '4': null, '5': null },
+  });
+  await seedActivity({
+    id: ACTIVITY_A1,
+    tenantId: TENANT_A,
+    projectId: PROJECT_A,
+    claimId: CLAIM_A,
+    code: 'CA-01',
+    title: 'C66 Activity 1',
+  });
+  await seedActivity({
+    id: ACTIVITY_A2,
+    tenantId: TENANT_A,
+    projectId: PROJECT_A,
+    claimId: CLAIM_A,
+    code: 'CA-02',
+    title: 'C66 Activity 2',
+  });
+  await seedNarrativeDraft({
+    tenantId: TENANT_A,
+    activityId: ACTIVITY_A1,
+    sectionKind: 'hypothesis',
+    status: 'complete',
+  });
+  await seedNarrativeDraft({
+    tenantId: TENANT_A,
+    activityId: ACTIVITY_A2,
+    sectionKind: 'hypothesis',
+    status: 'accepted',
+  });
+
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'GET',
+    url: `/v1/claims/${CLAIM_A}/workflow`,
+    cookies: { cpa_session: await consultantJwt() },
+  });
+  assert.equal(res.statusCode, 200);
+  const body = res.json<NarrativeSectionsResponse>();
+  assert.equal(body.derived.narrativeSections.hypothesis, 'accepted');
+  await app.close();
+});
+
+test('GET /workflow: canAdvance(4) and derived.narrativeSections agree (all 4 accepted → canAdvance(4).ok is true)', async () => {
+  await setWorkflowState(CLAIM_A, {
+    initialized_at: '2025-01-01T00:00:00.000Z',
+    steps: { '1': null, '2': null, '3': null, '4': null, '5': null },
+  });
+  await seedActivity({
+    id: ACTIVITY_A1,
+    tenantId: TENANT_A,
+    projectId: PROJECT_A,
+    claimId: CLAIM_A,
+    code: 'CA-01',
+    title: 'C66 Activity 1',
+  });
+  // Seed all four section_kinds as 'accepted' under a single activity.
+  for (const kind of [
+    'new_knowledge',
+    'hypothesis',
+    'uncertainty',
+    'experiments_and_results',
+  ] as const) {
+    await seedNarrativeDraft({
+      tenantId: TENANT_A,
+      activityId: ACTIVITY_A1,
+      sectionKind: kind,
+      status: 'accepted',
+    });
+  }
+
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'GET',
+    url: `/v1/claims/${CLAIM_A}/workflow`,
+    cookies: { cpa_session: await consultantJwt() },
+  });
+  assert.equal(res.statusCode, 200);
+  const body = res.json<NarrativeSectionsResponse>();
+  assert.deepEqual(body.derived.narrativeSections, {
+    new_knowledge: 'accepted',
+    hypothesis: 'accepted',
+    uncertainty: 'accepted',
+    experiments_and_results: 'accepted',
+  });
+  // canAdvance(4) gate flips ok=true once the 4-section threshold is met.
+  assert.equal(body.derived.canAdvance['4'].ok, true);
   await app.close();
 });

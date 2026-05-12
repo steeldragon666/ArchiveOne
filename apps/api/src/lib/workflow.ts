@@ -60,6 +60,28 @@ const STEP_KEY: Record<1 | 2 | 3 | 4 | 5, '1' | '2' | '3' | '4' | '5'> = {
  */
 const REQUIRED_NARRATIVE_SECTIONS = 4;
 
+/**
+ * Per-section narrative status surfaced to the wizard UI. Aggregated across
+ * ALL activities under a claim using "best progress wins":
+ *
+ *   'accepted' if any draft for the section_kind is accepted, else
+ *   'complete' if any is complete, else
+ *   'streaming' if any is streaming, else
+ *   'absent'   (no narrative_draft row for this section_kind under the claim).
+ *
+ * This mirrors the DISTINCT-section_kind semantic that `canAdvance(4)` uses
+ * via `narrativeSectionsApproved`: any activity's accepted draft "claims" the
+ * section_kind for the claim.
+ */
+export type NarrativeSectionStatus = 'streaming' | 'complete' | 'accepted' | 'absent';
+
+export type NarrativeSectionMap = {
+  new_knowledge: NarrativeSectionStatus;
+  hypothesis: NarrativeSectionStatus;
+  uncertainty: NarrativeSectionStatus;
+  experiments_and_results: NarrativeSectionStatus;
+};
+
 export type WorkflowSnapshot = {
   eventsClassified: number;
   proposedActivitiesPending: number;
@@ -67,6 +89,7 @@ export type WorkflowSnapshot = {
   agreedActivitiesTotal: number;
   agreedActivitiesWithoutBinding: number;
   narrativeSectionsApproved: number;
+  narrativeSections: NarrativeSectionMap;
 };
 
 export type CanAdvanceResult = { ok: true } | { ok: false; reason: string };
@@ -362,6 +385,54 @@ export async function loadWorkflowSnapshot(
   `;
   const narrativeSectionsApproved = Number(narrRows[0]?.accepted ?? 0);
 
+  // ---------------------------------------------------------------------
+  // 7. Per-section narrative status map (new in I4 wizard surface).
+  //
+  // Same join path as #6 — narrative_draft has no claim_id of its own, so
+  // we go through activity. Aggregate per section_kind with BOOL_OR so a
+  // single GROUP BY pass yields the "any accepted? any complete? any
+  // streaming?" booleans across every activity under the claim. The CASE
+  // then collapses those into a single ranked status mirroring the
+  // 'accepted > complete > streaming' precedence the wizard expects.
+  //
+  // Section kinds with no narrative_draft rows at all don't appear in
+  // the result set; they're filled in below as 'absent'.
+  // ---------------------------------------------------------------------
+  const sectionRows = await sql<
+    { section_kind: string; status: 'accepted' | 'complete' | 'streaming' }[]
+  >`
+    WITH agg AS (
+      SELECT nd.section_kind,
+             BOOL_OR(nd.status = 'accepted')  AS any_accepted,
+             BOOL_OR(nd.status = 'complete')  AS any_complete,
+             BOOL_OR(nd.status = 'streaming') AS any_streaming
+        FROM narrative_draft nd
+        JOIN activity a ON a.id = nd.activity_id
+       WHERE nd.tenant_id = ${tenantId}
+         AND a.claim_id   = ${claimId}
+       GROUP BY nd.section_kind
+    )
+    SELECT section_kind,
+           CASE
+             WHEN any_accepted  THEN 'accepted'
+             WHEN any_complete  THEN 'complete'
+             WHEN any_streaming THEN 'streaming'
+           END AS status
+      FROM agg
+     WHERE any_accepted OR any_complete OR any_streaming
+  `;
+  const narrativeSections: NarrativeSectionMap = {
+    new_knowledge: 'absent',
+    hypothesis: 'absent',
+    uncertainty: 'absent',
+    experiments_and_results: 'absent',
+  };
+  for (const row of sectionRows) {
+    if (row.section_kind in narrativeSections) {
+      narrativeSections[row.section_kind as keyof NarrativeSectionMap] = row.status;
+    }
+  }
+
   return {
     eventsClassified,
     proposedActivitiesTotal,
@@ -369,5 +440,6 @@ export async function loadWorkflowSnapshot(
     agreedActivitiesTotal,
     agreedActivitiesWithoutBinding,
     narrativeSectionsApproved,
+    narrativeSections,
   };
 }

@@ -33,6 +33,7 @@ import {
   canAdvance,
   initialWorkflowState,
   loadWorkflowSnapshot,
+  type NarrativeSectionMap,
   type SqlClient,
 } from '../lib/workflow.js';
 import { getBoss } from '../lib/pg-boss-client.js';
@@ -371,10 +372,14 @@ export function registerClaimWorkflow(app: FastifyInstance): void {
       }
 
       type CanAdvanceMap = Record<'1' | '2' | '3' | '4' | '5', ReturnType<typeof canAdvance>>;
+      type DerivedShape = {
+        canAdvance: CanAdvanceMap;
+        narrativeSections: NarrativeSectionMap;
+      };
       type GetResult =
         | { kind: 'not_found' }
         | { kind: 'not_wizard' }
-        | { kind: 'ok'; state: WorkflowState; derived: { canAdvance: CanAdvanceMap } };
+        | { kind: 'ok'; state: WorkflowState; derived: DerivedShape };
 
       const result: GetResult = await sql.begin(async (tx) => {
         await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
@@ -398,7 +403,10 @@ export function registerClaimWorkflow(app: FastifyInstance): void {
         return {
           kind: 'ok',
           state: parsed.data,
-          derived: { canAdvance: advance },
+          derived: {
+            canAdvance: advance,
+            narrativeSections: snap.narrativeSections,
+          },
         };
       });
 
