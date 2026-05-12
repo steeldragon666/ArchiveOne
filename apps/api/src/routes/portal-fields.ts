@@ -31,6 +31,7 @@ import { callWithToolUse, getPrompt, isAgentEnabled, isTenantAllowed } from '@cp
 // Side-effect import: `@cpa/agents/narrative-drafter` registers v1.2.0
 // in the prompt registry on first load (see narrative-drafter/index.ts).
 import { type EmitPortalFieldsToolInput } from '@cpa/agents/narrative-drafter';
+import { CorePortalFieldsSchema, SupportingPortalFieldsSchema } from '@cpa/schemas';
 
 const Uuid = z.string().uuid();
 const PROMPT_KEY = 'draft-narrative@1.2.0';
@@ -332,6 +333,142 @@ export function registerPortalFields(app: FastifyInstance): void {
           events_count: events.length,
         },
       });
+    },
+  );
+
+  // -----------------------------------------------------------------
+  // PATCH /v1/activities/:id/portal-fields — consultant edits the
+  // generated payload. The body is a partial `fields` object; the
+  // server reads the existing portal_fields, shallow-merges the patch
+  // into `fields`, and re-validates the result against the
+  // activity-kind-appropriate Zod schema.
+  //
+  // Returns the validated merged payload. 400 on validation failure
+  // (e.g. text field exceeds the AusIndustry 4000-char cap), 404 if
+  // the activity has no portal_fields yet (POST first).
+  // -----------------------------------------------------------------
+  const PatchBody = z
+    .object({
+      fields: z.record(z.unknown()),
+    })
+    .strict();
+
+  app.patch<{ Params: { id: string } }>(
+    '/v1/activities/:id/portal-fields',
+    { preHandler: requireSession },
+    async (req, reply) => {
+      const role = req.user!.role;
+      if (role !== 'admin' && role !== 'consultant') {
+        return reply.status(403).send({
+          error: 'forbidden',
+          message: 'Admin or consultant role required',
+          requestId: req.id,
+        });
+      }
+
+      const tenantId = req.user!.tenantId!;
+      const activityId = req.params.id;
+      if (!Uuid.safeParse(activityId).success) {
+        return reply.status(400).send({
+          error: 'invalid_activity_id',
+          message: 'activity id must be a uuid',
+          requestId: req.id,
+        });
+      }
+
+      const bodyParse = PatchBody.safeParse(req.body);
+      if (!bodyParse.success) {
+        return reply.status(400).send({
+          error: 'invalid_body',
+          message: 'Body must be { fields: object }',
+          issues: bodyParse.error.issues,
+          requestId: req.id,
+        });
+      }
+      const patchFields = bodyParse.data.fields;
+
+      // Load the existing row inside RLS so cross-firm activity = 404.
+      type ExistingRow = { kind: 'core' | 'supporting'; portal_fields: Record<string, unknown> };
+      const rows = await sql.begin(async (tx) => {
+        await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+        return await tx<ExistingRow[]>`
+          SELECT kind, portal_fields
+            FROM activity
+           WHERE id = ${activityId}
+             AND tenant_id = ${tenantId}
+           LIMIT 1
+        `;
+      });
+      const row = rows[0];
+      if (!row) {
+        return reply.status(404).send({
+          error: 'activity_not_found',
+          message: 'No activity with that id in this firm',
+          requestId: req.id,
+        });
+      }
+
+      // Refuse to edit before generation — otherwise the consultant
+      // would have to author all 13/9 fields manually, which the
+      // POST agent path is for. (`{}` is the migration-0044 default.)
+      const existing = row.portal_fields;
+      const hasPriorGeneration =
+        typeof existing['activity_kind'] === 'string' &&
+        existing['fields'] !== undefined &&
+        existing['fields'] !== null;
+      if (!hasPriorGeneration) {
+        return reply.status(404).send({
+          error: 'portal_fields_not_generated',
+          message: 'Generate portal fields first via POST before editing',
+          requestId: req.id,
+        });
+      }
+
+      // Shallow-merge the patch into the existing `fields` object. Nested
+      // fields (e.g. `dominant_purpose`) must be sent in full by the client
+      // — partial nested merges aren't supported here, by design (keeps
+      // the server-side merge predictable and the audit trail clean).
+      const mergedFields = {
+        ...((existing['fields'] ?? {}) as Record<string, unknown>),
+        ...patchFields,
+      };
+
+      // Re-validate against the kind-appropriate Zod schema. This is the
+      // authoritative check: char limits, enum values, UUID format, the
+      // is_dominant_purpose === true literal, etc. all enforce here.
+      const schema = row.kind === 'core' ? CorePortalFieldsSchema : SupportingPortalFieldsSchema;
+      const validated = schema.safeParse(mergedFields);
+      if (!validated.success) {
+        return reply.status(400).send({
+          error: 'invalid_portal_fields',
+          message: 'Merged portal_fields fails schema validation',
+          issues: validated.error.issues,
+          requestId: req.id,
+        });
+      }
+
+      const persisted = { activity_kind: row.kind, fields: validated.data };
+      await sql.begin(async (tx) => {
+        await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+        await tx`
+          UPDATE activity
+             SET portal_fields = ${JSON.stringify(persisted)}::text::jsonb,
+                 updated_at    = NOW()
+           WHERE id = ${activityId}
+             AND tenant_id = ${tenantId}
+        `;
+      });
+
+      app.log.info(
+        {
+          activityId,
+          activityKind: row.kind,
+          patchedKeys: Object.keys(patchFields),
+        },
+        'portal-fields edited',
+      );
+
+      return reply.status(200).send({ portal_fields: persisted });
     },
   );
 }

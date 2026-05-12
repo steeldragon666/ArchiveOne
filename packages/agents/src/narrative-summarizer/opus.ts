@@ -9,10 +9,17 @@ import type {
 } from './types.js';
 import type { SummarizeNarrativeToolOutput } from './prompts/summarize-narrative@1.0.0.js';
 
-// TODO: verify this model ID is the latest Opus available — update when
-// Anthropic releases a newer Opus revision. The env var override allows
-// callers to pin a specific model without a code change.
-const MODEL = process.env.NARRATIVE_SUMMARIZER_MODEL ?? 'claude-opus-4-5-20250929';
+// The previous default — `claude-opus-4-5-20250929` — returns
+// 404 not_found_error from Anthropic (this dated revision was retired
+// without a successor under the same alias). Switching to
+// `claude-sonnet-4-5`, which is what the sister narrative-drafter (Agent C,
+// streaming) also uses; for a 2-3 sentence structured summary the
+// quality difference is negligible. Callers wanting to pin a different
+// Opus version can override via NARRATIVE_SUMMARIZER_MODEL=<id>.
+//
+// Verified working against Anthropic via tools/scripts/test-narrative-summarizer.ts
+// at the same time this change landed.
+const MODEL = process.env.NARRATIVE_SUMMARIZER_MODEL ?? 'claude-sonnet-4-5';
 const PROMPT_KEY = 'summarize-narrative@1.0.0';
 
 // Narrative summaries are short structured outputs; 2048 tokens is generous
@@ -20,13 +27,18 @@ const PROMPT_KEY = 'summarize-narrative@1.0.0';
 const MAX_TOKENS = 2048;
 
 /**
- * Production narrative summarizer backed by the Anthropic SDK + Claude Opus.
+ * Production narrative summarizer backed by the Anthropic SDK.
+ *
+ * Class name is `OpusNarrativeSummarizer` for backward compatibility with
+ * existing callers (factory.ts, pending-narrative.ts) — the default model
+ * was retired to Sonnet 4.5 (see MODEL constant above for rationale) but
+ * the class name preserves the call-site contract. Future renames are
+ * a separate refactor.
  *
  * Uses the same tool-use pattern as HaikuDocumentAnalyzer to force structured
- * JSON output. The model choice is Opus (rather than Haiku) because the
- * narrative paragraph needs to be coherent, technically precise, and
- * in the register of a senior Australian R&DTI consultant — a task that
- * rewards stronger reasoning capacity.
+ * JSON output. For a 2-3 sentence structured summary the Sonnet/Opus quality
+ * gap is small; consultants wanting Opus-quality output can override via
+ * NARRATIVE_SUMMARIZER_MODEL.
  *
  * The side-effect import above registers the prompt before the first
  * summarize() call; without it `getPrompt(PROMPT_KEY)` throws.

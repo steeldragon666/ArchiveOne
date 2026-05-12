@@ -178,3 +178,28 @@ export async function generatePortalFields(
     method: 'POST',
   });
 }
+
+/**
+ * PATCH /v1/activities/:id/portal-fields. Edits the previously-generated
+ * fields. Body is a partial `fields` object; the server shallow-merges
+ * with the existing payload and re-validates against the kind-appropriate
+ * Zod schema (`CorePortalFieldsSchema` or `SupportingPortalFieldsSchema`).
+ *
+ * Errors:
+ *   - 400 with `issues` if the merged payload fails validation (over
+ *     char limit, invalid enum, etc.) — surface the issue list to the user.
+ *   - 404 if portal_fields has not been generated yet (POST first).
+ */
+export type EditPortalFieldsResponse = {
+  portal_fields: GeneratedPortalFields;
+};
+
+export async function editPortalFields(
+  activityId: string,
+  fields: Record<string, unknown>,
+): Promise<EditPortalFieldsResponse> {
+  return apiFetch<EditPortalFieldsResponse>(`/v1/activities/${activityId}/portal-fields`, {
+    method: 'PATCH',
+    body: JSON.stringify({ fields }),
+  });
+}
