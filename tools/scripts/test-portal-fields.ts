@@ -40,11 +40,10 @@ import '../../apps/api/src/force-env.js';
 
 import Anthropic from '@anthropic-ai/sdk';
 import { getPrompt } from '../../packages/agents/src/runtime/prompt-registry.js';
+import { callWithToolUse } from '../../packages/agents/src/runtime/tool-use.js';
 // Side-effect import: registers `draft-narrative@1.2.0` in the prompt registry.
-import {
-  emitPortalFieldsToolSchema,
-  EMIT_PORTAL_FIELDS_TOOL_NAME,
-} from '../../packages/agents/src/narrative-drafter/prompts/draft-narrative@1.2.0.js';
+import type { EmitPortalFieldsToolInput } from '../../packages/agents/src/narrative-drafter/prompts/draft-narrative@1.2.0.js';
+import '../../packages/agents/src/narrative-drafter/prompts/draft-narrative@1.2.0.js';
 
 // ---------------------------------------------------------------------------
 // CLI flag parsing
@@ -230,84 +229,36 @@ async function main(): Promise<void> {
   // We build the client locally (rather than using the shared
   // getAnthropicClient singleton) so we can bump the timeout — Sonnet
   // generating 13 portal fields with 4000-char limits can take >30s.
+  // The local client is passed into callWithToolUse, which handles
+  // the JSON-Schema conversion (now ZodDiscriminatedUnion-aware) and
+  // the post-call Zod parse.
   const apiKey = process.env['ANTHROPIC_API_KEY'];
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY required after force-env shim');
   const client = new Anthropic({ apiKey, maxRetries: 2, timeout: 120_000 });
-  console.log('  → calling Anthropic (timeout 120s)…');
+  console.log('  → calling Anthropic via callWithToolUse (timeout 120s)…');
   const t0 = Date.now();
 
-  const res = await client.messages.create({
-    model,
-    max_tokens: maxTokens,
-    system: prompt.system,
-    messages: [{ role: 'user', content: userMessage }],
-    tools: [
-      {
-        name: prompt.tool.name,
-        description: prompt.tool.description,
-        // Minimal JSON Schema: pins the wrapper to exactly two keys
-        // (`activity_kind`, `fields`) but stays permissive on inner
-        // field shapes — those are enforced by the Zod parse below.
-        //
-        // `additionalProperties: false` at the top level is what stops
-        // the model from double-wrapping (a real failure mode observed
-        // in the supporting-activity run before this schema was added).
-        // We can't pass the full discriminated union here because the
-        // shared zodToJsonSchema converter in
-        // packages/agents/src/runtime/tool-use.ts doesn't support
-        // ZodDiscriminatedUnion, and we don't want to touch shared
-        // code for a one-off smoke test.
-        input_schema: {
-          type: 'object',
-          properties: {
-            activity_kind: { type: 'string', enum: ['core', 'supporting'] },
-            fields: { type: 'object' },
-          },
-          required: ['activity_kind', 'fields'],
-          additionalProperties: false,
-        },
-      },
-    ],
-    tool_choice: { type: 'tool', name: prompt.tool.name },
-  });
+  const { output, tokens_in, tokens_out } = await callWithToolUse<EmitPortalFieldsToolInput>(
+    client,
+    {
+      model,
+      system: prompt.system,
+      user: userMessage,
+      tool: prompt.tool as typeof prompt.tool & { input_schema: typeof prompt.tool.input_schema },
+      max_tokens: maxTokens,
+    },
+  );
 
   const elapsedMs = Date.now() - t0;
   console.log(`  ← response in ${elapsedMs}ms`);
-  console.log(`    tokens_in  = ${res.usage.input_tokens}`);
-  console.log(`    tokens_out = ${res.usage.output_tokens}`);
-  console.log(`    stop_reason= ${res.stop_reason}`);
+  console.log(`    tokens_in  = ${tokens_in}`);
+  console.log(`    tokens_out = ${tokens_out}`);
   console.log('');
 
-  const toolUse = res.content.find(
-    (b): b is Anthropic.ToolUseBlock =>
-      b.type === 'tool_use' && b.name === EMIT_PORTAL_FIELDS_TOOL_NAME,
-  );
-  if (!toolUse) {
-    console.error(`FAIL: model did not emit ${EMIT_PORTAL_FIELDS_TOOL_NAME} tool call.`);
-    console.error(
-      'content blocks:',
-      res.content.map((b) => b.type),
-    );
-    process.exit(1);
-  }
-
-  console.log('  validating against emitPortalFieldsToolSchema…');
-  const parseResult = emitPortalFieldsToolSchema.safeParse(toolUse.input);
-  if (!parseResult.success) {
-    console.error('FAIL: tool input rejected by Zod schema.');
-    for (const issue of parseResult.error.issues) {
-      console.error(`  • ${issue.path.join('.')}: ${issue.message}`);
-    }
-    console.error('');
-    console.error('raw tool input (truncated to 2000 chars):');
-    console.error(JSON.stringify(toolUse.input, null, 2).slice(0, 2000));
-    process.exit(1);
-  }
-
-  console.log('  ✓ schema validation passed');
+  console.log('  ✓ callWithToolUse parsed + Zod-validated the response');
   console.log('');
   console.log('=== validated portal_fields ===');
-  console.log(JSON.stringify(parseResult.data, null, 2));
+  console.log(JSON.stringify(output, null, 2));
 }
 
 main().catch((err: unknown) => {

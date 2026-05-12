@@ -33,6 +33,11 @@ const baseActivity: Activity = {
   actual_outcome: null,
   created_at: '2026-04-01T00:00:00.000Z',
   updated_at: '2026-04-15T00:00:00.000Z',
+  // portal_fields is required on the Activity type (default `{}`) since
+  // migration 0044 + the schema's `z.record(z.unknown()).default({})`.
+  // computeChangedFields doesn't touch portal_fields, so the empty default
+  // is fine for these tests.
+  portal_fields: {},
 };
 
 test('computeChangedFields: returns {} when no fields changed', () => {

@@ -69,6 +69,22 @@ export const Activity = z.object({
   needs_review: z.boolean().optional(),
   proposal_confidence: z.number().min(0).max(1).nullable().optional(),
   proposed_from_event_id: Uuid.nullable().optional(),
+  /**
+   * AusIndustry portal-ready field content (migration 0044).
+   *
+   * Empty object `{}` when the activity has not yet been processed through
+   * the `draft-narrative@1.2.0` portal-fields agent. When populated, the
+   * shape is one of:
+   *   - { activity_kind: 'core',       fields: CorePortalFields }
+   *   - { activity_kind: 'supporting', fields: SupportingPortalFields }
+   * (see `./portal-fields.ts` for the per-kind field shapes — 13 / 9).
+   *
+   * Kept as a permissive `z.record` here so callers that fetch the row
+   * before the portal-fields wiring has run round-trip cleanly. Callers
+   * displaying the content should parse against `CorePortalFieldsSchema`
+   * or `SupportingPortalFieldsSchema` (selected by `activity_kind`).
+   */
+  portal_fields: z.record(z.unknown()).default({}),
 });
 export type Activity = z.infer<typeof Activity>;
 

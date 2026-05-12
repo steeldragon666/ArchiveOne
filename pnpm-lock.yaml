@@ -35,6 +35,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@anthropic-ai/sdk':
+        specifier: ^0.32.1
+        version: 0.32.1
       '@cpa/agents':
         specifier: workspace:*
         version: link:../../packages/agents

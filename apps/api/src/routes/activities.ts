@@ -65,6 +65,10 @@ interface RawActivityRow {
   needs_review?: boolean;
   proposal_confidence?: string | number | null;
   proposed_from_event_id?: string | null;
+  // AusIndustry portal-fields jsonb (migration 0044). Always present in
+  // the DB (`NOT NULL DEFAULT '{}'::jsonb`) but optional on the row
+  // because only the detail GET selects it — POST/PATCH/list don't yet.
+  portal_fields?: Record<string, unknown>;
 }
 
 const isoOf = (v: Date | string): string => (typeof v === 'string' ? v : v.toISOString());
@@ -103,6 +107,12 @@ const toApi = (r: RawActivityRow): Activity => ({
   ...(r.proposed_from_event_id !== undefined
     ? { proposed_from_event_id: r.proposed_from_event_id }
     : {}),
+  // portal_fields always materialises as `{}` for activities not yet
+  // processed by the portal-fields agent — the column NOT-NULL default
+  // guarantees this. We only include it when the SELECT actually picked
+  // it up so list responses (which omit it for payload-size reasons) stay
+  // small. When present, hand it through verbatim.
+  ...(r.portal_fields !== undefined ? { portal_fields: r.portal_fields } : { portal_fields: {} }),
 });
 
 /**
@@ -443,7 +453,8 @@ export function registerActivities(app: FastifyInstance): void {
                  description, hypothesis, technical_uncertainty,
                  experimentation_log, expected_outcome, actual_outcome,
                  created_at, updated_at,
-                 needs_review, proposal_confidence, proposed_from_event_id
+                 needs_review, proposal_confidence, proposed_from_event_id,
+                 portal_fields
             FROM activity
            WHERE id = ${id}
              AND tenant_id = ${tenantId}

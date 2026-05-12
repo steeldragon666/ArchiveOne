@@ -25,7 +25,86 @@ function zodToJsonSchema(schema: z.ZodTypeAny): Record<string, unknown> {
         properties[k] = zodToJsonSchema(v);
         if (!(v.isOptional() || v.isNullable())) required.push(k);
       }
-      return { type: 'object', properties, required };
+      const obj: Record<string, unknown> = { type: 'object', properties, required };
+      // Honor `.strict()` — Zod sets `unknownKeys: 'strict'` on the def,
+      // which means "reject unknown keys" at parse time. The equivalent
+      // JSON-Schema signal to the model is `additionalProperties: false`.
+      // This matters for tool-use forcing functions (e.g. preventing the
+      // model from double-wrapping a discriminated-union payload). Other
+      // unknownKeys values (`strip` / `passthrough`) leave additionalProperties
+      // unspecified so the model isn't constrained when the Zod side won't be.
+      const unknownKeys = (def as { unknownKeys?: string }).unknownKeys;
+      if (unknownKeys === 'strict') obj.additionalProperties = false;
+      return obj;
+    }
+    case 'ZodDiscriminatedUnion':
+    case 'ZodUnion': {
+      // Anthropic's tool API does NOT accept `oneOf`/`anyOf`/`allOf` at
+      // any level of the `input_schema` (returns 400). So we flatten
+      // unions-of-objects into a single object schema with merged
+      // properties — losing some structural enforcement but the Zod
+      // post-parse re-validates the discriminated invariants.
+      //
+      // For mixed unions (rare; non-object branches) we fall back to
+      // emitting `oneOf` — that won't work as a tool root but might be
+      // accepted in non-Anthropic JSON-Schema contexts. The shared
+      // `callWithToolUse` callers should design tool roots as object
+      // (or discriminated-union-of-objects).
+      const options = (def as unknown as { options: z.ZodTypeAny[] }).options;
+      const branches = options.map((o) => zodToJsonSchema(o));
+      const allObjects = branches.every((b) => b['type'] === 'object');
+      if (!allObjects) return { oneOf: branches };
+
+      // Flatten union of objects.
+      //   - Discriminator key: every branch has a `const` here → render
+      //     as `{ type, enum: [val, ...] }` so the model sees the
+      //     allowed values rather than just one branch's literal.
+      //   - Branch-specific keys: included, marked optional.
+      //   - Shared keys with identical sub-shapes: kept as-is.
+      //   - Shared keys with conflicting sub-shapes: last-wins (rare;
+      //     Zod re-validates so this is just a model hint).
+      //   - Required: only keys present in `required` of EVERY branch.
+      //   - `additionalProperties: false` if every branch has it.
+      const properties: Record<string, Record<string, unknown>> = {};
+      const requiredCounts = new Map<string, number>();
+      let allStrict = true;
+      for (const b of branches) {
+        const props = (b['properties'] ?? {}) as Record<string, Record<string, unknown>>;
+        const req = (b['required'] ?? []) as string[];
+        for (const [k, v] of Object.entries(props)) properties[k] = v;
+        for (const k of req) requiredCounts.set(k, (requiredCounts.get(k) ?? 0) + 1);
+        if (b['additionalProperties'] !== false) allStrict = false;
+      }
+      // Discriminator detection: keys where every branch's sub-schema
+      // has a `const` value. Hoist those to an enum.
+      for (const k of Object.keys(properties)) {
+        const consts: unknown[] = [];
+        for (const b of branches) {
+          const props = (b['properties'] ?? {}) as Record<string, Record<string, unknown>>;
+          const v = props[k];
+          if (v && 'const' in v) consts.push(v.const);
+        }
+        if (consts.length === branches.length) {
+          const t = typeof consts[0];
+          properties[k] =
+            t === 'string'
+              ? { type: 'string', enum: consts }
+              : t === 'number'
+                ? { type: 'number', enum: consts }
+                : t === 'boolean'
+                  ? { type: 'boolean', enum: consts }
+                  : { enum: consts };
+        }
+      }
+      const merged: Record<string, unknown> = {
+        type: 'object',
+        properties,
+        required: Array.from(requiredCounts.entries())
+          .filter(([, count]) => count === branches.length)
+          .map(([k]) => k),
+      };
+      if (allStrict) merged['additionalProperties'] = false;
+      return merged;
     }
     case 'ZodString': {
       const checks = (def as { checks?: { kind: string; value?: number }[] }).checks ?? [];

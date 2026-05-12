@@ -13,6 +13,7 @@
     "lint": "eslint src"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
     "@cpa/agents": "workspace:*",
     "@cpa/audit-score": "workspace:*",
     "@cpa/auth": "workspace:*",

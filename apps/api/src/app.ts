@@ -20,6 +20,7 @@ import { registerActivityPdf } from './routes/activity-pdf.js';
 import { registerActivityRegister } from './routes/activity-register.js';
 import { registerNarrative } from './routes/narrative.js';
 import { registerPendingNarrative } from './routes/pending-narrative.js';
+import { registerPortalFields } from './routes/portal-fields.js';
 import { registerApplyRules } from './routes/apply-rules.js';
 import { registerArtefactLinks } from './routes/artefact-links.js';
 import { registerGoogleAuth } from './routes/auth/google.js';
@@ -320,6 +321,10 @@ export function buildApp(options: BuildAppOptions = {}): App {
   });
   app.register((instance, _opts, done) => {
     registerPendingNarrative(instance);
+    done();
+  });
+  app.register((instance, _opts, done) => {
+    registerPortalFields(instance);
     done();
   });
   app.register((instance, _opts, done) => {

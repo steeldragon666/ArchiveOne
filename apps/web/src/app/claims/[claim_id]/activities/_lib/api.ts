@@ -132,3 +132,49 @@ export async function listActivityEvents(
   if (opts.limit) qs.set('limit', String(opts.limit));
   return apiFetch<ListActivityEventsResponse>(`/v1/events?${qs.toString()}`);
 }
+
+// =====================================================================
+// Portal-fields generation (draft-narrative@1.2.0)
+// =====================================================================
+
+/**
+ * Generated portal-fields envelope. Discriminated on `activity_kind`:
+ *   - 'core'       → fields has 13 keys (s.355-25 registration)
+ *   - 'supporting' → fields has 9 keys (s.355-30 registration)
+ *
+ * Kept loose here (`Record<string, unknown>` for `fields`) — the web
+ * layer doesn't import the agents/schemas portal-field shapes directly
+ * to keep the UI decoupled. Display code reads keys defensively.
+ */
+export type GeneratedPortalFields = {
+  activity_kind: 'core' | 'supporting';
+  fields: Record<string, unknown>;
+};
+
+export type GeneratePortalFieldsResponse = {
+  portal_fields: GeneratedPortalFields;
+  meta: {
+    model: string;
+    prompt_version: string;
+    tokens_in: number;
+    tokens_out: number;
+    elapsed_ms: number;
+    events_count: number;
+  };
+};
+
+/**
+ * POST /v1/activities/:id/portal-fields. Generates the 13/9 AusIndustry
+ * portal-ready fields via the `draft-narrative@1.2.0` agent and persists
+ * into `activity.portal_fields`.
+ *
+ * Long-running (~50-75s with Sonnet 4.5) — callers should display a
+ * pending state. Returns the validated portal-fields envelope.
+ */
+export async function generatePortalFields(
+  activityId: string,
+): Promise<GeneratePortalFieldsResponse> {
+  return apiFetch<GeneratePortalFieldsResponse>(`/v1/activities/${activityId}/portal-fields`, {
+    method: 'POST',
+  });
+}

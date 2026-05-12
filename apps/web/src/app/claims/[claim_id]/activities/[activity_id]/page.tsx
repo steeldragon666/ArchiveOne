@@ -10,6 +10,7 @@ import { getClaim } from '../../_lib/api';
 import { getActivity, listActivityArtefacts } from '../_lib/api';
 import { ArchiveActivityButton } from './_components/archive-activity-button';
 import { ActivityEditor } from './_components/activity-editor';
+import { PortalFieldsSection } from './_components/portal-fields-section';
 import { TimeEntrySection } from './_components/time-entry-section';
 
 /**
@@ -154,6 +155,8 @@ function Inner({ claimId, activityId }: { claimId: string; activityId: string })
         <h2 className="font-display text-2xl font-medium">Edit narrative</h2>
         <ActivityEditor activity={activity} />
       </section>
+
+      <PortalFieldsSection activity={activity} />
 
       {/* Phase 4C: time-entry editing — only renders once the parent claim
           has resolved (we need its subject_tenant_id to scope the query). */}
