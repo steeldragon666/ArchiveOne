@@ -2,21 +2,31 @@
 
 import { useQuery } from '@tanstack/react-query';
 import type { Activity, WorkflowStepEntry } from '@cpa/schemas';
-import { BindToActivityButton } from '@/app/subject-tenants/[id]/_components/bind-to-activity-button';
 import { apiFetch } from '@/lib/api';
 import type { CanAdvance } from '../_lib/workflow-client';
-import { StaleStepBanner } from './stale-step-banner';
+import { ActivityAttributionPanel } from './activity-attribution-panel';
 import { AgreeStepButton } from './agree-step-button';
+import { StaleStepBanner } from './stale-step-banner';
 
 /**
- * Wizard Step 3 -- Attribute Evidence.
+ * Wizard Step 3 — Attribute Evidence.
  *
- * Renders one card per activity with its code, title, and kind badge
- * (core / supporting). Each card embeds a BindToActivityButton so the
- * consultant can link additional evidence documents to that activity.
+ * Activity-first attribution: each agreed activity gets its own panel
+ * showing currently bound events (with a "Suggested" badge for
+ * auto-allocator picks) plus an "Add evidence" button that opens a
+ * chooser populated with events from this claim's subject_tenant.
  *
- * Activities are fetched via the standard GET /v1/activities?claim_id=...
- * endpoint.
+ * The earlier implementation passed `eventId=""` to `BindToActivityButton`,
+ * which is event-first by design (open from an event row, pick activities
+ * to bind it to). That mismatch produced an unusable dialog — the
+ * artefact-link POST would have written empty `artefact_id` (or 400'd at
+ * the Zod validator). C3 fix replaces the misuse with the dedicated
+ * `EventPickerDialog`, which is activity-first end-to-end.
+ *
+ * `canAdvance(3)` is derived server-side from agreed activities without
+ * bindings; the `EventPickerDialog` and `BoundEventRow` mutations
+ * invalidate `['workflow', claimId]` so the gate re-derives every time
+ * the consultant adds or removes a binding.
  */
 export function WizardStep3AttributeEvidence({
   claimId,
@@ -46,20 +56,20 @@ export function WizardStep3AttributeEvidence({
       <header className="space-y-1">
         <h2 className="font-display text-xl font-semibold tracking-tight">Attribute Evidence</h2>
         <p className="text-sm text-muted-foreground">
-          Link evidence documents to the R&amp;D activities they support. The platform has
-          auto-suggested bindings where confident — review and adjust as needed.
+          Link evidence to the R&amp;D activities they support. Items tagged{' '}
+          <span className="font-mono text-[10px] uppercase tracking-widest">Suggested</span> were
+          auto-allocated by the model — review and unlink if any look wrong.
         </p>
       </header>
 
-      {/* Activity cards — exclusive branching to avoid stale-data overlap */}
       {activitiesQuery.isPending ? (
-        <p className="text-sm text-muted-foreground">Loading activities...</p>
+        <p className="text-sm text-muted-foreground">Loading activities…</p>
       ) : activitiesQuery.error ? (
         <p className="text-sm text-destructive">
           Failed to load activities:{' '}
           {activitiesQuery.error instanceof Error ? activitiesQuery.error.message : 'Unknown error'}
         </p>
-      ) : activitiesQuery.data?.activities.length === 0 ? (
+      ) : (activitiesQuery.data?.activities ?? []).length === 0 ? (
         <div className="rounded border border-[hsl(var(--brand-line))] p-6 text-center">
           <p className="text-sm text-muted-foreground">
             No activities have been created yet. Go back to Step 2 and approve the AI narrative to
@@ -69,41 +79,12 @@ export function WizardStep3AttributeEvidence({
       ) : (
         <div className="space-y-3">
           {(activitiesQuery.data?.activities ?? []).map((activity) => (
-            <div
+            <ActivityAttributionPanel
               key={activity.id}
-              className="flex flex-wrap items-start gap-3 rounded border border-[hsl(var(--brand-line))] bg-[hsl(var(--brand-paper))] p-4"
-            >
-              <div className="flex-1 min-w-0 space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-xs font-medium">{activity.code}</span>
-                  <span
-                    className={`rounded-full px-2 py-0.5 font-mono text-[9px] uppercase tracking-widest ${
-                      activity.kind === 'core'
-                        ? 'bg-[hsl(var(--brand-accent))]/15 text-[hsl(var(--brand-accent-strong))]'
-                        : 'bg-muted text-muted-foreground'
-                    }`}
-                  >
-                    {activity.kind}
-                  </span>
-                </div>
-                <p className="text-sm font-medium leading-tight">{activity.title}</p>
-              </div>
-
-              {/* TODO: BindToActivityButton needs a real eventId. In Step 3's
-                 activity-first context, the flow should list bound events per
-                 activity and offer "add evidence" from the event list — not
-                 from the activity card. Placeholder until the binding UX is
-                 finalised. The button opens the dialog but submitting will
-                 fail (empty artefact_id). */}
-              <div className="shrink-0">
-                <BindToActivityButton
-                  eventId=""
-                  filename="evidence"
-                  subjectTenantId={subjectTenantId}
-                  triggerLabel="Add evidence"
-                />
-              </div>
-            </div>
+              activity={activity}
+              claimId={claimId}
+              subjectTenantId={subjectTenantId}
+            />
           ))}
         </div>
       )}
