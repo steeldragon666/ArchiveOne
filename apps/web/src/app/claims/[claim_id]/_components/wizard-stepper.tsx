@@ -38,6 +38,11 @@ export function WizardStepper({
                   : isCurrent
                     ? 'border-[hsl(var(--brand-ink))] bg-[hsl(var(--brand-paper))]'
                     : 'border-[hsl(var(--brand-line))] bg-white text-[hsl(var(--brand-ink-subtle))]',
+                // W2: when a step is BOTH agreed AND current, the isCurrent
+                // styling is otherwise swallowed by the agreed styling — add
+                // a focus ring so sighted users still see the "you are here"
+                // cue on top of the green pill.
+                agreed && isCurrent ? 'ring-2 ring-[hsl(var(--brand-ink))] ring-offset-2' : '',
               ].join(' ')}
               data-testid={`wizard-stepper-${stepNum}`}
               aria-current={isCurrent ? 'step' : undefined}
