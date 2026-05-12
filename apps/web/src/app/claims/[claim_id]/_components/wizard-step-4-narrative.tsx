@@ -1,12 +1,13 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import type { Claim } from '@cpa/schemas';
+import type { Claim, WorkflowStepEntry } from '@cpa/schemas';
 import { Button } from '@/components/ui/button';
 import { NarrativeStream } from './narrative-stream';
 import { FiscalYearTimeline } from './fiscal-year-timeline';
 import { fetchAnalysisEvents } from '../_lib/analysis-api';
 import type { CanAdvance } from '../_lib/workflow-client';
+import { StaleStepBanner } from './stale-step-banner';
 
 /**
  * Wizard Step 4 -- Narrative & Timeline.
@@ -21,12 +22,14 @@ export function WizardStep4ReviewNarrative({
   claimId,
   subjectTenantId,
   claim,
+  stepEntry,
   canAdvance,
   onNext,
 }: {
   claimId: string;
   subjectTenantId: string;
   claim: Claim;
+  stepEntry: WorkflowStepEntry | null;
   canAdvance: CanAdvance;
   onNext: () => void;
 }) {
@@ -38,6 +41,7 @@ export function WizardStep4ReviewNarrative({
 
   return (
     <section className="space-y-6" data-testid="wizard-step-4">
+      <StaleStepBanner stepEntry={stepEntry} canAdvance={canAdvance} />
       <header className="space-y-1">
         <h2 className="font-display text-xl font-semibold tracking-tight">
           Narrative &amp; Timeline

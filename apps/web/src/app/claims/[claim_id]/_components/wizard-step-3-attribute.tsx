@@ -1,11 +1,12 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import type { Activity } from '@cpa/schemas';
+import type { Activity, WorkflowStepEntry } from '@cpa/schemas';
 import { Button } from '@/components/ui/button';
 import { BindToActivityButton } from '@/app/subject-tenants/[id]/_components/bind-to-activity-button';
 import { apiFetch } from '@/lib/api';
 import type { CanAdvance } from '../_lib/workflow-client';
+import { StaleStepBanner } from './stale-step-banner';
 
 /**
  * Wizard Step 3 -- Attribute Evidence.
@@ -20,11 +21,13 @@ import type { CanAdvance } from '../_lib/workflow-client';
 export function WizardStep3AttributeEvidence({
   claimId,
   subjectTenantId,
+  stepEntry,
   canAdvance,
   onNext,
 }: {
   claimId: string;
   subjectTenantId: string;
+  stepEntry: WorkflowStepEntry | null;
   canAdvance: CanAdvance;
   onNext: () => void;
 }) {
@@ -39,6 +42,7 @@ export function WizardStep3AttributeEvidence({
 
   return (
     <section className="space-y-6" data-testid="wizard-step-3">
+      <StaleStepBanner stepEntry={stepEntry} canAdvance={canAdvance} />
       <header className="space-y-1">
         <h2 className="font-display text-xl font-semibold tracking-tight">Attribute Evidence</h2>
         <p className="text-sm text-muted-foreground">

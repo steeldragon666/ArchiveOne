@@ -1,8 +1,10 @@
 'use client';
 
+import type { WorkflowStepEntry } from '@cpa/schemas';
 import { Button } from '@/components/ui/button';
 import { PendingNarrativePanel } from '@/app/subject-tenants/[id]/_components/pending-narrative-panel';
 import type { CanAdvance } from '../_lib/workflow-client';
+import { StaleStepBanner } from './stale-step-banner';
 
 /**
  * Wizard Step 2 -- Review Activities.
@@ -19,16 +21,19 @@ import type { CanAdvance } from '../_lib/workflow-client';
 export function WizardStep2ReviewActivities({
   claimId: _claimId,
   subjectTenantId,
+  stepEntry,
   canAdvance,
   onNext,
 }: {
   claimId: string;
   subjectTenantId: string;
+  stepEntry: WorkflowStepEntry | null;
   canAdvance: CanAdvance;
   onNext: () => void;
 }) {
   return (
     <section className="space-y-6" data-testid="wizard-step-2">
+      <StaleStepBanner stepEntry={stepEntry} canAdvance={canAdvance} />
       <header className="space-y-1">
         <h2 className="font-display text-xl font-semibold tracking-tight">Review Activities</h2>
         <p className="text-sm text-muted-foreground">

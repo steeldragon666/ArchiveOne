@@ -1,9 +1,11 @@
 'use client';
 
 import { useState } from 'react';
+import type { WorkflowStepEntry } from '@cpa/schemas';
 import { Loader2, CheckCircle2, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { CanAdvance } from '../_lib/workflow-client';
+import { StaleStepBanner } from './stale-step-banner';
 
 /**
  * Wizard Step 5 -- Generate Documents.
@@ -36,10 +38,12 @@ const INITIAL_DOCS: DocItem[] = [
 export function WizardStep5GenerateDocuments({
   claimId: _claimId,
   subjectTenantId: _subjectTenantId,
-  canAdvance: _canAdvance,
+  stepEntry,
+  canAdvance,
 }: {
   claimId: string;
   subjectTenantId: string;
+  stepEntry: WorkflowStepEntry | null;
   canAdvance: CanAdvance;
 }) {
   const [docs, setDocs] = useState<DocItem[]>(INITIAL_DOCS);
@@ -61,6 +65,7 @@ export function WizardStep5GenerateDocuments({
 
   return (
     <section className="space-y-6" data-testid="wizard-step-5">
+      <StaleStepBanner stepEntry={stepEntry} canAdvance={canAdvance} />
       <header className="space-y-1">
         <h2 className="font-display text-xl font-semibold tracking-tight">Generate Documents</h2>
         <p className="text-sm text-muted-foreground">

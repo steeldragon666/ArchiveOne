@@ -1,9 +1,11 @@
 'use client';
 
+import type { WorkflowStepEntry } from '@cpa/schemas';
 import { Button } from '@/components/ui/button';
 import { UploadEvidenceButton } from '@/app/subject-tenants/[id]/_components/upload-evidence-button';
 import { EventFeed } from '@/app/subject-tenants/[id]/_components/event-feed';
 import type { CanAdvance } from '../_lib/workflow-client';
+import { StaleStepBanner } from './stale-step-banner';
 
 /**
  * Wizard Step 1 — Upload Evidence.
@@ -15,15 +17,18 @@ import type { CanAdvance } from '../_lib/workflow-client';
  */
 export function WizardStep1UploadEvidence({
   subjectTenantId,
+  stepEntry,
   canAdvance,
   onNext,
 }: {
   subjectTenantId: string;
+  stepEntry: WorkflowStepEntry | null;
   canAdvance: CanAdvance;
   onNext: () => void;
 }) {
   return (
     <section className="space-y-6" data-testid="wizard-step-1">
+      <StaleStepBanner stepEntry={stepEntry} canAdvance={canAdvance} />
       <header className="space-y-1">
         <h2 className="font-display text-xl font-semibold tracking-tight">Upload Evidence</h2>
         <p className="text-sm text-muted-foreground">
