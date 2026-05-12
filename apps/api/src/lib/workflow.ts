@@ -121,8 +121,14 @@ export function initialWorkflowState(initializedAt: string): WorkflowState {
  * Re-agreeing an already-agreed step overwrites the prior entry.
  * This is intentional: per Q5.b, the wizard surfaces a "data changed
  * since last agreed" banner and the consultant clicks Agree again to
- * refresh the timestamp. Historical agree-events are recorded in the
- * append-only audit-log chain — not here.
+ * refresh the timestamp.
+ *
+ * TODO(audit-log): no WORKFLOW_STEP_AGREED / WORKFLOW_STEP_REOPENED events
+ * are emitted today. The 5-year R&DTI retention story would benefit from
+ * dedicated audit_log entries on workflow mutations — needs a planner call
+ * on whether to extend AUDIT_KINDS and emit on every agree/reopen, or
+ * rely on the existing claim/chain audit surface. See review finding I-4
+ * from the Phase 2 review pass.
  */
 export function applyAgree(
   state: WorkflowState,
