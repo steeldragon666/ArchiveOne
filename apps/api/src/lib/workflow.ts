@@ -144,52 +144,70 @@ export function applyReopen(state: WorkflowState, step: 1 | 2 | 3 | 4 | 5): Work
  * inside RLS scope — the caller MUST have set `app.current_tenant_id`
  * before invoking this (the wizard route's `sql.begin` wrapper does so).
  *
- * Five small queries against event-sourced data:
+ * Belt-and-suspenders tenant scoping: every event-table scan AND every
+ * narrative_draft scan carries an explicit `tenant_id = ${tenantId}`
+ * predicate IN ADDITION to the `app.current_tenant_id` GUC that drives
+ * RLS. This mirrors the convention in `routes/activity-register.ts:
+ * loadLatestDraft` and `routes/pending-narrative.ts`: RLS is the primary
+ * defence, but if a future migration silently drops the policy (or a
+ * caller forgets the GUC), the explicit predicate prevents cross-tenant
+ * leakage. Cheap insurance — every scan is already filtered on a more
+ * selective column, so the extra predicate adds no measurable cost.
  *
- *   1. eventsClassified — count of `event` rows for the claim's
- *      subject_tenant where `kind` is set (i.e. the AI classifier has
- *      run on the raw ingest event). The wizard's step-1 gate fires
- *      once any evidence has been classified at all.
+ * Four SQL round-trips producing six counters:
  *
- *   2. proposedActivitiesTotal — sum of `proposed_activities` array
- *      lengths across the LATEST `ACTIVITY_REGISTER_DRAFTED` event per
- *      project that belongs to this claim. The synthesizer can re-run
- *      (a draft refresh), so we deduplicate to the most-recent event
- *      per project — same rule that `loadLatestDraft` in
- *      `routes/activity-register.ts` uses for the single-project view.
+ *   (1) classified events — one COUNT(*) on `event` for the claim's
+ *       subject_tenant where `kind IS NOT NULL`. The wizard's step-1
+ *       gate fires once any classified event exists at all.
  *
- *   3. proposedActivitiesPending — proposed_id values from query 2's
- *      latest drafts that have NOT been promoted to a real `activity`
- *      row via the accept flow. Promotion writes an `ACTIVITY_CREATED`
- *      event carrying `payload.proposed_id`, so "pending" = LEFT JOIN
- *      against that event set yielding NULL. Mirrors the `accepted_count`
- *      logic in `routes/activity-register.ts:loadLatestDraft` consumer.
+ *       TODO(workflow-step1-semantic): the current `kind IS NOT NULL`
+ *       predicate is intentionally permissive. The `event_kind` enum
+ *       (see `packages/schemas/src/event.ts`) interleaves raw-evidence
+ *       kinds (HYPOTHESIS, EXPERIMENT, EVIDENCE_UPLOADED, …) with
+ *       state-transition kinds (ACTIVITY_CREATED, NARRATIVE_APPROVED,
+ *       CLAIM_STAGE_ADVANCED, …) in one flat union. Until that enum
+ *       grows a clean evidence-vs-system split (or we add a
+ *       `classification IS NOT NULL` filter — currently inadvisable
+ *       because not every evidence path writes a classification row
+ *       yet), step 1's gate counts ANY event row for the subject
+ *       tenant. In practice this still gates correctly: a claim with
+ *       zero rows has no captured anything, and the false positives
+ *       (system events firing before any evidence) don't happen in the
+ *       current wizard flow — state-transition events are always
+ *       preceded by an evidence event.
  *
- *   4. agreedActivitiesTotal — count of `activity` rows for the claim.
+ *   (2 + 3) proposed activities total + pending — one CTE pipeline.
+ *       Take the LATEST `ACTIVITY_REGISTER_DRAFTED` event per project
+ *       under the claim, unnest `proposed_activities[]`, and LEFT JOIN
+ *       against `ACTIVITY_CREATED` events carrying matching
+ *       `payload.proposed_id`. Row count = total; rows with NULL
+ *       right-hand side = pending. Same dedup-to-latest-draft rule
+ *       `routes/activity-register.ts:loadLatestDraft` uses for the
+ *       single-project view.
  *
- *   5. agreedActivitiesWithoutBinding — activities with zero live
- *      artefact links. We fold `ARTEFACT_LINKED` minus `ARTEFACT_UNLINKED`
- *      in SQL (the same algorithm `lib/activity-artefacts.ts:getActivityArtefacts`
- *      does in TS, but applied across every activity in one shot rather
- *      than per-activity round trips). A `(activity_id, artefact_kind,
- *      artefact_id)` triple is live iff its most-recent event is
- *      `ARTEFACT_LINKED`. We don't reuse `getActivityArtefacts` here
- *      because doing so would be N round-trips for N activities; one
- *      SQL aggregate is materially cleaner for the dashboard query.
+ *   (4 + 5) agreed activities total + without binding — one CTE
+ *       pipeline. Count `activity` rows for the claim, then fold
+ *       `ARTEFACT_LINKED`/`ARTEFACT_UNLINKED` into the most-recent
+ *       event per `(activity_id, artefact_kind, artefact_id)` triple
+ *       (live iff the last event is `ARTEFACT_LINKED`), and count
+ *       activities with zero live triples. Same algorithm as
+ *       `lib/activity-artefacts.ts:getActivityArtefacts` but applied
+ *       across every activity in one shot — one SQL aggregate beats
+ *       N per-activity round trips.
  *
- *   6. narrativeSectionsApproved — count of DISTINCT `section_kind`
- *      values in `narrative_draft` reachable through `activity.claim_id`
- *      where `status = 'accepted'` (the storage equivalent of the
- *      wizard's "approved"). `narrative_draft` has no `claim_id` of
- *      its own — it joins via `activity_id`.
+ *   (6) narrative sections approved — one COUNT(DISTINCT section_kind)
+ *       on `narrative_draft` joined to `activity` by `activity_id`
+ *       where `status = 'accepted'`. `narrative_draft` has no
+ *       `claim_id` of its own — the join is the only path.
  *
- * Why six small queries instead of one CTE: each is independently
- * debuggable, the endpoint only fires on page-load + after mutations
- * (not a hot path), and the SQL stays legible. If perf ever matters,
- * collapsing them is a localised refactor.
+ * Why four small round-trips instead of one mega-CTE: each is
+ * independently debuggable, the endpoint only fires on page-load +
+ * after mutations (not a hot path), and the SQL stays legible. If
+ * perf ever matters, collapsing them is a localised refactor.
  */
 export async function loadWorkflowSnapshot(
   sql: SqlClient,
+  tenantId: string,
   claimId: string,
 ): Promise<WorkflowSnapshot> {
   // ---------------------------------------------------------------------
@@ -198,7 +216,8 @@ export async function loadWorkflowSnapshot(
   const eventsRows = await sql<{ n: string }[]>`
     SELECT COUNT(*)::text AS n
       FROM event
-     WHERE subject_tenant_id IN (
+     WHERE tenant_id = ${tenantId}
+       AND subject_tenant_id IN (
              SELECT subject_tenant_id FROM claim WHERE id = ${claimId}
            )
        AND kind IS NOT NULL
@@ -236,7 +255,8 @@ export async function loadWorkflowSnapshot(
              e.payload
         FROM event e
         JOIN claim_projects cp ON cp.project_id = e.project_id
-       WHERE e.kind = 'ACTIVITY_REGISTER_DRAFTED'
+       WHERE e.tenant_id = ${tenantId}
+         AND e.kind = 'ACTIVITY_REGISTER_DRAFTED'
        ORDER BY e.project_id, e.captured_at DESC, e.received_at DESC, e.id DESC
     ),
     proposed AS (
@@ -250,7 +270,8 @@ export async function loadWorkflowSnapshot(
            (ac.payload ->> 'activity_id') AS accepted_activity_id
       FROM proposed p
       LEFT JOIN event ac
-             ON ac.kind = 'ACTIVITY_CREATED'
+             ON ac.tenant_id = ${tenantId}
+            AND ac.kind = 'ACTIVITY_CREATED'
             AND ac.tenant_id = p.tenant_id
             AND ac.project_id = p.project_id
             AND (ac.payload ->> 'proposed_id') = p.proposed_id
@@ -281,7 +302,8 @@ export async function loadWorkflowSnapshot(
              received_at,
              id
         FROM event
-       WHERE kind IN ('ARTEFACT_LINKED', 'ARTEFACT_UNLINKED')
+       WHERE tenant_id = ${tenantId}
+         AND kind IN ('ARTEFACT_LINKED', 'ARTEFACT_UNLINKED')
          AND (payload ->> 'activity_id') IN (SELECT id::text FROM activities)
     ),
     latest_per_triple AS (
@@ -319,8 +341,9 @@ export async function loadWorkflowSnapshot(
     SELECT COUNT(DISTINCT nd.section_kind)::text AS accepted
       FROM narrative_draft nd
       JOIN activity a ON a.id = nd.activity_id
-     WHERE a.claim_id = ${claimId}
-       AND nd.status  = 'accepted'
+     WHERE nd.tenant_id = ${tenantId}
+       AND a.claim_id   = ${claimId}
+       AND nd.status    = 'accepted'
   `;
   const narrativeSectionsApproved = Number(narrRows[0]?.accepted ?? 0);
 
