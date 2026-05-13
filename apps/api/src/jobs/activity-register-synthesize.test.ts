@@ -42,7 +42,19 @@ const ACTIVITY = '00000000-0000-4000-8000-0000000b0090';
 
 const cleanup = async (): Promise<void> => {
   await privilegedSql`DELETE FROM agent_call_cache WHERE agent_name = 'activity-register-synthesizer'`;
-  await privilegedSql`DELETE FROM event WHERE tenant_id IN (${TENANT}, ${TENANT_OTHER})`;
+  // Delete events that reference our tenants OR any subject_tenant that
+  // belongs to our tenants. Filtering by tenant_id alone leaves orphaned
+  // event rows whose tenant_id differs but whose subject_tenant_id still
+  // points at a row we are about to delete — those orphans then block the
+  // `DELETE FROM subject_tenant` below with FK constraint
+  // `event_subject_tenant_id_subject_tenant_id_fk`.
+  await privilegedSql`DELETE FROM event
+                       WHERE tenant_id IN (${TENANT}, ${TENANT_OTHER})
+                          OR subject_tenant_id IN (
+                            SELECT id FROM subject_tenant
+                             WHERE tenant_id IN (${TENANT}, ${TENANT_OTHER})
+                                OR id = ${SUBJECT}
+                          )`;
   // audit_score_snapshot must be cleared BEFORE subject_tenant — there is a
   // FK from audit_score_snapshot.subject_tenant_id → subject_tenant(id) that
   // otherwise blocks the subject_tenant delete with constraint
@@ -51,7 +63,7 @@ const cleanup = async (): Promise<void> => {
   await privilegedSql`DELETE FROM activity WHERE tenant_id = ${TENANT}`;
   await privilegedSql`DELETE FROM claim WHERE tenant_id = ${TENANT}`;
   await privilegedSql`DELETE FROM project WHERE tenant_id IN (${TENANT}, ${TENANT_OTHER})`;
-  await privilegedSql`DELETE FROM subject_tenant WHERE tenant_id IN (${TENANT}, ${TENANT_OTHER})`;
+  await privilegedSql`DELETE FROM subject_tenant WHERE tenant_id IN (${TENANT}, ${TENANT_OTHER}) OR id = ${SUBJECT}`;
   await privilegedSql`DELETE FROM tenant_user WHERE tenant_id IN (${TENANT}, ${TENANT_OTHER})`;
   // Note: AGENT_B_SYSTEM_USER_ID is seeded by migration 0033 and persists
   // across test runs — do NOT delete it here, or subsequent runs would
