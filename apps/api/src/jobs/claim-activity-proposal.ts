@@ -195,8 +195,15 @@ export async function runClaimActivityProposalJob(
     };
 
     // Step 8: compute idempotency_key (sorted-id basis for determinism).
+    // Per-claim scoping: include `claim_id` and `fiscal_year` so a project
+    // running multiple claims (e.g. FY2024 and FY2025) over overlapping
+    // event sets gets a distinct cache key per claim. Without this, Claim B
+    // would short-circuit on Claim A's cache hit and never emit its own
+    // `ACTIVITY_REGISTER_DRAFTED`.
     const idempotency_key = buildIdempotencyKey({
       project_id,
+      claim_id: input.claim_id,
+      fiscal_year,
       event_ids: events.map((e) => e.id),
       existing_activity_ids: activityRows.map((a) => a.id),
     });

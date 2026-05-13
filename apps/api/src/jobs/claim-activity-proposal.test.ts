@@ -27,6 +27,9 @@ const SUBJECT = '00000000-0000-4000-8000-0000000c3120';
 const PROJECT = '00000000-0000-4000-8000-0000000c3130';
 const CLAIM = '00000000-0000-4000-8000-0000000c3140';
 const CLAIM_NO_WORKFLOW = '00000000-0000-4000-8000-0000000c3141';
+// Second claim on the same project, different fiscal year — for the
+// multi-claim cache-isolation test (Fix 1).
+const CLAIM_FY26 = '00000000-0000-4000-8000-0000000c3142';
 
 const cleanup = async (): Promise<void> => {
   await privilegedSql`DELETE FROM agent_call_cache WHERE agent_name = 'activity-register-synthesizer'`;
@@ -76,6 +79,16 @@ before(async () => {
   // Claim without workflow_state (pre-wizard "legacy" claim).
   await privilegedSql`INSERT INTO claim (id, tenant_id, subject_tenant_id, project_id, fiscal_year, stage)
                        VALUES (${CLAIM_NO_WORKFLOW}, ${TENANT}, ${SUBJECT}, ${PROJECT}, 2026, 'engagement')`;
+
+  // Second claim on the SAME project, a DIFFERENT fiscal year — exercises
+  // the per-claim idempotency-key scoping (Fix 1). Uses its own
+  // workflow_state so the job can advance past the claim-lookup guard.
+  const workflowStateFY27 = JSON.stringify({
+    initialized_at: new Date().toISOString(),
+    steps: { '1': null, '2': null, '3': null, '4': null, '5': null },
+  });
+  await privilegedSql`INSERT INTO claim (id, tenant_id, subject_tenant_id, project_id, fiscal_year, stage, workflow_state)
+                       VALUES (${CLAIM_FY26}, ${TENANT}, ${SUBJECT}, ${PROJECT}, 2027, 'engagement', ${workflowStateFY27}::text::jsonb)`;
 });
 
 // Per-test isolation: clear events + cache, reset feature flags.
@@ -255,6 +268,57 @@ test('idempotency: second call with same events returns skipped_idempotent, no d
      WHERE tenant_id = ${TENANT} AND kind = 'ACTIVITY_REGISTER_DRAFTED'
   `;
   assert.equal(countRows[0]?.c, '1');
+});
+
+// ---------------------------------------------------------------------------
+// Tests: multi-claim cache isolation (Fix 1).
+//
+// Two claims on the same project with overlapping evidence sets must each
+// emit their own ACTIVITY_REGISTER_DRAFTED. Without per-claim cache scoping
+// (claim_id + fiscal_year in the idempotency key), Claim B would short-
+// circuit on Claim A's cache hit and silently skip.
+// ---------------------------------------------------------------------------
+
+test("multi-claim cache isolation: Claim B does not inherit Claim A's cache on shared events", async () => {
+  // Single shared evidence event — both claims see the same project event set.
+  await seedEvent({ payloadText: 'shared evidence across both claims' });
+
+  // First run: Claim A (FY2025). Should synthesize a fresh draft and write cache.
+  const rA = await runClaimActivityProposalJob({
+    claim_id: CLAIM,
+    tenant_id: TENANT,
+  });
+  assert.equal(rA.status, 'synthesized');
+
+  // Second run: Claim B (FY2027) on the same project + same event set.
+  // With Fix 1, the per-claim cache key differs from Claim A's, so this
+  // call must NOT return skipped_idempotent — it must synthesize its own
+  // ACTIVITY_REGISTER_DRAFTED event.
+  const rB = await runClaimActivityProposalJob({
+    claim_id: CLAIM_FY26,
+    tenant_id: TENANT,
+  });
+  assert.equal(
+    rB.status,
+    'synthesized',
+    `Claim B should synthesize, not inherit Claim A's cache hit. status=${rB.status} reason=${rB.reason ?? ''}`,
+  );
+
+  // Verify TWO ACTIVITY_REGISTER_DRAFTED events exist — one per claim.
+  const draftedRows = await privilegedSql<{ c: string }[]>`
+    SELECT COUNT(*)::text AS c FROM event
+     WHERE tenant_id = ${TENANT} AND kind = 'ACTIVITY_REGISTER_DRAFTED'
+  `;
+  assert.equal(draftedRows[0]?.c, '2');
+
+  // Sanity: running Claim A a second time SHOULD still short-circuit on
+  // its own cache (per-claim scoping does not break the within-claim
+  // idempotency guarantee).
+  const rA2 = await runClaimActivityProposalJob({
+    claim_id: CLAIM,
+    tenant_id: TENANT,
+  });
+  assert.equal(rA2.status, 'skipped_idempotent');
 });
 
 test('payload carries correct metadata: project_id, model, prompt_version', async () => {
