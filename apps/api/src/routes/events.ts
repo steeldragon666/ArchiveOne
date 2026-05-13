@@ -148,6 +148,21 @@ export function registerEvents(app: FastifyInstance): void {
     // (computeIdempotencyKey input) folds prompt_version into the key, so
     // this is automatic.
     const PROMPT_KEY = 'classify@1.0.0';
+    // Two idempotency keys: same input feeds both, but they serve different
+    // unique-constraint surfaces and therefore need different granularities.
+    //
+    //  - `idempotencyKey` (content-only) → classifier cache. Legitimately
+    //    cross-tenant: the same paste in firm A and firm B should hit the
+    //    cached AI output, saving tokens. This is the cache_key column on
+    //    agent_call_cache and is content-addressed by design.
+    //
+    //  - `eventIdempotencyKey` (context-aware) → event.idempotency_key
+    //    column, which carries a GLOBAL unique constraint. Without context,
+    //    the same evidence uploaded to a second project (legitimate user
+    //    flow) collides with the first event row and 500s. Folding
+    //    tenantId + subject_tenant_id + captured_at into the key gives the
+    //    right granularity: within-context retry dedups (double-click safe),
+    //    across-context uploads don't collide.
     const idempotencyKey = computeIdempotencyKey(PROMPT_KEY, raw_text);
 
     let classification: ClassifierOutput;
@@ -205,6 +220,10 @@ export function registerEvents(app: FastifyInstance): void {
 
     // Step 3: extend the chain. The chain helper holds a per-subject
     // advisory lock so concurrent inserts on the same chain serialise.
+    const eventIdempotencyKey = computeIdempotencyKey(
+      PROMPT_KEY,
+      `${tenantId}|${subject_tenant_id}|${capturedAt.toISOString()}|${raw_text}`,
+    );
     const inserted = await insertEventWithChain({
       tenant_id: tenantId,
       subject_tenant_id,
@@ -218,7 +237,7 @@ export function registerEvents(app: FastifyInstance): void {
       override_of_event_id: null,
       override_new_kind: null,
       override_reason: null,
-      idempotency_key: idempotencyKey,
+      idempotency_key: eventIdempotencyKey,
     });
 
     // Step 4: read back via the view so effective_kind / is_overridden are
