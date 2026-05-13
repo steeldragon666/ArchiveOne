@@ -14,6 +14,7 @@
     { "path": "../../packages/agents" },
     { "path": "../../packages/audit-score" },
     { "path": "../../packages/documents" },
+    { "path": "../../packages/email" },
     { "path": "../../packages/integrations" }
   ],
   "include": ["src/**/*"],
