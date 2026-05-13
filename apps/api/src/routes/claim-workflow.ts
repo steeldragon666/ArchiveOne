@@ -220,13 +220,18 @@ export function registerClaimWorkflow(app: FastifyInstance): void {
       // Runs OUTSIDE the sql.begin transaction — the DB write has already
       // committed at this point; pg-boss picks it up asynchronously.
       // singletonKey prevents duplicate jobs if the consultant clicks Agree twice.
+      // expireInSeconds overrides pg-boss's default expiration: Sonnet calls
+      // can take 30-60s in normal cases, and a backed-up queue + a slow
+      // upstream (Anthropic latency spike, DB contention) can stack up.
+      // 30min leaves comfortable headroom without letting a truly stuck job
+      // linger forever.
       if (step === 1) {
         try {
           const boss = await getBoss();
           await boss.send(
             CLAIM_ACTIVITY_PROPOSAL_QUEUE,
             { claim_id: claimId, tenant_id: tenantId },
-            { singletonKey: claimId },
+            { singletonKey: claimId, expireInSeconds: 30 * 60 },
           );
         } catch (err) {
           // Non-fatal: log and continue. The route must return 200 so the
@@ -238,13 +243,16 @@ export function registerClaimWorkflow(app: FastifyInstance): void {
       // Enqueue the claim-evidence-binding job on step-2 agree (Task 3.2).
       // Same pattern as step-1 above: runs OUTSIDE the sql.begin transaction,
       // singletonKey prevents duplicate jobs on double-click.
+      // expireInSeconds: 30min — see step-1 comment. The binding job iterates
+      // N events through Haiku, so its worst-case wall time scales with the
+      // event count; 30min is conservative for typical claim sizes.
       if (step === 2) {
         try {
           const boss = await getBoss();
           await boss.send(
             CLAIM_EVIDENCE_BINDING_QUEUE,
             { claim_id: claimId, tenant_id: tenantId },
-            { singletonKey: claimId },
+            { singletonKey: claimId, expireInSeconds: 30 * 60 },
           );
         } catch (err) {
           // Non-fatal: log and continue. The route must return 200 so the
