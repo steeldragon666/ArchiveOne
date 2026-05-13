@@ -149,7 +149,9 @@ export function registerClaims(app: FastifyInstance, deps?: ClaimsRouteDeps): vo
       await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
       const rows = await tx<{ id: string }[]>`
         SELECT id FROM subject_tenant
-         WHERE id = ${subject_tenant_id} AND deleted_at IS NULL
+         WHERE id = ${subject_tenant_id}
+           AND tenant_id = ${tenantId}
+           AND deleted_at IS NULL
       `;
       return rows[0] != null;
     });
@@ -260,7 +262,7 @@ export function registerClaims(app: FastifyInstance, deps?: ClaimsRouteDeps): vo
                created_at, updated_at,
                (workflow_state IS NOT NULL) AS is_wizard_claim
           FROM claim
-         WHERE 1 = 1
+         WHERE tenant_id = ${tenantId}
                ${whereSubject}
                ${whereStage}
                ${whereFiscalYear}
@@ -290,6 +292,7 @@ export function registerClaims(app: FastifyInstance, deps?: ClaimsRouteDeps): vo
                  (workflow_state IS NOT NULL) AS is_wizard_claim
             FROM claim
            WHERE id = ${id}
+             AND tenant_id = ${tenantId}
         `;
         const row = rows[0];
         if (!row) {
