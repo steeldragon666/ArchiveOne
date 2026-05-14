@@ -23,6 +23,7 @@ import { registerNarrativeAccept } from './routes/narrative-accept.js';
 import { registerPendingNarrative } from './routes/pending-narrative.js';
 import { registerPipelineStatus } from './routes/pipeline-status.js';
 import { registerProposedActivities } from './routes/proposed-activities.js';
+import { registerGenerateApplication } from './routes/generate-application.js';
 import { registerPortalFields } from './routes/portal-fields.js';
 import { registerApplyRules } from './routes/apply-rules.js';
 import { registerArtefactLinks } from './routes/artefact-links.js';
@@ -341,6 +342,10 @@ export function buildApp(options: BuildAppOptions = {}): App {
   });
   app.register((instance, _opts, done) => {
     registerProposedActivities(instance);
+    done();
+  });
+  app.register((instance, _opts, done) => {
+    registerGenerateApplication(instance);
     done();
   });
   app.register((instance, _opts, done) => {

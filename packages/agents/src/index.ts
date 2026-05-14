@@ -9,3 +9,4 @@ export * from './regulatory-classifier/index.js';
 export * from './auto-allocator/index.js';
 export * from './document-analyzer/index.js';
 export * from './narrative-summarizer/index.js';
+export * from './application-drafter/index.js';

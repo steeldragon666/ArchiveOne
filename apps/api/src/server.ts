@@ -29,6 +29,7 @@ import { registerClaimFinalisationJob } from './jobs/claim-finalisation.js';
 import { registerClaimActivityProposalJob } from './jobs/claim-activity-proposal.js';
 import { registerClaimEvidenceBindingJob } from './jobs/claim-evidence-binding.js';
 import { registerDocumentExtractJob } from './jobs/document-extract.js';
+import { registerGenerateApplicationJob } from './jobs/generate-application.js';
 
 const repoRoot = process.env['REPO_ROOT'] ?? process.cwd();
 
@@ -68,6 +69,8 @@ if (process.env['NODE_ENV'] !== 'test') {
     app.log.info('claim-evidence-binding job registered');
     await registerDocumentExtractJob(boss);
     app.log.info('document-extract job registered');
+    await registerGenerateApplicationJob(boss);
+    app.log.info('generate-application job registered');
   } catch (err) {
     // Pino async transport can swallow this when process.exit(1) fires before
     // flush (observed on Railway boot crashes). Write to stderr synchronously
