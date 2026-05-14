@@ -27,6 +27,18 @@ const MAX_TEXT_CHARS = 60_000;
  */
 export class HaikuDocumentAnalyzer implements DocumentAnalyzer {
   async analyze(input: DocumentAnalyzerInput): Promise<DocumentAnalyzerOutput> {
+    // DIAG: prove this class is actually running for each call.
+    const callId = Math.random().toString(36).slice(2, 8);
+    console.log(
+      '[HaikuDocumentAnalyzer][DIAG]',
+      JSON.stringify({
+        callId,
+        filename: input.filename,
+        textLen: input.raw_text.length,
+        existingActivities: input.existing_activities.length,
+        startedAt: new Date().toISOString(),
+      }),
+    );
     const prompt = getPrompt<AnalyzeDocumentToolOutput>(PROMPT_KEY);
 
     const truncatedText =
