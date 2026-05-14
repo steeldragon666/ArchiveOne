@@ -69,6 +69,12 @@ if (process.env['NODE_ENV'] !== 'test') {
     await registerDocumentExtractJob(boss);
     app.log.info('document-extract job registered');
   } catch (err) {
+    // Pino async transport can swallow this when process.exit(1) fires before
+    // flush (observed on Railway boot crashes). Write to stderr synchronously
+    // FIRST so the underlying error is always visible in container logs,
+    // then also log via Pino for structured-log consumers.
+    console.error('[BOOT FAILURE] pg-boss start failed:', err);
+    if (err instanceof Error && err.stack) console.error(err.stack);
     app.log.error(err, 'pg-boss start failed');
     await sdk.shutdown();
     process.exit(1);
@@ -79,10 +85,26 @@ try {
   await app.listen({ port, host: '0.0.0.0' });
   app.log.info({ port }, 'api listening');
 } catch (err) {
+  console.error('[BOOT FAILURE] app.listen failed:', err);
+  if (err instanceof Error && err.stack) console.error(err.stack);
   app.log.error(err);
   await sdk.shutdown();
   process.exit(1);
 }
+
+// Global safety net: anything that escapes the try/catches above (e.g.
+// synchronous throws inside instrumentation hooks, unhandledRejections
+// from async middleware) still gets surfaced before the process dies.
+process.on('uncaughtException', (err) => {
+  console.error('[UNCAUGHT EXCEPTION]', err);
+  if (err.stack) console.error(err.stack);
+  process.exit(1);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[UNHANDLED REJECTION]', reason);
+  if (reason instanceof Error && reason.stack) console.error(reason.stack);
+  process.exit(1);
+});
 
 const shutdown = async (signal: string): Promise<void> => {
   app.log.info({ signal }, 'shutting down');
