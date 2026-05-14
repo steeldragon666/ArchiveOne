@@ -1,5 +1,5 @@
 import type { PgBoss } from 'pg-boss';
-import { privilegedSql } from '@cpa/db/client';
+import { privilegedSql, sql } from '@cpa/db/client';
 import { makeDocumentAnalyzer, recordUsage, type TaggedSql } from '@cpa/agents';
 
 /**
@@ -87,30 +87,56 @@ const getAnalyzer = () => {
 export async function runDocumentExtractJob(input: DocumentExtractJobInput): Promise<void> {
   const { event_id, tenant_id, subject_tenant_id } = input;
 
-  // Step 1: load event row.
-  const eventRow = await privilegedSql<
-    {
-      id: string;
-      payload: unknown;
-      extraction_status: string | null;
-    }[]
-  >`
-    SELECT id, payload, extraction_status
-      FROM event
-     WHERE id        = ${event_id}
-       AND tenant_id = ${tenant_id}
-  `;
+  // Step 0: claim this event under a postgres advisory lock so we
+  // don't double-bill on retry storms. Caught by
+  // document-extract.stress.test.ts ("10x concurrent same-event"
+  // dispatch produced 10 ledger rows before this fix).
+  //
+  // Flow inside the lock:
+  //   1. pg_advisory_xact_lock keyed on hashtext(event_id). Auto-
+  //      released when the wrapping tx commits.
+  //   2. Read current extraction_status.
+  //   3. If 'complete' or 'processing' -> some other worker already
+  //      has this; short-circuit with skip.
+  //   4. Otherwise UPDATE to 'processing' and proceed. The next
+  //      worker that acquires the lock will see 'processing' and
+  //      skip via step 3.
+  //
+  // We use `sql` (cpa_app role) NOT privilegedSql for the lock tx
+  // so the GUC + lock live in the same session. The rest of the
+  // worker uses privilegedSql for writes — postgres advisory locks
+  // are per-database (not per-session) so the lock serialises across
+  // both roles correctly.
+  //
+  // The CHECK constraint for 'processing' was added in migration
+  // 0083_event_extraction_processing_state.sql.
+  const lockResult = await sql.begin(async (tx) => {
+    await tx`SELECT pg_advisory_xact_lock(hashtext(${event_id})::bigint)`;
+    const rows = await tx<{ id: string; payload: unknown; extraction_status: string | null }[]>`
+      SELECT id, payload, extraction_status
+        FROM event
+       WHERE id = ${event_id} AND tenant_id = ${tenant_id}
+    `;
+    const r = rows[0];
+    if (!r) return { kind: 'not_found' as const };
+    if (r.extraction_status === 'complete' || r.extraction_status === 'processing') {
+      return { kind: 'already_claimed' as const };
+    }
+    await tx`
+      UPDATE event SET extraction_status = 'processing'
+       WHERE id = ${event_id} AND tenant_id = ${tenant_id}
+    `;
+    return { kind: 'claimed' as const, row: r };
+  });
 
-  const row = eventRow[0];
-  if (!row) {
+  if (lockResult.kind === 'not_found') {
     console.error(`[document-extract] event ${event_id} not found`);
     return;
   }
-
-  // Step 2: skip if already processed.
-  if (row.extraction_status === 'complete') {
+  if (lockResult.kind === 'already_claimed') {
     return;
   }
+  const row = lockResult.row;
 
   const payload = row.payload as Record<string, unknown> | null;
   const rawText = typeof payload?.raw_text === 'string' ? payload.raw_text : '';
