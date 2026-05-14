@@ -1,9 +1,16 @@
 'use client';
 /**
- * AppShell — the consistent chrome wrapping every authenticated page in the
- * Claimsure platform. Provides the header (logo, tenant switcher, user menu)
- * and the persistent left navigation, so individual pages only render their
- * content area.
+ * AppShell — top-tab navigation chrome for every authenticated page.
+ *
+ * NAVIGATION MODEL (workflow-shaped, not entity-shaped):
+ *
+ *   Claimants → Activities → Evidence → Claims → Financing
+ *
+ * Claimants is the entry. Once a claimant is picked on tab 1, tabs 2-5
+ * scope to that claimant's context (handled by per-tab route logic).
+ *
+ * Settings (tenant switcher, admin pages) live behind the ⚙ icon in the
+ * header — workflow nav stays at exactly 5 tabs.
  *
  * Pages opt in by wrapping their content:
  *
@@ -11,64 +18,47 @@
  *     return <AppShell><PageContent /></AppShell>;
  *   }
  *
- * AppShell embeds AuthGuard internally — the page does not need to (and
- * should not) wrap itself with both. If the user is not authenticated,
- * AuthGuard handles the redirect to /login. AppShell itself only renders
- * after a successful whoami response.
- *
- * Design system reference: docs/design/system.md.
- * Tokens applied via globals.css custom properties:
- *   - bg-background    cream paper
- *   - text-foreground  warm near-black ink
- *   - border-border    hairline beige
- *   - text-primary     patina green for active nav state
+ * AppShell embeds AuthGuard. The page should not wrap itself with both.
  */
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  LayoutDashboard,
-  Workflow,
-  FolderOpen,
   Building2,
-  Sparkles,
-  Radio,
-  Users,
-  Boxes,
-  SlidersHorizontal,
-  Palette,
-  Receipt,
-  LogOut,
-  ChevronRight,
   Beaker,
+  FileText,
+  ClipboardCheck,
   Wallet,
+  Settings,
+  LogOut,
 } from 'lucide-react';
 import { AuthGuard } from '@/components/auth-guard';
 import { TenantSwitcher } from '@/components/tenant-switcher';
 import { Button } from '@/components/ui/button';
 import { useWhoami } from '@/hooks/use-whoami';
 
-interface NavItem {
+interface WorkflowTab {
+  /** First-segment path this tab owns. Used for active-state matching. */
+  segment: string;
+  /** Default href when clicked. */
   href: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
+  /** Tab is gated until a claimant is selected (tabs 2-5). */
+  scoped?: boolean;
 }
 
-const WORKSPACE_NAV: NavItem[] = [
-  { href: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/pipeline', label: 'Pipeline', icon: Workflow },
-  { href: '/projects', label: 'Projects', icon: FolderOpen },
-  { href: '/subject-tenants', label: 'Client firms', icon: Building2 },
-  { href: '/suggestions', label: 'Suggestions', icon: Sparkles },
-  { href: '/intelligence', label: 'Intelligence', icon: Radio },
-  { href: '/finance', label: 'Finance', icon: Wallet },
-];
-
-const ADMIN_NAV: NavItem[] = [
-  { href: '/users', label: 'Firm members', icon: Users },
-  { href: '/tenants', label: 'Tenants', icon: Boxes },
-  { href: '/admin/apportionment', label: 'Apportionment', icon: SlidersHorizontal },
-  { href: '/admin/brand-config', label: 'Brand', icon: Palette },
-  { href: '/admin/billing/invoices', label: 'Billing', icon: Receipt },
+const WORKFLOW_TABS: WorkflowTab[] = [
+  // Claimants tab points at the existing /subject-tenants list. The internal
+  // schema name is `subject_tenant`; the user-facing term is "Claimant" /
+  // "Client firm". Keeping the URL consistent with the schema means existing
+  // bookmarks + the existing list page work unchanged.
+  { segment: 'subject-tenants', href: '/subject-tenants', label: 'Claimants', icon: Building2 },
+  { segment: 'activities', href: '/activities', label: 'Activities', icon: Beaker, scoped: true },
+  { segment: 'evidence', href: '/evidence', label: 'Evidence', icon: FileText, scoped: true },
+  // Claims tab points at /claims; the per-claim wizard already lives at
+  // /claims/[claim_id]. PR #1 adds /claims/page.tsx as the list view.
+  { segment: 'claims', href: '/claims', label: 'Claims', icon: ClipboardCheck, scoped: true },
+  { segment: 'financing', href: '/financing', label: 'Financing', icon: Wallet },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -91,11 +81,10 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
         availableTenants={data.availableTenants}
         activeTenantId={data.user.tenantId}
         userEmail={data.user.email}
+        isAdmin={isAdmin}
       />
-      <div className="flex flex-1">
-        <Sidebar isAdmin={isAdmin} />
-        <main className="flex-1 px-8 py-8 max-w-7xl mx-auto w-full">{children}</main>
-      </div>
+      <WorkflowTabBar />
+      <main className="flex-1 px-8 py-8 max-w-7xl mx-auto w-full">{children}</main>
     </div>
   );
 }
@@ -104,6 +93,7 @@ function Header({
   availableTenants,
   activeTenantId,
   userEmail,
+  isAdmin,
 }: {
   availableTenants: {
     tenantId: string;
@@ -114,11 +104,12 @@ function Header({
   }[];
   activeTenantId: string | null;
   userEmail: string;
+  isAdmin: boolean;
 }) {
   return (
     <header className="border-b border-border bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-30">
       <div className="flex items-center justify-between gap-4 px-6 h-14">
-        <Link href="/" className="flex items-baseline gap-2 group">
+        <Link href="/subject-tenants" className="flex items-baseline gap-2 group">
           <span className="font-display text-xl font-semibold tracking-tight">Claimsure</span>
           <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground group-hover:text-foreground transition-colors">
             R&amp;D Tax Incentive
@@ -129,6 +120,7 @@ function Header({
           <div className="hidden md:flex items-center gap-2 px-3 py-1.5 text-sm text-muted-foreground border-l border-border ml-1">
             <span className="font-mono text-xs">{userEmail}</span>
           </div>
+          {isAdmin && <SettingsMenu />}
           <SignoutButton />
         </div>
       </div>
@@ -136,61 +128,61 @@ function Header({
   );
 }
 
-function Sidebar({ isAdmin }: { isAdmin: boolean }) {
+function WorkflowTabBar() {
+  const pathname = usePathname();
   return (
-    <aside className="hidden md:flex md:w-60 lg:w-64 shrink-0 flex-col border-r border-border bg-secondary/40">
-      <nav className="flex-1 py-6 px-3 space-y-6">
-        <NavSection label="Workspace" items={WORKSPACE_NAV} />
-        {isAdmin && <NavSection label="Administration" items={ADMIN_NAV} />}
-      </nav>
-      <div className="border-t border-border p-3">
-        <Link
-          href="/styleguide"
-          className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/40 rounded-sm transition-colors"
-        >
-          <Beaker className="h-3.5 w-3.5" />
-          Styleguide
-          <ChevronRight className="h-3 w-3 ml-auto" />
-        </Link>
+    <nav className="border-b border-border bg-background/60 sticky top-14 z-20">
+      <div className="px-6 max-w-7xl mx-auto">
+        <ol className="flex items-center gap-1" data-testid="workflow-tabs">
+          {WORKFLOW_TABS.map((tab) => {
+            const active =
+              pathname === tab.href ||
+              pathname.startsWith(`/${tab.segment}/`) ||
+              // Root / (Dashboard) counts as "Claimants" — the workflow home
+              (tab.segment === 'subject-tenants' && pathname === '/');
+            const Icon = tab.icon;
+            return (
+              <li key={tab.segment}>
+                <Link
+                  href={tab.href}
+                  aria-current={active ? 'page' : undefined}
+                  data-testid={`workflow-tab-${tab.segment}`}
+                  className={[
+                    'flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 -mb-px transition-colors',
+                    active
+                      ? 'border-primary text-primary'
+                      : 'border-transparent text-foreground/70 hover:text-foreground hover:border-foreground/20',
+                  ].join(' ')}
+                >
+                  <Icon className="h-4 w-4" />
+                  <span>{tab.label}</span>
+                </Link>
+              </li>
+            );
+          })}
+        </ol>
       </div>
-    </aside>
+    </nav>
   );
 }
 
-function NavSection({ label, items }: { label: string; items: NavItem[] }) {
-  const pathname = usePathname();
+/**
+ * Settings menu — admin-only access to firm-config pages (members, tenants,
+ * apportionment defaults, brand, billing). Lives behind a gear icon so the
+ * top-tab workflow nav stays at exactly 5 entries.
+ *
+ * For PR #1 this is a stub — the menu links to existing admin routes.
+ * PR #5 will polish the dropdown UX.
+ */
+function SettingsMenu() {
   return (
-    <div>
-      <h3 className="px-3 mb-2 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-        {label}
-      </h3>
-      <ul className="space-y-0.5">
-        {items.map((item) => {
-          const active =
-            item.href === '/'
-              ? pathname === '/'
-              : pathname === item.href || pathname.startsWith(`${item.href}/`);
-          const Icon = item.icon;
-          return (
-            <li key={item.href}>
-              <Link
-                href={item.href}
-                aria-current={active ? 'page' : undefined}
-                className={[
-                  'flex items-center gap-2.5 px-3 py-2 text-sm rounded-sm transition-colors',
-                  active
-                    ? 'bg-primary/10 text-primary font-medium'
-                    : 'text-foreground/80 hover:bg-muted hover:text-foreground',
-                ].join(' ')}
-              >
-                <Icon className="h-4 w-4 shrink-0" />
-                <span className="truncate">{item.label}</span>
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
-    </div>
+    <Link
+      href="/users"
+      title="Settings"
+      className="flex items-center justify-center h-8 w-8 rounded-sm text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+    >
+      <Settings className="h-4 w-4" />
+    </Link>
   );
 }
 
