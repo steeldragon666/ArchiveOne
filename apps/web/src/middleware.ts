@@ -11,26 +11,38 @@
  *
  * Uses jose (Edge-compatible). DO NOT import jsonwebtoken here — it
  * needs Node's crypto and won't run in the Edge runtime.
+ *
+ * CRITICAL: in Next.js middleware, returning a plain `new Response(...)`
+ * SHORT-CIRCUITS the request — the client gets that response instead of
+ * the matched route. To pass control to the actual page handler we MUST
+ * return `NextResponse.next()`. A 200 from a plain Response would render
+ * an empty body to every authorized user. See:
+ *   https://nextjs.org/docs/app/api-reference/functions/next-response#next
  */
+import { NextResponse } from 'next/server';
 import { verifyToken } from '@/lib/beta-auth';
 
 const BYPASS_PREFIXES = ['/beta-access', '/api/beta/'];
 
 export const config = {
+  // Match all paths except _next internals and the favicon. Static assets
+  // are served by Vercel's edge before middleware runs, but documenting
+  // the exclusion keeps the matcher self-explanatory.
   matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 };
-
-function passThrough(): Response {
-  return new Response(null, { status: 200, headers: { 'x-mw': 'pass' } });
-}
 
 export async function middleware(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const path = url.pathname;
 
-  if (process.env.BETA_GATE_ENABLED === '0') return passThrough();
-  if (process.env.NODE_ENV !== 'production') return passThrough();
-  if (BYPASS_PREFIXES.some((p) => path.startsWith(p))) return passThrough();
+  // Kill switch.
+  if (process.env.BETA_GATE_ENABLED === '0') return NextResponse.next();
+
+  // Local dev: don't require beta auth.
+  if (process.env.NODE_ENV !== 'production') return NextResponse.next();
+
+  // Bypass for gate's own routes.
+  if (BYPASS_PREFIXES.some((p) => path.startsWith(p))) return NextResponse.next();
 
   const cookieHeader = req.headers.get('cookie') ?? '';
   const cookieMatch = cookieHeader.match(/(?:^|;\s*)beta_session=([^;]+)/);
@@ -39,7 +51,7 @@ export async function middleware(req: Request): Promise<Response> {
   if (token) {
     try {
       await verifyToken(token, 'beta-session', process.env.BETA_AUTH_SECRET!);
-      return passThrough();
+      return NextResponse.next();
     } catch {
       /* fall through to redirect */
     }
@@ -47,5 +59,5 @@ export async function middleware(req: Request): Promise<Response> {
 
   const dest = new URL('/beta-access', url);
   dest.searchParams.set('next', path);
-  return Response.redirect(dest, 302);
+  return NextResponse.redirect(dest, 302);
 }
