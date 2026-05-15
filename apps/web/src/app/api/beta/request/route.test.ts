@@ -32,7 +32,7 @@ test('POST /api/beta/request: allowlisted email -> 200 + email sent', async () =
   const res = await POST(makeReq({ email: 'alice@firm.com' }));
   assert.equal(res.status, 200);
   assert.equal(sentEmails.length, 1);
-  assert.equal(sentEmails[0].to, 'alice@firm.com');
+  assert.equal(sentEmails[0]!.to, 'alice@firm.com');
 });
 
 test('POST /api/beta/request: NON-allowlisted email -> 200 + no email sent (no enumeration)', async () => {

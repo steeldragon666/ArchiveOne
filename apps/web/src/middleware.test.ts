@@ -5,7 +5,7 @@ import { mintSessionToken } from '@/lib/beta-auth';
 const TEST_SECRET = 'a'.repeat(64);
 process.env.BETA_AUTH_SECRET = TEST_SECRET;
 process.env.BETA_GATE_ENABLED = '1';
-process.env.NODE_ENV = 'production';
+(process.env as Record<string, string>).NODE_ENV = 'production';
 
 const { middleware } = await import('./middleware.js');
 
