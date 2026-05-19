@@ -27,6 +27,9 @@ const config: Config = {
         body: ['var(--font-body)', 'system-ui', 'sans-serif'],
         sans: ['var(--font-body)', 'system-ui', 'sans-serif'],
         mono: ['var(--font-mono)', 'ui-monospace', 'SFMono-Regular', 'monospace'],
+        // Claimsure dark-UI fonts
+        inter: ['var(--font-inter)', 'system-ui', 'sans-serif'],
+        jakarta: ['var(--font-jakarta)', 'system-ui', 'sans-serif'],
       },
       colors: {
         // shadcn semantic tokens — populated from CSS variables in globals.css

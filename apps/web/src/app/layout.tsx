@@ -1,6 +1,6 @@
 import './globals.css';
 import type { Metadata, Viewport } from 'next';
-import { Fraunces, Inter_Tight, JetBrains_Mono } from 'next/font/google';
+import { Fraunces, Inter_Tight, Inter, Plus_Jakarta_Sans, JetBrains_Mono } from 'next/font/google';
 import { Providers } from '@/components/providers';
 
 /*
@@ -20,6 +20,19 @@ const fraunces = Fraunces({
 const interTight = Inter_Tight({
   subsets: ['latin'],
   variable: '--font-body',
+  display: 'swap',
+});
+
+const inter = Inter({
+  subsets: ['latin'],
+  variable: '--font-inter',
+  display: 'swap',
+});
+
+const plusJakartaSans = Plus_Jakarta_Sans({
+  subsets: ['latin'],
+  weight: ['600', '700', '800'],
+  variable: '--font-jakarta',
   display: 'swap',
 });
 
@@ -44,7 +57,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html
       lang="en"
-      className={`${fraunces.variable} ${interTight.variable} ${jetBrainsMono.variable}`}
+      className={`${fraunces.variable} ${interTight.variable} ${inter.variable} ${plusJakartaSans.variable} ${jetBrainsMono.variable}`}
     >
       <body>
         <Providers>{children}</Providers>
