@@ -1,5 +1,5 @@
 import type { NarrativeSegment } from '@cpa/schemas';
-import { EventCitation, type EventCitationEvent } from './EventCitation.js';
+import { EventCitation, type EventCitationEvent } from './EventCitation';
 
 /**
  * Web-side renderer for the narrative drafts produced by Agent C

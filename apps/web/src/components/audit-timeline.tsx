@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { ForensicChip, truncateHash as forensicChipTruncateHash } from './forensic-chip.js';
+import { ForensicChip, truncateHash as forensicChipTruncateHash } from './forensic-chip';
 
 // Re-export so existing call sites (audit-timeline.test.tsx + downstream
 // consumers that imported `truncateHash` from this module before the
