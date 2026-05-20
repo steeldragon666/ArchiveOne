@@ -1,3 +1,8 @@
+// MUST be the first import — force-loads .env values, overriding any
+// shell-leaked empty placeholders (notably ANTHROPIC_API_KEY="" from
+// Claude Desktop / MCP runtimes on Windows).
+import './force-env.js';
+
 // MUST be the first import — registers OTel auto-instrumentations before
 // any module that fastify/pino/postgres-js depends on is loaded.
 import { sdk } from './tracer-init.js';
@@ -19,6 +24,12 @@ import { generatePullRequest } from '@cpa/integrations/github-app';
 import { buildContractTestRunner } from './lib/contract-test-runner.js';
 import { getBoss, stopBoss } from './lib/pg-boss-client.js';
 import { registerRifDailyScrapeJob } from './jobs/rif-daily-scrape.js';
+import { registerGoogleDrivePollJob } from './jobs/google-drive-poll.js';
+import { registerClaimFinalisationJob } from './jobs/claim-finalisation.js';
+import { registerClaimActivityProposalJob } from './jobs/claim-activity-proposal.js';
+import { registerClaimEvidenceBindingJob } from './jobs/claim-evidence-binding.js';
+import { registerDocumentExtractJob } from './jobs/document-extract.js';
+import { registerGenerateApplicationJob } from './jobs/generate-application.js';
 
 const repoRoot = process.env['REPO_ROOT'] ?? process.cwd();
 
@@ -31,7 +42,10 @@ const app = buildApp({
   },
 });
 
-const port = Number(process.env.API_PORT ?? 3000);
+// Port resolution: prefer PORT (Railway/Fly/Render/Heroku inject this) →
+// API_PORT (local convention, lets you run web on 5173 + api on 3000 without
+// collision) → 3000 (Dockerfile EXPOSE matches).
+const port = Number(process.env.PORT ?? process.env.API_PORT ?? 3000);
 
 // pg-boss bootstrap (Task D.0). Lives here in the listening bootstrap
 // rather than inside buildApp() because buildApp() is a synchronous
@@ -45,7 +59,25 @@ if (process.env['NODE_ENV'] !== 'test') {
     // Register cron jobs
     await registerRifDailyScrapeJob(boss);
     app.log.info('rif-daily-scrape job registered');
+    await registerGoogleDrivePollJob(boss);
+    app.log.info('google-drive-poll job registered');
+    await registerClaimFinalisationJob(boss);
+    app.log.info('claim-finalisation job registered');
+    await registerClaimActivityProposalJob(boss);
+    app.log.info('claim-activity-proposal job registered');
+    await registerClaimEvidenceBindingJob(boss);
+    app.log.info('claim-evidence-binding job registered');
+    await registerDocumentExtractJob(boss);
+    app.log.info('document-extract job registered');
+    await registerGenerateApplicationJob(boss);
+    app.log.info('generate-application job registered');
   } catch (err) {
+    // Pino async transport can swallow this when process.exit(1) fires before
+    // flush (observed on Railway boot crashes). Write to stderr synchronously
+    // FIRST so the underlying error is always visible in container logs,
+    // then also log via Pino for structured-log consumers.
+    console.error('[BOOT FAILURE] pg-boss start failed:', err);
+    if (err instanceof Error && err.stack) console.error(err.stack);
     app.log.error(err, 'pg-boss start failed');
     await sdk.shutdown();
     process.exit(1);
@@ -56,10 +88,26 @@ try {
   await app.listen({ port, host: '0.0.0.0' });
   app.log.info({ port }, 'api listening');
 } catch (err) {
+  console.error('[BOOT FAILURE] app.listen failed:', err);
+  if (err instanceof Error && err.stack) console.error(err.stack);
   app.log.error(err);
   await sdk.shutdown();
   process.exit(1);
 }
+
+// Global safety net: anything that escapes the try/catches above (e.g.
+// synchronous throws inside instrumentation hooks, unhandledRejections
+// from async middleware) still gets surfaced before the process dies.
+process.on('uncaughtException', (err) => {
+  console.error('[UNCAUGHT EXCEPTION]', err);
+  if (err.stack) console.error(err.stack);
+  process.exit(1);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[UNHANDLED REJECTION]', reason);
+  if (reason instanceof Error && reason.stack) console.error(reason.stack);
+  process.exit(1);
+});
 
 const shutdown = async (signal: string): Promise<void> => {
   app.log.info({ signal }, 'shutting down');

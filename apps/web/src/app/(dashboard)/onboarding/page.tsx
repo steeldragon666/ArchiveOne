@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { AuthGuard } from '@/components/auth-guard';
+import { AppShell } from '@/components/app-shell';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { apiFetch } from '@/lib/api';
@@ -35,9 +35,9 @@ interface OnboardingStatus {
 
 export default function OnboardingPage() {
   return (
-    <AuthGuard>
+    <AppShell>
       <OnboardingContent />
-    </AuthGuard>
+    </AppShell>
   );
 }
 
@@ -84,25 +84,19 @@ function OnboardingContent() {
   }
 
   if (loading) {
-    return (
-      <main className="min-h-screen flex items-center justify-center bg-[#FAF8F3]">
-        <p className="text-slate-500 font-body">Loading onboarding status...</p>
-      </main>
-    );
+    return <p className="text-sm text-muted-foreground">Loading onboarding status...</p>;
   }
 
   if (error) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-[#FAF8F3]">
-        <Card className="w-full max-w-md">
-          <CardContent className="pt-6">
-            <p className="text-red-600">{error}</p>
-            <Button className="mt-4" variant="outline" onClick={() => window.location.reload()}>
-              Retry
-            </Button>
-          </CardContent>
-        </Card>
-      </main>
+      <Card className="w-full max-w-md">
+        <CardContent className="pt-6">
+          <p className="text-sm text-destructive">{error}</p>
+          <Button className="mt-4" variant="outline" onClick={() => window.location.reload()}>
+            Retry
+          </Button>
+        </CardContent>
+      </Card>
     );
   }
 
@@ -113,110 +107,107 @@ function OnboardingContent() {
   const allDone = completedCount === totalCount;
 
   return (
-    <main className="min-h-screen bg-[#FAF8F3] py-12 px-4">
-      <div className="max-w-2xl mx-auto">
-        <header className="mb-8">
-          <h1 className="text-3xl font-display font-semibold text-[#5C7A6B] mb-2">
-            Welcome to CPA Platform
-          </h1>
-          <p className="text-slate-600 font-body">
-            Complete these steps to get your firm up and running.
-          </p>
-        </header>
+    <div className="max-w-2xl mx-auto space-y-8">
+      <header className="space-y-2">
+        <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+          Onboarding
+        </p>
+        <h1 className="font-display text-3xl font-semibold tracking-tight">Welcome to Claimsure</h1>
+        <p className="text-muted-foreground">
+          Complete these steps to get your firm up and running.
+        </p>
+      </header>
 
-        {/* Progress indicator */}
-        <div className="mb-8">
-          <div className="flex justify-between text-sm text-slate-500 mb-2 font-body">
-            <span>Setup progress</span>
-            <span>
-              {completedCount} of {totalCount} steps complete
-            </span>
-          </div>
-          <div className="w-full bg-slate-200 rounded-full h-2">
-            <div
-              className="bg-[#5C7A6B] h-2 rounded-full transition-all duration-500"
-              style={{ width: `${(completedCount / totalCount) * 100}%` }}
-            />
-          </div>
+      {/* Progress indicator */}
+      <div>
+        <div className="flex justify-between font-mono text-xs text-muted-foreground mb-2">
+          <span className="uppercase tracking-widest text-[10px]">Setup progress</span>
+          <span>
+            {completedCount} of {totalCount} steps complete
+          </span>
         </div>
+        <div className="w-full bg-muted rounded-full h-2">
+          <div
+            className="bg-primary h-2 rounded-full transition-all duration-500"
+            style={{ width: `${(completedCount / totalCount) * 100}%` }}
+          />
+        </div>
+      </div>
 
-        {/* Checklist */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="font-display">Onboarding Checklist</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ul className="space-y-4">
-              {status.steps.map((step) => (
-                <li key={step.key} className="flex items-start gap-3">
-                  <div
-                    className={`mt-0.5 flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${
-                      step.completed ? 'bg-[#5C7A6B] border-[#5C7A6B]' : 'border-slate-300 bg-white'
+      {/* Checklist */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="font-display text-2xl font-medium">Onboarding checklist</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ul className="space-y-4">
+            {status.steps.map((step) => (
+              <li key={step.key} className="flex items-start gap-3">
+                <div
+                  className={`mt-0.5 flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${
+                    step.completed ? 'bg-primary border-primary' : 'border-border bg-card'
+                  }`}
+                >
+                  {step.completed && (
+                    <svg
+                      className="w-3.5 h-3.5 text-primary-foreground"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={3}
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
+                </div>
+                <div className="flex-1">
+                  <p
+                    className={`font-medium ${
+                      step.completed ? 'text-muted-foreground' : 'text-foreground'
                     }`}
                   >
-                    {step.completed && (
-                      <svg
-                        className="w-3.5 h-3.5 text-white"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                        strokeWidth={3}
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                      </svg>
-                    )}
-                  </div>
-                  <div className="flex-1">
-                    <p
-                      className={`font-body font-medium ${
-                        step.completed ? 'text-slate-700' : 'text-slate-900'
-                      }`}
-                    >
-                      {step.label}
+                    {step.label}
+                  </p>
+                  {step.completedAt && (
+                    <p className="font-mono text-xs text-muted-foreground mt-0.5">
+                      Completed{' '}
+                      {new Date(step.completedAt).toLocaleDateString('en-AU', {
+                        day: 'numeric',
+                        month: 'short',
+                        year: 'numeric',
+                      })}
                     </p>
-                    {step.completedAt && (
-                      <p className="text-xs text-slate-400 mt-0.5">
-                        Completed{' '}
-                        {new Date(step.completedAt).toLocaleDateString('en-AU', {
-                          day: 'numeric',
-                          month: 'short',
-                          year: 'numeric',
-                        })}
-                      </p>
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </CardContent>
+      </Card>
 
-        {/* Actions */}
-        <div className="mt-8 flex gap-4 justify-end">
-          <Button variant="outline" onClick={() => router.push('/')}>
-            Skip for now
-          </Button>
-          <Button
-            onClick={() => void handleComplete()}
-            disabled={completing}
-            className="bg-[#5C7A6B] hover:bg-[#4a6858] text-white"
-          >
-            {completing ? 'Completing...' : allDone ? 'Complete Setup' : 'Mark as Complete'}
-          </Button>
-        </div>
+      {/* Actions */}
+      <div className="flex gap-4 justify-end">
+        <Button variant="outline" onClick={() => router.push('/')}>
+          Skip for now
+        </Button>
+        <Button onClick={() => void handleComplete()} disabled={completing}>
+          {completing ? 'Completing...' : allDone ? 'Complete setup' : 'Mark as complete'}
+        </Button>
+      </div>
 
-        {status.completed && status.completedAt && (
-          <p className="mt-4 text-center text-sm text-slate-500 font-body">
-            Onboarding was completed on{' '}
+      {status.completed && status.completedAt && (
+        <p className="text-center text-sm text-muted-foreground">
+          Onboarding was completed on{' '}
+          <span className="font-mono">
             {new Date(status.completedAt).toLocaleDateString('en-AU', {
               day: 'numeric',
               month: 'long',
               year: 'numeric',
             })}
-            .
-          </p>
-        )}
-      </div>
-    </main>
+          </span>
+          .
+        </p>
+      )}
+    </div>
   );
 }

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # -----------------------------------------------------------------------------
-# CPA Platform — GCP Budget Alerts
+# Claimsure — GCP Budget Alerts
 #
 # Creates billing budget alerts at 50%, 90%, and 100% of a $200 AUD/month
 # cap for both the production and staging projects.
@@ -12,8 +12,8 @@ set -euo pipefail
 #   bash tools/gcp/budget-alerts.sh
 #
 # All variables can be overridden via environment:
-#   PROD_PROJECT        — defaults to cpa-platform-prod
-#   STG_PROJECT         — defaults to cpa-platform-stg
+#   PROD_PROJECT        — defaults to claimsure-prod
+#   STG_PROJECT         — defaults to claimsure-stg
 #   BUDGET_AMOUNT       — defaults to 200AUD
 #   BILLING_ACCOUNT_ID  — required, no default
 #
@@ -23,8 +23,8 @@ set -euo pipefail
 # re-running.
 # -----------------------------------------------------------------------------
 
-PROD_PROJECT="${PROD_PROJECT:-cpa-platform-prod}"
-STG_PROJECT="${STG_PROJECT:-cpa-platform-stg}"
+PROD_PROJECT="${PROD_PROJECT:-claimsure-prod}"
+STG_PROJECT="${STG_PROJECT:-claimsure-stg}"
 BUDGET_AMOUNT="${BUDGET_AMOUNT:-200AUD}"
 
 # BILLING_ACCOUNT_ID is required — fail fast with a helpful message if unset
@@ -71,27 +71,27 @@ info "=== Creating budget alerts ==="
 # -----------------------------------------------------------------------------
 # Production budget
 # -----------------------------------------------------------------------------
-create_budget "${PROD_PROJECT}" "CPA Platform Prod Monthly Budget"
+create_budget "${PROD_PROJECT}" "Claimsure Prod Monthly Budget"
 
 # -----------------------------------------------------------------------------
 # Staging budget
 # -----------------------------------------------------------------------------
-create_budget "${STG_PROJECT}" "CPA Platform Stg Monthly Budget"
+create_budget "${STG_PROJECT}" "Claimsure Stg Monthly Budget"
 
 # -----------------------------------------------------------------------------
 # Summary
 # -----------------------------------------------------------------------------
 echo ""
 echo "============================================================"
-echo " CPA Platform GCP Budget Alerts — Summary"
+echo " Claimsure GCP Budget Alerts — Summary"
 echo "============================================================"
 echo " Billing account : ${BILLING_ACCOUNT_ID}"
 echo " Budget amount   : ${BUDGET_AMOUNT} / month (per project)"
 echo ""
 echo " Budgets created:"
-echo "   + CPA Platform Prod Monthly Budget (${PROD_PROJECT})"
+echo "   + Claimsure Prod Monthly Budget (${PROD_PROJECT})"
 echo "     Alerts at 50% (\$100), 90% (\$180), 100% (\$200)"
-echo "   + CPA Platform Stg Monthly Budget (${STG_PROJECT})"
+echo "   + Claimsure Stg Monthly Budget (${STG_PROJECT})"
 echo "     Alerts at 50% (\$100), 90% (\$180), 100% (\$200)"
 echo ""
 echo " Verify in GCP Console:"

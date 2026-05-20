@@ -57,6 +57,10 @@
     "./regulatory": {
       "types": "./dist/regulatory/index.d.ts",
       "import": "./dist/regulatory/index.js"
+    },
+    "./google-drive": {
+      "types": "./dist/google-drive/index.d.ts",
+      "import": "./dist/google-drive/index.js"
     }
   },
   "scripts": {

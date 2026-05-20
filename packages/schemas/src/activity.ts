@@ -49,6 +49,60 @@ export const Activity = z.object({
   actual_outcome: z.string().nullable(),
   created_at: Iso8601,
   updated_at: Iso8601,
+  /**
+   * Narrative-approval review metadata (migration 0079).
+   *
+   * `needs_review` — true when the activity was auto-created by the
+   *   narrative-approval flow at a confidence below
+   *   AUTO_CREATE_CONFIDENCE_THRESHOLD (default 0.80). Consultants spot-check
+   *   these via the 🤖 review chip on the Activities tab and clear the flag
+   *   via POST /v1/activities/:id/mark-reviewed (emits ACTIVITY_REVIEWED).
+   * `proposal_confidence` — original AI confidence (0.0-1.0) at the moment
+   *   of auto-creation. Null for manually-created or per-card-confirmed rows.
+   * `proposed_from_event_id` — the upload event id whose extracted_content
+   *   the activity was derived from. Null for manual/confirmed rows. Used by
+   *   the ReviewActivityDialog to link back to the source document.
+   *
+   * All three are optional (default omitted by the server) so older client
+   * builds and rows from before the migration round-trip cleanly.
+   */
+  needs_review: z.boolean().optional(),
+  proposal_confidence: z.number().min(0).max(1).nullable().optional(),
+  proposed_from_event_id: Uuid.nullable().optional(),
+  /**
+   * AusIndustry portal-ready field content (migration 0044).
+   *
+   * Empty object `{}` when the activity has not yet been processed through
+   * the `draft-narrative@1.2.0` portal-fields agent. When populated, the
+   * shape is one of:
+   *   - { activity_kind: 'core',       fields: CorePortalFields }
+   *   - { activity_kind: 'supporting', fields: SupportingPortalFields }
+   * (see `./portal-fields.ts` for the per-kind field shapes — 13 / 9).
+   *
+   * Kept as a permissive `z.record` here so callers that fetch the row
+   * before the portal-fields wiring has run round-trip cleanly. Callers
+   * displaying the content should parse against `CorePortalFieldsSchema`
+   * or `SupportingPortalFieldsSchema` (selected by `activity_kind`).
+   */
+  portal_fields: z.record(z.unknown()).default({}),
+  /**
+   * Prior portal_fields snapshots, oldest first (migration 0080).
+   * Each entry: { portal_fields, saved_at: ISO, source: 'agent'|'edit' }.
+   * Server caps the array at the most-recent 10 entries.
+   *
+   * Default `[]` so old callers and rows from before the migration
+   * round-trip cleanly. Optional on the wire — GET/list endpoints may
+   * elide it for payload-size reasons even when populated.
+   */
+  portal_fields_history: z
+    .array(
+      z.object({
+        portal_fields: z.record(z.unknown()),
+        saved_at: z.string(),
+        source: z.enum(['agent', 'edit']),
+      }),
+    )
+    .default([]),
 });
 export type Activity = z.infer<typeof Activity>;
 

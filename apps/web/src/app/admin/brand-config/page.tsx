@@ -1,6 +1,6 @@
 'use client';
 import { Suspense } from 'react';
-import { AuthGuard } from '@/components/auth-guard';
+import { AppShell } from '@/components/app-shell';
 import { BrandConfigForm } from './_components/brand-config-form';
 
 /**
@@ -20,19 +20,24 @@ import { BrandConfigForm } from './_components/brand-config-form';
  */
 export default function BrandConfigPage() {
   return (
-    <AuthGuard>
-      <main className="container mx-auto py-8 px-4 space-y-6">
-        <div className="space-y-2">
-          <h1 className="text-2xl font-bold">Brand &amp; White-Label</h1>
-          <p className="text-sm text-muted-foreground">
-            Configure your firm&apos;s logo, colors, and branding. The mobile app and claimant
+    <AppShell>
+      <div className="space-y-8">
+        <header className="space-y-2">
+          <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+            Administration
+          </p>
+          <h1 className="font-display text-3xl font-semibold tracking-tight">
+            Brand &amp; white-label
+          </h1>
+          <p className="text-muted-foreground max-w-2xl">
+            Configure your firm&apos;s logo, colours, and branding. The mobile app and claimant
             dashboard inherit these settings.
           </p>
-        </div>
-        <Suspense fallback={<p className="text-slate-500">Loading…</p>}>
+        </header>
+        <Suspense fallback={<p className="text-sm text-muted-foreground">Loading…</p>}>
           <BrandConfigForm />
         </Suspense>
-      </main>
-    </AuthGuard>
+      </div>
+    </AppShell>
   );
 }

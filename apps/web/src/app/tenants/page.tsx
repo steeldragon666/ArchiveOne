@@ -1,5 +1,5 @@
 'use client';
-import { AuthGuard } from '@/components/auth-guard';
+import { AppShell } from '@/components/app-shell';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Table,
@@ -13,9 +13,9 @@ import { useWhoami } from '@/hooks/use-whoami';
 
 export default function TenantsPage() {
   return (
-    <AuthGuard>
+    <AppShell>
       <Inner />
-    </AuthGuard>
+    </AppShell>
   );
 }
 
@@ -26,15 +26,23 @@ function Inner() {
   const activeId = data.user.tenantId;
 
   return (
-    <main className="container mx-auto py-8 px-4">
-      <h1 className="text-2xl font-bold mb-6">My firms</h1>
+    <div className="space-y-8">
+      <header className="space-y-2">
+        <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+          Administration
+        </p>
+        <h1 className="font-display text-3xl font-semibold tracking-tight">My firms</h1>
+        <p className="text-muted-foreground max-w-2xl">
+          Every firm you have access to. Switch firms from the header dropdown.
+        </p>
+      </header>
       <Card>
         <CardHeader>
-          <CardTitle>Memberships</CardTitle>
+          <CardTitle className="font-display text-2xl font-medium">Memberships</CardTitle>
         </CardHeader>
         <CardContent>
           {data.availableTenants.length === 0 ? (
-            <p className="text-slate-500">
+            <p className="text-sm text-muted-foreground">
               No firm memberships yet. Ask your firm admin to add you.
             </p>
           ) : (
@@ -52,21 +60,29 @@ function Inner() {
                   <TableRow key={t.tenantId}>
                     <TableCell>
                       <div className="font-medium">{t.name}</div>
-                      <div className="text-xs text-slate-400">{t.slug}</div>
+                      <div className="font-mono text-xs text-muted-foreground">{t.slug}</div>
                     </TableCell>
                     <TableCell>{t.role}</TableCell>
                     <TableCell>{t.isDefault ? 'Yes' : 'No'}</TableCell>
-                    <TableCell>{t.tenantId === activeId ? 'Active' : ''}</TableCell>
+                    <TableCell>
+                      {t.tenantId === activeId ? (
+                        <span className="font-mono text-[10px] uppercase tracking-widest text-primary">
+                          Active
+                        </span>
+                      ) : (
+                        ''
+                      )}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
           )}
-          <p className="text-sm text-slate-500 mt-4">
+          <p className="text-sm text-muted-foreground mt-4">
             To switch firms, use the dropdown in the dashboard header.
           </p>
         </CardContent>
       </Card>
-    </main>
+    </div>
   );
 }

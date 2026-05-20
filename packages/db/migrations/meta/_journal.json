@@ -323,6 +323,69 @@
       "when": 1778152200000,
       "tag": "0072_federation_read_event_kind",
       "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1778238600000,
+      "tag": "0073_p5a_event_kinds_and_time_entry_soft_delete",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1778238660000,
+      "tag": "0074_rif_connector_url_fixes",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1778238720000,
+      "tag": "0075_cloud_sync_connection",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1778238780000,
+      "tag": "0076_event_suggestion_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1778238840000,
+      "tag": "0077_claim_finalisation_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1778325000000,
+      "tag": "0078_event_extraction_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1778325060000,
+      "tag": "0079_narrative_approval_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1778569200000,
+      "tag": "0080_portal_fields_history",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1778569260000,
+      "tag": "0081_claim_workflow_state",
+      "breakpoints": true
     }
   ]
 }

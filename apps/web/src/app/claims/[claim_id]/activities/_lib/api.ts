@@ -7,6 +7,45 @@ import type {
 } from '@cpa/schemas';
 import { apiFetch } from '@/lib/api';
 
+// =====================================================================
+// Activity create
+// =====================================================================
+
+/**
+ * POST /v1/activities body. Mirrors {@link CreateActivityBody} in
+ * packages/schemas/src/activity.ts. `tenant_id` is derived from the session
+ * server-side — clients never send it. `code` (CA-NN / SA-NN) is assigned
+ * server-side; callers do not supply it.
+ */
+export interface CreateActivityInput {
+  project_id: string;
+  claim_id: string;
+  kind: 'core' | 'supporting';
+  title: string;
+  description?: string;
+  hypothesis?: string;
+  technical_uncertainty?: string;
+  expected_outcome?: string;
+}
+
+/**
+ * POST /v1/activities. Returns the created activity row.
+ *
+ * Response shape: `{ activity: Activity }` — unwrapped to the inner Activity
+ * so callers can write `const created = await createActivity(input)`.
+ *
+ * Typed errors from apiFetch:
+ *   - 403 → ForbiddenError (viewer role)
+ *   - 404 → NotFoundError (claim_id or project_id not in firm)
+ */
+export async function createActivity(input: CreateActivityInput): Promise<Activity> {
+  const body = await apiFetch<{ activity: Activity }>('/v1/activities', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return body.activity;
+}
+
 /**
  * Typed fetch helpers for the activity detail surface (T-A5) and the
  * technical-uncertainty register (T-A6).
@@ -92,4 +131,105 @@ export async function listActivityEvents(
   if (opts.kinds && opts.kinds.length > 0) qs.set('kind', opts.kinds.join(','));
   if (opts.limit) qs.set('limit', String(opts.limit));
   return apiFetch<ListActivityEventsResponse>(`/v1/events?${qs.toString()}`);
+}
+
+// =====================================================================
+// Portal-fields generation (draft-narrative@1.2.0)
+// =====================================================================
+
+/**
+ * Generated portal-fields envelope. Discriminated on `activity_kind`:
+ *   - 'core'       → fields has 13 keys (s.355-25 registration)
+ *   - 'supporting' → fields has 9 keys (s.355-30 registration)
+ *
+ * Kept loose here (`Record<string, unknown>` for `fields`) — the web
+ * layer doesn't import the agents/schemas portal-field shapes directly
+ * to keep the UI decoupled. Display code reads keys defensively.
+ */
+export type GeneratedPortalFields = {
+  activity_kind: 'core' | 'supporting';
+  fields: Record<string, unknown>;
+};
+
+export type GeneratePortalFieldsResponse = {
+  portal_fields: GeneratedPortalFields;
+  meta: {
+    model: string;
+    prompt_version: string;
+    tokens_in: number;
+    tokens_out: number;
+    elapsed_ms: number;
+    events_count: number;
+  };
+};
+
+/**
+ * POST /v1/activities/:id/portal-fields. Generates the 13/9 AusIndustry
+ * portal-ready fields via the `draft-narrative@1.2.0` agent and persists
+ * into `activity.portal_fields`.
+ *
+ * Long-running (~50-75s with Sonnet 4.5) — callers should display a
+ * pending state. Returns the validated portal-fields envelope.
+ */
+export async function generatePortalFields(
+  activityId: string,
+): Promise<GeneratePortalFieldsResponse> {
+  return apiFetch<GeneratePortalFieldsResponse>(`/v1/activities/${activityId}/portal-fields`, {
+    method: 'POST',
+  });
+}
+
+/**
+ * PATCH /v1/activities/:id/portal-fields. Edits the previously-generated
+ * fields. Body is a partial `fields` object; the server shallow-merges
+ * with the existing payload and re-validates against the kind-appropriate
+ * Zod schema (`CorePortalFieldsSchema` or `SupportingPortalFieldsSchema`).
+ *
+ * Errors:
+ *   - 400 with `issues` if the merged payload fails validation (over
+ *     char limit, invalid enum, etc.) — surface the issue list to the user.
+ *   - 404 if portal_fields has not been generated yet (POST first).
+ */
+export type EditPortalFieldsResponse = {
+  portal_fields: GeneratedPortalFields;
+};
+
+export async function editPortalFields(
+  activityId: string,
+  fields: Record<string, unknown>,
+): Promise<EditPortalFieldsResponse> {
+  return apiFetch<EditPortalFieldsResponse>(`/v1/activities/${activityId}/portal-fields`, {
+    method: 'PATCH',
+    body: JSON.stringify({ fields }),
+  });
+}
+
+/**
+ * POST /v1/activities/:id/portal-fields/trim — stateless transform that
+ * asks Haiku to compress an over-cap text field into a shorter version
+ * preserving meaning + statutory register.
+ *
+ * Does NOT persist — caller must apply the suggestion to the editor draft
+ * and Save via PATCH if they accept it.
+ */
+export type TrimPortalFieldResponse = {
+  trimmed: string;
+  meta: {
+    original_length: number;
+    trimmed_length: number;
+    target_max: number;
+    fits_cap: boolean;
+    is_shorter: boolean;
+    elapsed_ms: number;
+  };
+};
+
+export async function trimPortalField(
+  activityId: string,
+  args: { field_key: string; current_text: string; target_max: number },
+): Promise<TrimPortalFieldResponse> {
+  return apiFetch<TrimPortalFieldResponse>(`/v1/activities/${activityId}/portal-fields/trim`, {
+    method: 'POST',
+    body: JSON.stringify(args),
+  });
 }

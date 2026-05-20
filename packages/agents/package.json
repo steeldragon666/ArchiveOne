@@ -45,6 +45,10 @@
     "./regulatory-classifier": {
       "types": "./dist/regulatory-classifier/index.d.ts",
       "import": "./dist/regulatory-classifier/index.js"
+    },
+    "./document-analyzer": {
+      "types": "./dist/document-analyzer/index.d.ts",
+      "import": "./dist/document-analyzer/index.js"
     }
   },
   "scripts": {

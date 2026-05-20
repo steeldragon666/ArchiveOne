@@ -5,7 +5,7 @@ import { CLASSIFIABLE_KINDS } from '../types.js';
 export const classifyToolSchema = z.object({
   kind: z.enum(CLASSIFIABLE_KINDS),
   confidence: z.number().min(0).max(1),
-  rationale: z.string().max(500),
+  rationale: z.string().max(20000),
   statutory_anchor: z.string().nullable(),
 });
 
@@ -37,7 +37,9 @@ Return your answer via the classify_evidence tool. Provide:
 - kind: the single best classification
 - confidence: your subjective probability (0..1) that a competent reviewer
   would agree. Use < 0.7 to indicate genuine uncertainty.
-- rationale: a one-sentence justification (<= 500 chars).
+- rationale: a justification (<= 20000 chars). Prefer concise (1–3 sentences)
+  but verbose technical reasoning is acceptable when the classification is
+  non-obvious or domain-specific.
 - statutory_anchor: the most relevant Division 355 reference if any
   (e.g. "§355-25(1)(a)", "§355-25(2)(a)", "§355-30"), or null.
 

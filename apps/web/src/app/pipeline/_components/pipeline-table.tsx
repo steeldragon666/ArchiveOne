@@ -9,6 +9,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { EmptyState } from '@/components/empty-state';
 import { cn } from '@/lib/utils';
 import { daysInStage, formatRelativeTime } from '../_lib/format';
 import { type Role, type UsePipelineClaimsResult } from '../_lib/use-pipeline-claims';
@@ -171,12 +172,12 @@ export function PipelineTable({
 
   if (sortedClaims.length === 0) {
     return (
-      <section
-        role="region"
-        aria-label="Table view"
-        className="rounded-md border border-dashed p-12 text-center"
-      >
-        <p className="text-sm text-muted-foreground">No claims match the current filters.</p>
+      <section role="region" aria-label="Table view">
+        <EmptyState
+          icon="file"
+          title="No claims found"
+          description="No claims match the current filters. Try adjusting stage or search filters."
+        />
       </section>
     );
   }

@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 /*
- * CPA Platform — design system tokens.
+ * Claimsure — design system tokens.
  * Source of truth: docs/design/system.md + docs/design/tokens.json
  *
  * shadcn semantic tokens (--background, --primary, etc.) are populated
@@ -55,7 +55,7 @@
     /* Radius — sharper than shadcn 8px default; matches design system spec */
     --radius: 0.25rem; /* 4px — buttons, inputs */
 
-    /* CPA Platform brand-specific tokens (not part of shadcn surface) */
+    /* Claimsure brand-specific tokens (not part of shadcn surface) */
     --brand-base: 43 36% 97%;
     --brand-ink: 36 9% 9%;
     --brand-ink-muted: 33 10% 38%;
@@ -71,26 +71,67 @@
   }
 
   .dark {
-    /* Dark mode deferred to P9. Tokens scaffolded but not used. */
-    --background: 36 9% 9%;
-    --foreground: 43 36% 97%;
-    --card: 36 9% 14%;
-    --card-foreground: 43 36% 97%;
-    --popover: 36 9% 14%;
-    --popover-foreground: 43 36% 97%;
-    --primary: 140 12% 52%;
-    --primary-foreground: 36 9% 9%;
-    --secondary: 36 9% 18%;
-    --secondary-foreground: 43 36% 97%;
-    --muted: 36 9% 18%;
-    --muted-foreground: 33 10% 60%;
-    --accent: 36 9% 18%;
-    --accent-foreground: 43 36% 97%;
-    --destructive: 0 49% 52%;
-    --destructive-foreground: 43 36% 97%;
-    --border: 36 9% 22%;
-    --input: 36 9% 22%;
-    --ring: 140 12% 52%;
+    /* Claimsure dark mode — deep navy-black glass aesthetic */
+    --background: 220 30% 6%;
+    --foreground: 230 60% 95%;
+    --card: 225 28% 10%;
+    --card-foreground: 230 60% 95%;
+    --popover: 225 28% 10%;
+    --popover-foreground: 230 60% 95%;
+    --primary: 238 68% 56%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 225 22% 18%;
+    --secondary-foreground: 230 60% 95%;
+    --muted: 225 22% 18%;
+    --muted-foreground: 215 16% 57%;
+    --accent: 225 22% 18%;
+    --accent-foreground: 230 60% 95%;
+    --destructive: 0 72% 71%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 225 20% 15%;
+    --input: 225 20% 15%;
+    --ring: 238 68% 56%;
+
+    /* Claimsure-specific dark tokens */
+    --cs-surface:                   #0a0d14;
+    --cs-surface-dim:               #0a0d14;
+    --cs-surface-container-lowest:  #070910;
+    --cs-surface-container-low:     #0f131e;
+    --cs-surface-container:         #161b29;
+    --cs-surface-container-high:    #1c2233;
+    --cs-surface-container-highest: #242b40;
+    --cs-surface-variant:           rgba(255,255,255,0.05);
+    --cs-on-surface:                #eef0ff;
+    --cs-on-surface-variant:        #94a3b8;
+    --cs-outline-variant:           rgba(255,255,255,0.10);
+    --cs-outline:                   #475569;
+
+    --cs-primary:                   #4648d4;
+    --cs-primary-container:         #6063ee;
+    --cs-primary-fixed:             #e1e0ff;
+    --cs-primary-fixed-dim:         #c0c1ff;
+    --cs-on-primary:                #ffffff;
+
+    --cs-secondary-fixed:           #71f8e4;
+    --cs-secondary-fixed-dim:       #4fdbc8;
+
+    --cs-tertiary-fixed:            #ffdcc5;
+    --cs-tertiary-fixed-dim:        #ffb783;
+
+    --cs-error:                     #ff6b6b;
+    --cs-warn:                      #ffb783;
+    --cs-success:                   #4fdbc8;
+
+    --cs-glass-bg:                  rgba(255,255,255,0.03);
+    --cs-glass-border:              rgba(255,255,255,0.10);
+    --cs-glass-blur:                12px;
+
+    --cs-ai-grad: radial-gradient(circle at top right, rgba(70,72,212,0.28), transparent 60%);
+    --cs-ai-glow: 0 0 40px rgba(70,72,212,0.22);
+    --cs-primary-glow: 0 0 24px rgba(70,72,212,0.40);
+
+    --cs-ease-out: cubic-bezier(.16,1,.3,1);
+    --cs-ease-spring: cubic-bezier(.34,1.56,.64,1);
   }
 }
 
@@ -121,6 +162,82 @@
   pre {
     font-variant-numeric: tabular-nums;
   }
+}
+
+/*
+ * Claimsure dark-glass component styles.
+ * Scoped to .dark so they don't affect the light-mode consultant UI.
+ */
+@layer components {
+  .cs-glass {
+    background: var(--cs-glass-bg);
+    backdrop-filter: blur(var(--cs-glass-blur));
+    -webkit-backdrop-filter: blur(var(--cs-glass-blur));
+    border: 1px solid var(--cs-glass-border);
+  }
+
+  .cs-ai-glow {
+    background: var(--cs-ai-grad), var(--cs-glass-bg);
+    box-shadow: var(--cs-ai-glow);
+    border: 1px solid rgba(70,72,212,0.30);
+  }
+
+  .cs-primary-glow {
+    box-shadow: var(--cs-primary-glow);
+  }
+
+  .cs-gradient-text {
+    background: linear-gradient(115deg, var(--cs-primary-fixed-dim) 0%, var(--cs-secondary-fixed-dim) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
+
+  .cs-timeline-line {
+    background: linear-gradient(to bottom, var(--cs-primary) 0%, rgba(70,72,212,0.1) 100%);
+  }
+}
+
+@layer utilities {
+  @keyframes cs-ai-pulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50%       { transform: scale(1.4); opacity: 0.4; }
+  }
+  .cs-ai-pulse {
+    animation: cs-ai-pulse 2.6s ease-out infinite;
+  }
+
+  @keyframes cs-shimmer {
+    0%   { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+  .cs-shimmer {
+    background-image: linear-gradient(90deg,
+      rgba(70,72,212,0.10) 0%,
+      rgba(70,72,212,0.30) 50%,
+      rgba(70,72,212,0.10) 100%);
+    background-size: 200% 100%;
+    animation: cs-shimmer 2.5s linear infinite;
+  }
+
+  @keyframes cs-typing-dot {
+    0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+    30% { transform: translateY(-4px); opacity: 1; }
+  }
+  .cs-typing-dot { animation: cs-typing-dot 1.2s infinite; }
+
+  @keyframes cs-page-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .cs-page-in { animation: cs-page-in 0.45s cubic-bezier(.16,1,.3,1) both; }
+
+  @keyframes cs-sparkle {
+    from { stroke-dashoffset: 1000; }
+    to   { stroke-dashoffset: 0; }
+  }
+  .cs-spark-path { stroke-dasharray: 1000; animation: cs-sparkle 2s cubic-bezier(.16,1,.3,1) forwards; }
 }
 
 /*

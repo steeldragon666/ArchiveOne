@@ -1,10 +1,10 @@
 'use client';
-import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { Claim } from '@cpa/schemas';
-import { AuthGuard } from '@/components/auth-guard';
+import { AppShell } from '@/components/app-shell';
+import { StartClaimButton } from '@/components/start-claim-button';
 import { PipelineBulkToolbar } from './_components/pipeline-bulk-toolbar';
 import { PipelineFilters, type ConsultantOption } from './_components/pipeline-filters';
 import { PipelineKanban } from './_components/pipeline-kanban';
@@ -42,9 +42,9 @@ import { useWhoami } from '@/hooks/use-whoami';
  */
 export default function PipelinePage() {
   return (
-    <AuthGuard>
+    <AppShell>
       <Inner />
-    </AuthGuard>
+    </AppShell>
   );
 }
 
@@ -98,19 +98,26 @@ function Inner() {
   const claimsHook = usePipelineClaims({ claims: claimsQuery.data ?? [] });
   const selection = usePipelineSelection();
 
-  return (
-    <main className="container mx-auto space-y-6 px-4 py-8">
-      <div>
-        <Link href="/" className="text-sm text-muted-foreground hover:underline">
-          ← Dashboard
-        </Link>
-      </div>
+  const claimCount = claimsQuery.data?.length ?? 0;
 
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold">Pipeline</h1>
-        <span className="text-xs text-muted-foreground">
-          {claimsQuery.data?.length ?? 0} claim{claimsQuery.data?.length === 1 ? '' : 's'}
-        </span>
+  return (
+    <div className="space-y-8">
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div className="space-y-2">
+          <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+            Workspace
+          </p>
+          <h1 className="font-display text-3xl font-semibold tracking-tight">Pipeline</h1>
+          <p className="text-muted-foreground max-w-2xl">
+            Claims in flight across every stage from intake through lodgement.
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="font-mono text-xs text-muted-foreground">
+            {claimCount} claim{claimCount === 1 ? '' : 's'}
+          </span>
+          <StartClaimButton />
+        </div>
       </header>
 
       <PipelineFilters
@@ -133,7 +140,7 @@ function Inner() {
         role={role}
         sort={sort}
       />
-    </main>
+    </div>
   );
 }
 

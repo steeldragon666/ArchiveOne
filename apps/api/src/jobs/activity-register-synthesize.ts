@@ -92,7 +92,7 @@ export const AGENT_B_SYSTEM_USER_ID = '00000000-0000-4000-8000-000000a90002';
  * lifecycle, not R&D content). Kept as a plain string-literal array so
  * the SQL `kind = ANY(...)` bind is straightforward.
  */
-const EVIDENCE_KINDS = [
+export const EVIDENCE_KINDS = [
   'HYPOTHESIS',
   'DESIGN',
   'EXPERIMENT',
@@ -208,21 +208,39 @@ export function compressEvent(row: EventRow): CompressedEvent {
 /**
  * Build the deterministic idempotency cache key.
  *
- * The raw input is `{project_id, sorted_event_ids, sorted_existing_activity_ids}`
- * — sorting both id arrays makes the key stable across DB-row-ordering
- * changes (two rows captured at the same `captured_at` could swap order
- * across runs; sorting eliminates that as a source of cache miss).
+ * The raw input is `{project_id, claim_id?, fiscal_year?, sorted_event_ids,
+ * sorted_existing_activity_ids}` — sorting both id arrays makes the key
+ * stable across DB-row-ordering changes (two rows captured at the same
+ * `captured_at` could swap order across runs; sorting eliminates that as
+ * a source of cache miss).
+ *
+ * `claim_id` and `fiscal_year` are optional inputs that scope the cache
+ * to a per-claim grain. The legacy project-level caller
+ * (`runActivityRegisterSynthesizeJob`) omits them and gets a
+ * project-scoped key. The per-claim caller
+ * (`runClaimActivityProposalJob`) MUST pass both so that Claim A
+ * (FY2024) and Claim B (FY2025) on the same project with overlapping
+ * event sets get distinct cache keys — otherwise B silently inherits
+ * A's `skipped_idempotent` outcome and never emits its own
+ * `ACTIVITY_REGISTER_DRAFTED` event.
  *
  * Exposed for direct unit testing — the spec requires asserting that
- * the key construction is order-independent (test #8 in the test file).
+ * the key construction is order-independent.
  */
 export function buildIdempotencyKey(args: {
   project_id: string;
   event_ids: string[];
   existing_activity_ids: string[];
+  claim_id?: string;
+  fiscal_year?: number;
 }): string {
   const raw = JSON.stringify({
     project_id: args.project_id,
+    // Only include when caller supplied — preserves the legacy
+    // project-scoped key shape for `runActivityRegisterSynthesizeJob`
+    // while widening the per-claim caller's key.
+    ...(args.claim_id !== undefined ? { claim_id: args.claim_id } : {}),
+    ...(args.fiscal_year !== undefined ? { fiscal_year: args.fiscal_year } : {}),
     sorted_event_ids: [...args.event_ids].sort(),
     existing_activity_ids: [...args.existing_activity_ids].sort(),
   });

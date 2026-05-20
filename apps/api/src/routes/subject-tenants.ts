@@ -1,8 +1,16 @@
 import type { FastifyInstance } from 'fastify';
 import { requireSession } from '@cpa/auth';
-import { verifyChain } from '@cpa/db';
+import { verifyChain, insertEventWithChain } from '@cpa/db';
 import { sql } from '@cpa/db/client';
-import { createSubjectTenantBody, listSubjectTenantsQuery, type SubjectTenant } from '@cpa/schemas';
+// crypto is built-in; no package import needed — randomUUID lives on globalThis in Node 18+.
+import {
+  createSubjectTenantBody,
+  listSubjectTenantsQuery,
+  updateSubjectTenantBody,
+  SubjectTenantArchivedPayload,
+  SubjectTenantUpdatedPayload,
+  type SubjectTenant,
+} from '@cpa/schemas';
 
 interface RawSubjectTenantRow {
   id: string;
@@ -194,6 +202,184 @@ export function registerSubjectTenants(app: FastifyInstance): void {
           head_hash: heads[0]?.hash ?? null,
         };
       });
+    },
+  );
+
+  // -----------------------------------------------------------------------
+  // PATCH /v1/subject-tenants/:id — partial update + emit SUBJECT_TENANT_UPDATED.
+  // -----------------------------------------------------------------------
+  app.patch<{ Params: { id: string } }>(
+    '/v1/subject-tenants/:id',
+    { preHandler: requireSession },
+    async (req, reply) => {
+      const role = req.user!.role;
+      if (role !== 'admin' && role !== 'consultant') {
+        return reply.status(403).send({
+          error: 'forbidden',
+          message: 'Admin or consultant role required',
+          requestId: req.id,
+        });
+      }
+
+      const parsed = updateSubjectTenantBody.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'invalid_body',
+          message: 'Body must be a partial update of { name?, kind? } with no extra keys',
+          requestId: req.id,
+        });
+      }
+      const patch = parsed.data;
+      const { id } = req.params;
+      const tenantId = req.user!.tenantId!;
+      const userId = req.user!.id;
+
+      const patchKeys = Object.keys(patch) as Array<keyof typeof patch>;
+
+      const result = await sql.begin(async (tx) => {
+        await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+        const before = await tx<RawSubjectTenantRow[]>`
+          SELECT id, tenant_id, name, kind, created_at, updated_at
+            FROM subject_tenant
+           WHERE id = ${id} AND deleted_at IS NULL
+        `;
+        const prev = before[0];
+        if (!prev) return { kind: 'not_found' as const };
+        if (patchKeys.length === 0) {
+          return { kind: 'noop' as const, row: prev };
+        }
+
+        const setName = patch.name !== undefined ? tx`name = ${patch.name},` : tx``;
+        const setKind = patch.kind !== undefined ? tx`kind = ${patch.kind},` : tx``;
+
+        const updated = await tx<RawSubjectTenantRow[]>`
+          UPDATE subject_tenant
+             SET ${setName}
+                 ${setKind}
+                 updated_at = NOW()
+           WHERE id = ${id} AND deleted_at IS NULL
+           RETURNING id, tenant_id, name, kind, created_at, updated_at
+        `;
+        const row = updated[0];
+        if (!row) {
+          throw new Error('PATCH /v1/subject-tenants/:id: UPDATE returned no row');
+        }
+        return { kind: 'updated' as const, prev, row };
+      });
+
+      if (result.kind === 'not_found') {
+        return reply.status(404).send({
+          error: 'subject_tenant_not_found',
+          message: 'No subject_tenant with that id in this firm',
+          requestId: req.id,
+        });
+      }
+      if (result.kind === 'noop') {
+        return reply.status(200).send({ subject_tenant: toApi(result.row) });
+      }
+
+      // Build {from, to} diff and emit chain event only when something changed.
+      const fieldsChanged: Record<string, { from: unknown; to: unknown }> = {};
+      if (patch.name !== undefined && result.prev.name !== result.row.name) {
+        fieldsChanged['name'] = { from: result.prev.name, to: result.row.name };
+      }
+      if (patch.kind !== undefined && result.prev.kind !== result.row.kind) {
+        fieldsChanged['kind'] = { from: result.prev.kind, to: result.row.kind };
+      }
+
+      if (Object.keys(fieldsChanged).length > 0) {
+        const payload = SubjectTenantUpdatedPayload.parse({
+          subject_tenant_id: result.row.id,
+          fields_changed: fieldsChanged,
+        });
+        await insertEventWithChain({
+          tenant_id: tenantId,
+          subject_tenant_id: result.row.id,
+          project_id: null,
+          kind: 'SUBJECT_TENANT_UPDATED',
+          payload,
+          classification: null,
+          captured_at: new Date(),
+          captured_by_user_id: userId,
+          override_of_event_id: null,
+          override_new_kind: null,
+          override_reason: null,
+        });
+      }
+
+      return reply.status(200).send({ subject_tenant: toApi(result.row) });
+    },
+  );
+
+  // -----------------------------------------------------------------------
+  // DELETE /v1/subject-tenants/:id — soft-delete + emit SUBJECT_TENANT_ARCHIVED.
+  // -----------------------------------------------------------------------
+  app.delete<{ Params: { id: string } }>(
+    '/v1/subject-tenants/:id',
+    { preHandler: requireSession },
+    async (req, reply) => {
+      const role = req.user!.role;
+      if (role !== 'admin' && role !== 'consultant') {
+        return reply.status(403).send({
+          error: 'forbidden',
+          message: 'Admin or consultant role required',
+          requestId: req.id,
+        });
+      }
+
+      const { id } = req.params;
+      const tenantId = req.user!.tenantId!;
+      const userId = req.user!.id;
+
+      // Idempotent soft-delete: if already deleted return 204 without re-emitting.
+      const result = await sql.begin(async (tx) => {
+        await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+        const rows = await tx<{ id: string }[]>`
+          UPDATE subject_tenant
+             SET deleted_at = NOW(),
+                 updated_at = NOW()
+           WHERE id = ${id} AND deleted_at IS NULL
+           RETURNING id
+        `;
+        if (rows[0]) return { kind: 'deleted' as const };
+        // Not found or already deleted — disambiguate.
+        const existing = await tx<{ id: string }[]>`
+          SELECT id FROM subject_tenant WHERE id = ${id}
+        `;
+        if (!existing[0]) return { kind: 'not_found' as const };
+        return { kind: 'noop' as const };
+      });
+
+      if (result.kind === 'not_found') {
+        return reply.status(404).send({
+          error: 'subject_tenant_not_found',
+          message: 'No subject_tenant with that id in this firm',
+          requestId: req.id,
+        });
+      }
+
+      if (result.kind === 'deleted') {
+        const payload = SubjectTenantArchivedPayload.parse({
+          subject_tenant_id: id,
+          archived_by_user_id: userId,
+        });
+        await insertEventWithChain({
+          tenant_id: tenantId,
+          subject_tenant_id: id,
+          project_id: null,
+          kind: 'SUBJECT_TENANT_ARCHIVED',
+          payload,
+          classification: null,
+          captured_at: new Date(),
+          captured_by_user_id: userId,
+          override_of_event_id: null,
+          override_new_kind: null,
+          override_reason: null,
+        });
+      }
+
+      // 204 for both first-delete and idempotent re-delete.
+      return reply.status(204).send();
     },
   );
 

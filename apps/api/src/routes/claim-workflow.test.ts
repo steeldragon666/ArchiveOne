@@ -1,0 +1,988 @@
+/**
+ * Tests for the claim-workflow routes (Tasks 2.2-2.5):
+ *   - POST /v1/claims/:id/workflow/initialize
+ *   - POST /v1/claims/:id/workflow/step/:n/agree
+ *   - POST /v1/claims/:id/workflow/step/:n/reopen
+ *   - GET  /v1/claims/:id/workflow
+ *
+ * Fixture strategy mirrors `narrative.test.ts` / `artefact-links.test.ts`:
+ * pin a disjoint UUID prefix (c66xx for the claim-wizard P-batch) and tear
+ * down between tests. RLS is exercised by mismatched-tenant requests
+ * returning 404, never 403.
+ */
+
+import { test, after, before, beforeEach } from 'node:test';
+import assert from 'node:assert/strict';
+import { signSession } from '@cpa/auth';
+import { sql, privilegedSql } from '@cpa/db/client';
+import { buildApp } from '../app.js';
+
+const SESSION_SECRET = process.env['SESSION_JWT_SECRET'] ?? 'dev-only-32-bytes-of-entropy-pad!';
+
+// `c66xx` namespace — claim-wizard route batch 2.2-2.5. Disjoint from
+// narrative.test.ts (`c55xx`), artefact-links.test.ts (`a4xx`), etc.
+const TENANT_A = '00000000-0000-4000-8000-0000000c6601';
+const TENANT_B = '00000000-0000-4000-8000-0000000c6602';
+const ADMIN_USER = '00000000-0000-4000-8000-0000000c6610';
+const VIEWER_USER = '00000000-0000-4000-8000-0000000c6611';
+const CONSULTANT_USER = '00000000-0000-4000-8000-0000000c6612';
+const TENANT_B_ADMIN = '00000000-0000-4000-8000-0000000c6613';
+
+const SUBJECT_A = '00000000-0000-4000-8000-0000000c6620';
+const SUBJECT_B = '00000000-0000-4000-8000-0000000c6621';
+const PROJECT_A = '00000000-0000-4000-8000-0000000c6630';
+const PROJECT_B = '00000000-0000-4000-8000-0000000c6631';
+const CLAIM_A = '00000000-0000-4000-8000-0000000c6640';
+const CLAIM_A2 = '00000000-0000-4000-8000-0000000c6641';
+const CLAIM_LEGACY = '00000000-0000-4000-8000-0000000c6642';
+const CLAIM_B = '00000000-0000-4000-8000-0000000c6643';
+const CLAIM_UNKNOWN = '00000000-0000-4000-8000-0000000c66ff';
+const ACTIVITY_A1 = '00000000-0000-4000-8000-0000000c6650';
+const ACTIVITY_A2 = '00000000-0000-4000-8000-0000000c6651';
+
+const cleanup = async (): Promise<void> => {
+  await privilegedSql`DELETE FROM event WHERE tenant_id IN (${TENANT_A}, ${TENANT_B})`;
+  await privilegedSql`DELETE FROM activity WHERE tenant_id IN (${TENANT_A}, ${TENANT_B})`;
+  await privilegedSql`DELETE FROM claim WHERE tenant_id IN (${TENANT_A}, ${TENANT_B})`;
+  await privilegedSql`DELETE FROM project WHERE tenant_id IN (${TENANT_A}, ${TENANT_B})`;
+  await privilegedSql`DELETE FROM subject_tenant WHERE tenant_id IN (${TENANT_A}, ${TENANT_B})`;
+  await privilegedSql`DELETE FROM tenant_user WHERE tenant_id IN (${TENANT_A}, ${TENANT_B})`;
+  await sql`DELETE FROM "user" WHERE id IN (${ADMIN_USER}, ${VIEWER_USER}, ${CONSULTANT_USER}, ${TENANT_B_ADMIN})`;
+  await sql`DELETE FROM tenant WHERE id IN (${TENANT_A}, ${TENANT_B})`;
+};
+
+before(async () => {
+  await cleanup();
+  await sql`INSERT INTO tenant (id, name, slug, primary_idp)
+            VALUES (${TENANT_A}, 'Firm C66A', 'firm-c66a', 'mixed'),
+                   (${TENANT_B}, 'Firm C66B', 'firm-c66b', 'mixed')`;
+  await sql`INSERT INTO "user" (id, email, primary_idp, external_id, display_name)
+            VALUES (${ADMIN_USER}, 'c66-admin@example.com', 'microsoft', 'microsoft:c66-admin', 'C66 Admin'),
+                   (${VIEWER_USER}, 'c66-viewer@example.com', 'microsoft', 'microsoft:c66-viewer', 'C66 Viewer'),
+                   (${CONSULTANT_USER}, 'c66-cons@example.com', 'microsoft', 'microsoft:c66-cons', 'C66 Consultant'),
+                   (${TENANT_B_ADMIN}, 'c66-admin-b@example.com', 'microsoft', 'microsoft:c66-admin-b', 'C66 Admin (Firm B)')`;
+  await privilegedSql`INSERT INTO tenant_user (id, tenant_id, user_id, role, is_default)
+                       VALUES (gen_random_uuid(), ${TENANT_A}, ${ADMIN_USER}, 'admin', true),
+                              (gen_random_uuid(), ${TENANT_A}, ${VIEWER_USER}, 'viewer', true),
+                              (gen_random_uuid(), ${TENANT_A}, ${CONSULTANT_USER}, 'consultant', true),
+                              (gen_random_uuid(), ${TENANT_B}, ${TENANT_B_ADMIN}, 'admin', true)`;
+  await privilegedSql`INSERT INTO subject_tenant (id, tenant_id, name, kind)
+                       VALUES (${SUBJECT_A}, ${TENANT_A}, 'C66 Subject A', 'claimant'),
+                              (${SUBJECT_B}, ${TENANT_B}, 'C66 Subject B', 'claimant')`;
+  await privilegedSql`
+    INSERT INTO project (id, tenant_id, subject_tenant_id, name, started_at)
+    VALUES
+      (${PROJECT_A}, ${TENANT_A}, ${SUBJECT_A}, 'C66 Project A',
+       '2024-07-01T00:00:00Z'::timestamptz),
+      (${PROJECT_B}, ${TENANT_B}, ${SUBJECT_B}, 'C66 Project B',
+       '2024-07-01T00:00:00Z'::timestamptz)
+  `;
+});
+
+beforeEach(async () => {
+  // Reset claim rows between tests so each test starts from a known state.
+  // We re-insert from scratch to keep the workflow_state nullable assertions
+  // crisp (no cross-test pollution).
+  await privilegedSql`DELETE FROM event WHERE tenant_id IN (${TENANT_A}, ${TENANT_B})`;
+  await privilegedSql`DELETE FROM activity WHERE tenant_id IN (${TENANT_A}, ${TENANT_B})`;
+  await privilegedSql`DELETE FROM claim WHERE tenant_id IN (${TENANT_A}, ${TENANT_B})`;
+  await privilegedSql`
+    INSERT INTO claim (id, tenant_id, subject_tenant_id, project_id, fiscal_year, stage, workflow_state)
+    VALUES
+      (${CLAIM_A}, ${TENANT_A}, ${SUBJECT_A}, ${PROJECT_A}, 2025, 'engagement', NULL),
+      (${CLAIM_A2}, ${TENANT_A}, ${SUBJECT_A}, ${PROJECT_A}, 2026, 'engagement', NULL),
+      (${CLAIM_LEGACY}, ${TENANT_A}, ${SUBJECT_A}, ${PROJECT_A}, 2024, 'engagement', NULL),
+      (${CLAIM_B}, ${TENANT_B}, ${SUBJECT_B}, ${PROJECT_B}, 2025, 'engagement', NULL)
+  `;
+});
+
+after(async () => {
+  await cleanup();
+  await sql.end();
+  await privilegedSql.end();
+});
+
+const jwtFor = (
+  userId: string,
+  email: string,
+  role: 'admin' | 'consultant' | 'viewer',
+  tenantId: string = TENANT_A,
+): Promise<string> =>
+  signSession(
+    {
+      sub: userId,
+      email,
+      primaryIdp: 'microsoft',
+      activeTenantId: tenantId,
+      activeRole: role,
+      availableTenants: [],
+    },
+    SESSION_SECRET,
+    { ttlSeconds: 3600 },
+  );
+
+const adminJwt = (): Promise<string> => jwtFor(ADMIN_USER, 'c66-admin@example.com', 'admin');
+const viewerJwt = (): Promise<string> => jwtFor(VIEWER_USER, 'c66-viewer@example.com', 'viewer');
+const consultantJwt = (): Promise<string> =>
+  jwtFor(CONSULTANT_USER, 'c66-cons@example.com', 'consultant');
+const tenantBAdminJwt = (): Promise<string> =>
+  jwtFor(TENANT_B_ADMIN, 'c66-admin-b@example.com', 'admin', TENANT_B);
+
+// Helper: directly set a claim's workflow_state via privilegedSql for tests
+// that need a pre-initialized claim without going through the route.
+const setWorkflowState = async (claimId: string, state: unknown): Promise<void> => {
+  await privilegedSql`
+    UPDATE claim
+       SET workflow_state = ${JSON.stringify(state)}::text::jsonb,
+           updated_at     = NOW()
+     WHERE id = ${claimId}
+  `;
+};
+
+// Helper: seed an activity row under a claim. Used by the narrative-sections
+// tests below — narrative_draft FKs onto activity, and the workflow snapshot's
+// per-section query joins through activity.claim_id.
+const seedActivity = async (args: {
+  id: string;
+  tenantId: string;
+  projectId: string;
+  claimId: string;
+  code: string;
+  title: string;
+}): Promise<void> => {
+  await privilegedSql`
+    INSERT INTO activity (id, tenant_id, project_id, claim_id, code, kind, title,
+                          fy_label, hypothesis_formed_at)
+    VALUES (${args.id}, ${args.tenantId}, ${args.projectId}, ${args.claimId},
+            ${args.code}, 'core', ${args.title}, 'FY25',
+            '2025-01-01T00:00:00Z'::timestamptz)
+  `;
+};
+
+// Helper: insert one narrative_draft row at the given status. Mirrors the
+// seed pattern used in narrative-accept.test.ts.
+const seedNarrativeDraft = async (args: {
+  tenantId: string;
+  activityId: string;
+  sectionKind: 'new_knowledge' | 'hypothesis' | 'uncertainty' | 'experiments_and_results';
+  status: 'streaming' | 'complete' | 'accepted' | 'archived';
+}): Promise<void> => {
+  await privilegedSql`
+    INSERT INTO narrative_draft (
+      tenant_id, id, activity_id, section_kind, current_version,
+      status, segments, content_hash, model, prompt_version, created_by_user_id
+    )
+    VALUES (
+      ${args.tenantId},
+      gen_random_uuid(),
+      ${args.activityId},
+      ${args.sectionKind},
+      1,
+      ${args.status},
+      ${JSON.stringify([{ type: 'prose', text: 'seed' }])}::jsonb,
+      encode(digest('seed', 'sha256'), 'hex'),
+      'test-model-v1',
+      'test-prompt@1.0.0',
+      ${CONSULTANT_USER}
+    )
+  `;
+};
+
+// Helper: seed a single EXPERIMENT event so canAdvance(1, ...) returns ok=true.
+// Mirrors the minimum classified-event input the wizard's step-1 gate counts.
+const seedClassifiedEvent = async (args: {
+  tenantId: string;
+  subjectTenantId: string;
+  projectId: string;
+}): Promise<void> => {
+  await privilegedSql`
+    INSERT INTO event (
+      id, tenant_id, subject_tenant_id, project_id, kind, payload,
+      prev_hash, hash, captured_at, captured_by_user_id
+    ) VALUES (
+      gen_random_uuid(), ${args.tenantId}, ${args.subjectTenantId}, ${args.projectId},
+      'EXPERIMENT', '{"text":"c66 seed evidence"}'::jsonb,
+      NULL, ${'c66'.padEnd(64, 'a')},
+      '2025-01-01T00:00:00Z'::timestamptz, ${CONSULTANT_USER}
+    )
+  `;
+};
+
+// =============================================================================
+// POST /v1/claims/:id/workflow/initialize
+// =============================================================================
+
+test('POST /workflow/initialize: 401 without session', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'POST',
+    url: `/v1/claims/${CLAIM_A}/workflow/initialize`,
+  });
+  assert.equal(res.statusCode, 401);
+  await app.close();
+});
+
+test('POST /workflow/initialize: 403 for viewer role', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'POST',
+    url: `/v1/claims/${CLAIM_A}/workflow/initialize`,
+    cookies: { cpa_session: await viewerJwt() },
+  });
+  assert.equal(res.statusCode, 403);
+  await app.close();
+});
+
+test('POST /workflow/initialize: 400 on non-UUID claim id', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'POST',
+    url: `/v1/claims/not-a-uuid/workflow/initialize`,
+    cookies: { cpa_session: await consultantJwt() },
+  });
+  assert.equal(res.statusCode, 400);
+  await app.close();
+});
+
+test('POST /workflow/initialize: 200 on fresh claim sets initialized_at + null steps', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'POST',
+    url: `/v1/claims/${CLAIM_A}/workflow/initialize`,
+    cookies: { cpa_session: await consultantJwt() },
+  });
+  assert.equal(res.statusCode, 200);
+  const body = res.json<{
+    workflow_state: {
+      initialized_at: string;
+      steps: Record<'1' | '2' | '3' | '4' | '5', unknown>;
+    };
+  }>();
+  assert.match(body.workflow_state.initialized_at, /^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(body.workflow_state.steps['1'], null);
+  assert.equal(body.workflow_state.steps['2'], null);
+  assert.equal(body.workflow_state.steps['3'], null);
+  assert.equal(body.workflow_state.steps['4'], null);
+  assert.equal(body.workflow_state.steps['5'], null);
+  await app.close();
+});
+
+test('POST /workflow/initialize: 409 on second call (already initialized)', async () => {
+  const app = buildApp();
+  const first = await app.inject({
+    method: 'POST',
+    url: `/v1/claims/${CLAIM_A}/workflow/initialize`,
+    cookies: { cpa_session: await consultantJwt() },
+  });
+  assert.equal(first.statusCode, 200);
+
+  const second = await app.inject({
+    method: 'POST',
+    url: `/v1/claims/${CLAIM_A}/workflow/initialize`,
+    cookies: { cpa_session: await consultantJwt() },
+  });
+  assert.equal(second.statusCode, 409);
+  await app.close();
+});
+
+test('POST /workflow/initialize: 409 for cross-firm claim (RLS conceals it)', async () => {
+  // Admin of Tenant B can't initialize a Tenant A claim.
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'POST',
+    url: `/v1/claims/${CLAIM_A}/workflow/initialize`,
+    cookies: { cpa_session: await tenantBAdminJwt() },
+  });
+  // The route conflates "not found" with "already initialized" into a
+  // single 409 — see the route's handler comment. RLS hides the row.
+  assert.equal(res.statusCode, 409);
+  await app.close();
+});
+
+test('POST /workflow/initialize: 409 on unknown claim id', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'POST',
+    url: `/v1/claims/${CLAIM_UNKNOWN}/workflow/initialize`,
+    cookies: { cpa_session: await consultantJwt() },
+  });
+  assert.equal(res.statusCode, 409);
+  await app.close();
+});
+
+// =============================================================================
+// POST /v1/claims/:id/workflow/step/:n/agree
+// =============================================================================
+
+test('POST /workflow/step/:n/agree: 401 without session', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'POST',
+    url: `/v1/claims/${CLAIM_A}/workflow/step/1/agree`,
+  });
+  assert.equal(res.statusCode, 401);
+  await app.close();
+});
+
+test('POST /workflow/step/:n/agree: 403 for viewer role', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'POST',
+    url: `/v1/claims/${CLAIM_A}/workflow/step/1/agree`,
+    cookies: { cpa_session: await viewerJwt() },
+  });
+  assert.equal(res.statusCode, 403);
+  await app.close();
+});
+
+test('POST /workflow/step/:n/agree: 400 on invalid step (6)', async () => {
+  await setWorkflowState(CLAIM_A, {
+    initialized_at: '2025-01-01T00:00:00.000Z',
+    steps: { '1': null, '2': null, '3': null, '4': null, '5': null },
+  });
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'POST',
+    url: `/v1/claims/${CLAIM_A}/workflow/step/6/agree`,
+    cookies: { cpa_session: await consultantJwt() },
+  });
+  assert.equal(res.statusCode, 400);
+  await app.close();
+});
+
+test('POST /workflow/step/:n/agree: 400 on non-numeric step', async () => {
+  await setWorkflowState(CLAIM_A, {
+    initialized_at: '2025-01-01T00:00:00.000Z',
+    steps: { '1': null, '2': null, '3': null, '4': null, '5': null },
+  });
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'POST',
+    url: `/v1/claims/${CLAIM_A}/workflow/step/abc/agree`,
+    cookies: { cpa_session: await consultantJwt() },
+  });
+  assert.equal(res.statusCode, 400);
+  await app.close();
+});
+
+test('POST /workflow/step/:n/agree: 404 on unknown claim', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'POST',
+    url: `/v1/claims/${CLAIM_UNKNOWN}/workflow/step/1/agree`,
+    cookies: { cpa_session: await consultantJwt() },
+  });
+  assert.equal(res.statusCode, 404);
+  await app.close();
+});
+
+test('POST /workflow/step/:n/agree: 400 on legacy (not-wizard) claim', async () => {
+  // CLAIM_LEGACY has workflow_state = NULL; route must reject as not_a_wizard_claim.
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'POST',
+    url: `/v1/claims/${CLAIM_LEGACY}/workflow/step/1/agree`,
+    cookies: { cpa_session: await consultantJwt() },
+  });
+  assert.equal(res.statusCode, 400);
+  const body = res.json<{ error: string }>();
+  assert.equal(body.error, 'not_a_wizard_claim');
+  await app.close();
+});
+
+test('POST /workflow/step/:n/agree: 409 when canAdvance returns ok=false (step 1, no events)', async () => {
+  await setWorkflowState(CLAIM_A, {
+    initialized_at: '2025-01-01T00:00:00.000Z',
+    steps: { '1': null, '2': null, '3': null, '4': null, '5': null },
+  });
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'POST',
+    url: `/v1/claims/${CLAIM_A}/workflow/step/1/agree`,
+    cookies: { cpa_session: await consultantJwt() },
+  });
+  assert.equal(res.statusCode, 409);
+  const body = res.json<{ error: string; message: string }>();
+  assert.equal(body.error, 'cannot_advance');
+  assert.ok(body.message.length > 0);
+  await app.close();
+});
+
+test('POST /workflow/step/:n/agree: 200 when canAdvance ok (step 1 with classified event)', async () => {
+  await setWorkflowState(CLAIM_A, {
+    initialized_at: '2025-01-01T00:00:00.000Z',
+    steps: { '1': null, '2': null, '3': null, '4': null, '5': null },
+  });
+  await seedClassifiedEvent({
+    tenantId: TENANT_A,
+    subjectTenantId: SUBJECT_A,
+    projectId: PROJECT_A,
+  });
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'POST',
+    url: `/v1/claims/${CLAIM_A}/workflow/step/1/agree`,
+    cookies: { cpa_session: await consultantJwt() },
+  });
+  assert.equal(res.statusCode, 200);
+  const body = res.json<{
+    workflow_state: {
+      steps: { '1': { agreed_at: string; agreed_by: string } | null };
+    };
+  }>();
+  assert.ok(body.workflow_state.steps['1']);
+  assert.equal(body.workflow_state.steps['1'].agreed_by, CONSULTANT_USER);
+  assert.match(body.workflow_state.steps['1'].agreed_at, /^\d{4}-\d{2}-\d{2}T/);
+  await app.close();
+});
+
+// =============================================================================
+// POST /v1/claims/:id/workflow/step/:n/reopen
+// =============================================================================
+
+test('POST /workflow/step/:n/reopen: 401 without session', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'POST',
+    url: `/v1/claims/${CLAIM_A}/workflow/step/2/reopen`,
+  });
+  assert.equal(res.statusCode, 401);
+  await app.close();
+});
+
+test('POST /workflow/step/:n/reopen: 403 for viewer role', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'POST',
+    url: `/v1/claims/${CLAIM_A}/workflow/step/2/reopen`,
+    cookies: { cpa_session: await viewerJwt() },
+  });
+  assert.equal(res.statusCode, 403);
+  await app.close();
+});
+
+test('POST /workflow/step/:n/reopen: 200 clears agreed_at on the named step', async () => {
+  const stateWithStep2Agreed = {
+    initialized_at: '2025-01-01T00:00:00.000Z',
+    steps: {
+      '1': { agreed_at: '2025-01-02T00:00:00.000Z', agreed_by: CONSULTANT_USER },
+      '2': { agreed_at: '2025-01-03T00:00:00.000Z', agreed_by: CONSULTANT_USER },
+      '3': { agreed_at: '2025-01-04T00:00:00.000Z', agreed_by: CONSULTANT_USER },
+      '4': null,
+      '5': null,
+    },
+  };
+  await setWorkflowState(CLAIM_A, stateWithStep2Agreed);
+
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'POST',
+    url: `/v1/claims/${CLAIM_A}/workflow/step/2/reopen`,
+    cookies: { cpa_session: await consultantJwt() },
+  });
+  assert.equal(res.statusCode, 200);
+  const body = res.json<{
+    workflow_state: {
+      steps: Record<'1' | '2' | '3' | '4' | '5', unknown>;
+    };
+  }>();
+  assert.equal(body.workflow_state.steps['2'], null);
+  // No cascade per Q5.b — downstream step 3 keeps its timestamp.
+  assert.ok(body.workflow_state.steps['3']);
+  // Upstream step 1 also preserved.
+  assert.ok(body.workflow_state.steps['1']);
+  await app.close();
+});
+
+test('POST /workflow/step/:n/reopen: 200 idempotent on already-null step', async () => {
+  await setWorkflowState(CLAIM_A, {
+    initialized_at: '2025-01-01T00:00:00.000Z',
+    steps: { '1': null, '2': null, '3': null, '4': null, '5': null },
+  });
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'POST',
+    url: `/v1/claims/${CLAIM_A}/workflow/step/2/reopen`,
+    cookies: { cpa_session: await consultantJwt() },
+  });
+  assert.equal(res.statusCode, 200);
+  const body = res.json<{ workflow_state: { steps: Record<string, unknown> } }>();
+  assert.equal(body.workflow_state.steps['2'], null);
+  await app.close();
+});
+
+test('POST /workflow/step/:n/reopen: 400 on invalid step', async () => {
+  await setWorkflowState(CLAIM_A, {
+    initialized_at: '2025-01-01T00:00:00.000Z',
+    steps: { '1': null, '2': null, '3': null, '4': null, '5': null },
+  });
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'POST',
+    url: `/v1/claims/${CLAIM_A}/workflow/step/7/reopen`,
+    cookies: { cpa_session: await consultantJwt() },
+  });
+  assert.equal(res.statusCode, 400);
+  await app.close();
+});
+
+test('POST /workflow/step/:n/reopen: 404 on unknown claim', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'POST',
+    url: `/v1/claims/${CLAIM_UNKNOWN}/workflow/step/2/reopen`,
+    cookies: { cpa_session: await consultantJwt() },
+  });
+  assert.equal(res.statusCode, 404);
+  await app.close();
+});
+
+// =============================================================================
+// GET /v1/claims/:id/workflow
+// =============================================================================
+
+test('GET /workflow: 401 without session', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'GET',
+    url: `/v1/claims/${CLAIM_A}/workflow`,
+  });
+  assert.equal(res.statusCode, 401);
+  await app.close();
+});
+
+test('GET /workflow: 200 returns state + derived canAdvance for all 5 steps', async () => {
+  await setWorkflowState(CLAIM_A, {
+    initialized_at: '2025-01-01T00:00:00.000Z',
+    steps: { '1': null, '2': null, '3': null, '4': null, '5': null },
+  });
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'GET',
+    url: `/v1/claims/${CLAIM_A}/workflow`,
+    cookies: { cpa_session: await consultantJwt() },
+  });
+  assert.equal(res.statusCode, 200);
+  const body = res.json<{
+    workflow_state: { initialized_at: string };
+    derived: {
+      canAdvance: Record<'1' | '2' | '3' | '4' | '5', { ok: true } | { ok: false; reason: string }>;
+    };
+  }>();
+  assert.equal(body.workflow_state.initialized_at, '2025-01-01T00:00:00.000Z');
+  // No classified events → step 1 cannot advance.
+  assert.equal(body.derived.canAdvance['1'].ok, false);
+  // Step 5 is always terminal.
+  assert.equal(body.derived.canAdvance['5'].ok, false);
+  // Each entry is { ok: true } | { ok: false, reason }.
+  for (const n of ['1', '2', '3', '4', '5'] as const) {
+    const entry = body.derived.canAdvance[n];
+    assert.ok(entry.ok === true || (entry.ok === false && typeof entry.reason === 'string'));
+  }
+  await app.close();
+});
+
+test('GET /workflow: 400 if claim has NULL workflow_state (legacy)', async () => {
+  // CLAIM_LEGACY has workflow_state = NULL.
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'GET',
+    url: `/v1/claims/${CLAIM_LEGACY}/workflow`,
+    cookies: { cpa_session: await consultantJwt() },
+  });
+  assert.equal(res.statusCode, 400);
+  const body = res.json<{ error: string }>();
+  assert.equal(body.error, 'not_a_wizard_claim');
+  await app.close();
+});
+
+test('GET /workflow: 404 on unknown claim', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'GET',
+    url: `/v1/claims/${CLAIM_UNKNOWN}/workflow`,
+    cookies: { cpa_session: await consultantJwt() },
+  });
+  assert.equal(res.statusCode, 404);
+  await app.close();
+});
+
+test('GET /workflow: admin role also works (not just consultant)', async () => {
+  await setWorkflowState(CLAIM_A, {
+    initialized_at: '2025-01-01T00:00:00.000Z',
+    steps: { '1': null, '2': null, '3': null, '4': null, '5': null },
+  });
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'GET',
+    url: `/v1/claims/${CLAIM_A}/workflow`,
+    cookies: { cpa_session: await adminJwt() },
+  });
+  assert.equal(res.statusCode, 200);
+  await app.close();
+});
+
+// =============================================================================
+// Cross-tenant isolation for agree / reopen / GET (F1)
+//
+// The initialize route has its own cross-firm test above (line ~237). These
+// three additions cover the remaining workflow routes: a tenant-B admin
+// holding a session for firm B must NOT be able to mutate or read a claim
+// owned by firm A. The `tenant_id = ${tenantId}` predicate plus RLS hide the
+// row entirely — these routes report `claim_not_found` (404), never 403.
+// =============================================================================
+
+test('POST /workflow/step/:n/agree: 404 cross-firm (Firm B admin cannot agree on Firm A claim)', async () => {
+  // Initialize CLAIM_A in tenant A and seed a classified event so step-1
+  // canAdvance would otherwise be ok — proving the 404 is from tenant
+  // isolation, not from the gate.
+  const initState = {
+    initialized_at: '2025-01-01T00:00:00.000Z',
+    steps: { '1': null, '2': null, '3': null, '4': null, '5': null },
+  };
+  await setWorkflowState(CLAIM_A, initState);
+  await seedClassifiedEvent({
+    tenantId: TENANT_A,
+    subjectTenantId: SUBJECT_A,
+    projectId: PROJECT_A,
+  });
+
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'POST',
+    url: `/v1/claims/${CLAIM_A}/workflow/step/1/agree`,
+    cookies: { cpa_session: await tenantBAdminJwt() },
+  });
+  assert.equal(res.statusCode, 404);
+  const body = res.json<{ error: string }>();
+  assert.equal(body.error, 'claim_not_found');
+
+  // Belt-and-braces: confirm Firm A's claim was untouched — agreed_at must
+  // still be null. (Verified via privileged read so RLS doesn't blind us.)
+  const rows = await privilegedSql<{ workflow_state: { steps: Record<string, unknown> } }[]>`
+    SELECT workflow_state FROM claim WHERE id = ${CLAIM_A}
+  `;
+  assert.equal(rows[0]!.workflow_state.steps['1'], null);
+  await app.close();
+});
+
+test('POST /workflow/step/:n/reopen: 404 cross-firm', async () => {
+  // Set CLAIM_A to a state where step 2 is already agreed (in tenant A).
+  const agreedState = {
+    initialized_at: '2025-01-01T00:00:00.000Z',
+    steps: {
+      '1': { agreed_at: '2025-01-02T00:00:00.000Z', agreed_by: CONSULTANT_USER },
+      '2': { agreed_at: '2025-01-03T00:00:00.000Z', agreed_by: CONSULTANT_USER },
+      '3': null,
+      '4': null,
+      '5': null,
+    },
+  };
+  await setWorkflowState(CLAIM_A, agreedState);
+
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'POST',
+    url: `/v1/claims/${CLAIM_A}/workflow/step/2/reopen`,
+    cookies: { cpa_session: await tenantBAdminJwt() },
+  });
+  assert.equal(res.statusCode, 404);
+  const body = res.json<{ error: string }>();
+  assert.equal(body.error, 'claim_not_found');
+
+  // Confirm step 2 was NOT reopened — agreed_at is still set on Firm A's row.
+  const rows = await privilegedSql<
+    {
+      workflow_state: {
+        steps: { '2': { agreed_at: string; agreed_by: string } | null };
+      };
+    }[]
+  >`
+    SELECT workflow_state FROM claim WHERE id = ${CLAIM_A}
+  `;
+  const step2 = rows[0]!.workflow_state.steps['2'];
+  assert.ok(step2);
+  assert.equal(step2.agreed_at, '2025-01-03T00:00:00.000Z');
+  await app.close();
+});
+
+test('GET /workflow: 404 cross-firm', async () => {
+  await setWorkflowState(CLAIM_A, {
+    initialized_at: '2025-01-01T00:00:00.000Z',
+    steps: { '1': null, '2': null, '3': null, '4': null, '5': null },
+  });
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'GET',
+    url: `/v1/claims/${CLAIM_A}/workflow`,
+    cookies: { cpa_session: await tenantBAdminJwt() },
+  });
+  // Must be 404 (claim not found in firm B) — NOT 200 with leaked workflow data.
+  assert.equal(res.statusCode, 404);
+  const body = res.json<{ error: string }>();
+  assert.equal(body.error, 'claim_not_found');
+  await app.close();
+});
+
+// =============================================================================
+// Step-5 agree behavior pin (F2)
+//
+// Pins current behavior: canAdvance(5, snap) returns ok=false with reason
+// "Step 5 is terminal — no further advance." (see workflow.ts:101-102), so
+// POST /workflow/step/5/agree always 409s. The route comment (claim-workflow.ts
+// ~120-125) flags this as an open semantic question: a future change may decide
+// step-5 agree means "documents generated" and should succeed. If/when that
+// happens, this test will fail and force a deliberate decision — do not blindly
+// update the expected status without consulting the spec.
+// =============================================================================
+
+test("POST /workflow/step/5/agree: 409 cannot_advance with reason 'Step 5 is terminal' (pinning current behavior — see workflow.ts:101-102)", async () => {
+  // Set up a fully-agreed claim through step 4 — proving that the 409 comes
+  // from canAdvance(5)'s terminal verdict, not from an upstream-gate failure.
+  await setWorkflowState(CLAIM_A, {
+    initialized_at: '2025-01-01T00:00:00.000Z',
+    steps: {
+      '1': { agreed_at: '2025-01-02T00:00:00.000Z', agreed_by: CONSULTANT_USER },
+      '2': { agreed_at: '2025-01-03T00:00:00.000Z', agreed_by: CONSULTANT_USER },
+      '3': { agreed_at: '2025-01-04T00:00:00.000Z', agreed_by: CONSULTANT_USER },
+      '4': { agreed_at: '2025-01-05T00:00:00.000Z', agreed_by: CONSULTANT_USER },
+      '5': null,
+    },
+  });
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'POST',
+    url: `/v1/claims/${CLAIM_A}/workflow/step/5/agree`,
+    cookies: { cpa_session: await consultantJwt() },
+  });
+  assert.equal(res.statusCode, 409);
+  const body = res.json<{ error: string; message: string }>();
+  assert.equal(body.error, 'cannot_advance');
+  // Match the canAdvance reason verbatim from workflow.ts:101-102.
+  assert.equal(body.message, 'Step 5 is terminal — no further advance.');
+  await app.close();
+});
+
+// =============================================================================
+// GET /workflow: derived.narrativeSections (I4)
+//
+// New field added in I4: per-section narrative status surfaced to the wizard.
+// Aggregation across all activities under the claim is "best progress wins"
+// per workflow.ts:NarrativeSectionStatus — accepted > complete > streaming >
+// absent. Mirrors the DISTINCT-section_kind semantic that canAdvance(4) uses
+// via narrativeSectionsApproved.
+// =============================================================================
+
+type NarrativeSectionsResponse = {
+  workflow_state: unknown;
+  derived: {
+    canAdvance: Record<'1' | '2' | '3' | '4' | '5', { ok: boolean; reason?: string }>;
+    narrativeSections: {
+      new_knowledge: 'streaming' | 'complete' | 'accepted' | 'absent';
+      hypothesis: 'streaming' | 'complete' | 'accepted' | 'absent';
+      uncertainty: 'streaming' | 'complete' | 'accepted' | 'absent';
+      experiments_and_results: 'streaming' | 'complete' | 'accepted' | 'absent';
+    };
+  };
+};
+
+test("GET /workflow: derived.narrativeSections is all 'absent' when no narrative_draft rows exist", async () => {
+  await setWorkflowState(CLAIM_A, {
+    initialized_at: '2025-01-01T00:00:00.000Z',
+    steps: { '1': null, '2': null, '3': null, '4': null, '5': null },
+  });
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'GET',
+    url: `/v1/claims/${CLAIM_A}/workflow`,
+    cookies: { cpa_session: await consultantJwt() },
+  });
+  assert.equal(res.statusCode, 200);
+  const body = res.json<NarrativeSectionsResponse>();
+  assert.deepEqual(body.derived.narrativeSections, {
+    new_knowledge: 'absent',
+    hypothesis: 'absent',
+    uncertainty: 'absent',
+    experiments_and_results: 'absent',
+  });
+  await app.close();
+});
+
+test("GET /workflow: derived.narrativeSections reflects 'complete' status after narrative drafting", async () => {
+  await setWorkflowState(CLAIM_A, {
+    initialized_at: '2025-01-01T00:00:00.000Z',
+    steps: { '1': null, '2': null, '3': null, '4': null, '5': null },
+  });
+  await seedActivity({
+    id: ACTIVITY_A1,
+    tenantId: TENANT_A,
+    projectId: PROJECT_A,
+    claimId: CLAIM_A,
+    code: 'CA-01',
+    title: 'C66 Activity 1',
+  });
+  // Two sections completed, two still absent.
+  await seedNarrativeDraft({
+    tenantId: TENANT_A,
+    activityId: ACTIVITY_A1,
+    sectionKind: 'hypothesis',
+    status: 'complete',
+  });
+  await seedNarrativeDraft({
+    tenantId: TENANT_A,
+    activityId: ACTIVITY_A1,
+    sectionKind: 'new_knowledge',
+    status: 'streaming',
+  });
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'GET',
+    url: `/v1/claims/${CLAIM_A}/workflow`,
+    cookies: { cpa_session: await consultantJwt() },
+  });
+  assert.equal(res.statusCode, 200);
+  const body = res.json<NarrativeSectionsResponse>();
+  assert.equal(body.derived.narrativeSections.hypothesis, 'complete');
+  assert.equal(body.derived.narrativeSections.new_knowledge, 'streaming');
+  assert.equal(body.derived.narrativeSections.uncertainty, 'absent');
+  assert.equal(body.derived.narrativeSections.experiments_and_results, 'absent');
+  await app.close();
+});
+
+test("GET /workflow: derived.narrativeSections reflects 'accepted' after narrative-accept route runs", async () => {
+  await setWorkflowState(CLAIM_A, {
+    initialized_at: '2025-01-01T00:00:00.000Z',
+    steps: { '1': null, '2': null, '3': null, '4': null, '5': null },
+  });
+  await seedActivity({
+    id: ACTIVITY_A1,
+    tenantId: TENANT_A,
+    projectId: PROJECT_A,
+    claimId: CLAIM_A,
+    code: 'CA-01',
+    title: 'C66 Activity 1',
+  });
+  // Seed a draft at 'complete' then call the accept route to flip it.
+  await seedNarrativeDraft({
+    tenantId: TENANT_A,
+    activityId: ACTIVITY_A1,
+    sectionKind: 'hypothesis',
+    status: 'complete',
+  });
+
+  const app = buildApp();
+  const acceptRes = await app.inject({
+    method: 'POST',
+    url: `/v1/claims/${CLAIM_A}/narrative/sections/hypothesis/accept`,
+    cookies: { cpa_session: await consultantJwt() },
+  });
+  assert.equal(acceptRes.statusCode, 200);
+
+  const res = await app.inject({
+    method: 'GET',
+    url: `/v1/claims/${CLAIM_A}/workflow`,
+    cookies: { cpa_session: await consultantJwt() },
+  });
+  assert.equal(res.statusCode, 200);
+  const body = res.json<NarrativeSectionsResponse>();
+  assert.equal(body.derived.narrativeSections.hypothesis, 'accepted');
+  await app.close();
+});
+
+test("GET /workflow: derived.narrativeSections aggregates 'accepted' across multiple activities (any activity accepted → kind accepted)", async () => {
+  // Two activities under the same claim. For 'hypothesis': activity A1 is
+  // 'complete' and activity A2 is 'accepted'. The aggregated status must
+  // be 'accepted' (any-accepted-wins) even though one activity hasn't
+  // signed off — this mirrors the DISTINCT-section_kind semantic the
+  // gate counter uses.
+  await setWorkflowState(CLAIM_A, {
+    initialized_at: '2025-01-01T00:00:00.000Z',
+    steps: { '1': null, '2': null, '3': null, '4': null, '5': null },
+  });
+  await seedActivity({
+    id: ACTIVITY_A1,
+    tenantId: TENANT_A,
+    projectId: PROJECT_A,
+    claimId: CLAIM_A,
+    code: 'CA-01',
+    title: 'C66 Activity 1',
+  });
+  await seedActivity({
+    id: ACTIVITY_A2,
+    tenantId: TENANT_A,
+    projectId: PROJECT_A,
+    claimId: CLAIM_A,
+    code: 'CA-02',
+    title: 'C66 Activity 2',
+  });
+  await seedNarrativeDraft({
+    tenantId: TENANT_A,
+    activityId: ACTIVITY_A1,
+    sectionKind: 'hypothesis',
+    status: 'complete',
+  });
+  await seedNarrativeDraft({
+    tenantId: TENANT_A,
+    activityId: ACTIVITY_A2,
+    sectionKind: 'hypothesis',
+    status: 'accepted',
+  });
+
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'GET',
+    url: `/v1/claims/${CLAIM_A}/workflow`,
+    cookies: { cpa_session: await consultantJwt() },
+  });
+  assert.equal(res.statusCode, 200);
+  const body = res.json<NarrativeSectionsResponse>();
+  assert.equal(body.derived.narrativeSections.hypothesis, 'accepted');
+  await app.close();
+});
+
+test('GET /workflow: canAdvance(4) and derived.narrativeSections agree (all 4 accepted → canAdvance(4).ok is true)', async () => {
+  await setWorkflowState(CLAIM_A, {
+    initialized_at: '2025-01-01T00:00:00.000Z',
+    steps: { '1': null, '2': null, '3': null, '4': null, '5': null },
+  });
+  await seedActivity({
+    id: ACTIVITY_A1,
+    tenantId: TENANT_A,
+    projectId: PROJECT_A,
+    claimId: CLAIM_A,
+    code: 'CA-01',
+    title: 'C66 Activity 1',
+  });
+  // Seed all four section_kinds as 'accepted' under a single activity.
+  for (const kind of [
+    'new_knowledge',
+    'hypothesis',
+    'uncertainty',
+    'experiments_and_results',
+  ] as const) {
+    await seedNarrativeDraft({
+      tenantId: TENANT_A,
+      activityId: ACTIVITY_A1,
+      sectionKind: kind,
+      status: 'accepted',
+    });
+  }
+
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'GET',
+    url: `/v1/claims/${CLAIM_A}/workflow`,
+    cookies: { cpa_session: await consultantJwt() },
+  });
+  assert.equal(res.statusCode, 200);
+  const body = res.json<NarrativeSectionsResponse>();
+  assert.deepEqual(body.derived.narrativeSections, {
+    new_knowledge: 'accepted',
+    hypothesis: 'accepted',
+    uncertainty: 'accepted',
+    experiments_and_results: 'accepted',
+  });
+  // canAdvance(4) gate flips ok=true once the 4-section threshold is met.
+  assert.equal(body.derived.canAdvance['4'].ok, true);
+  await app.close();
+});

@@ -118,6 +118,31 @@ export const evidenceKind = z.enum([
   // 0028_narrative_drafted_kind.sql to admit it; this Zod enum
   // tracks the same set.
   'NARRATIVE_DRAFTED',
+  // P5A — subject-tenant, employee, and time-entry CRUD audit trail.
+  // The CHECK is rebuilt by
+  // 0073_p5a_event_kinds_and_time_entry_soft_delete.sql to admit
+  // these; this Zod enum tracks the same set.
+  'SUBJECT_TENANT_UPDATED',
+  'SUBJECT_TENANT_ARCHIVED',
+  'EMPLOYEE_UPDATED',
+  'EMPLOYEE_DEACTIVATED',
+  'TIME_ENTRY_CREATED',
+  'TIME_ENTRY_UPDATED',
+  'TIME_ENTRY_DELETED',
+  // Cloud sync connector — admitted by 0075_cloud_sync_connection.sql.
+  // CLOUD_SYNC_CONNECTED / CLOUD_SYNC_DISCONNECTED are state-transition
+  // events. EVIDENCE_UPLOADED is the file-ingestion event (classifiable
+  // evidence kind added to the claimant's chain per file).
+  'CLOUD_SYNC_CONNECTED',
+  'CLOUD_SYNC_DISCONNECTED',
+  'EVIDENCE_UPLOADED',
+  // B+C narrative-approval flow — admitted by 0079_narrative_approval_columns.sql.
+  // NARRATIVE_APPROVED is emitted once per bulk-approval action.
+  // ACTIVITY_REVIEWED / EXPENDITURE_REVIEWED are emitted when a consultant
+  // clears the needs_review flag on an auto-created record.
+  'NARRATIVE_APPROVED',
+  'ACTIVITY_REVIEWED',
+  'EXPENDITURE_REVIEWED',
 ]);
 export type EvidenceKind = z.infer<typeof evidenceKind>;
 
@@ -198,7 +223,11 @@ export type Event = z.infer<typeof event>;
  */
 export const createEventBody = z.object({
   subject_tenant_id: Uuid,
-  raw_text: z.string().min(1).max(10_000),
+  // Raised from 10 000 to 20 000 to accommodate file-upload events that
+  // include client-side extracted text (mammoth/pdfjs/xlsx) alongside the
+  // standard file metadata header. The extra 10 k covers ~8 k chars of
+  // document body plus ~500 chars of header metadata.
+  raw_text: z.string().min(1).max(20_000),
   captured_at: Iso8601.optional(),
 });
 export type CreateEventBody = z.infer<typeof createEventBody>;
@@ -1017,3 +1046,140 @@ export const NarrativeDraftedPayload = z.object({
   idempotency_key: z.string().min(1),
 });
 export type NarrativeDraftedPayload = z.infer<typeof NarrativeDraftedPayload>;
+
+// ---------------------------------------------------------------------------
+// P5A — subject-tenant, employee, and time-entry CRUD event payload schemas.
+// ---------------------------------------------------------------------------
+
+/**
+ * SUBJECT_TENANT_UPDATED — emitted by PATCH /v1/subject-tenants/:id.
+ * Mirrors ActivityUpdatedPayload: `fields_changed` records which columns
+ * changed with `{from, to}` pairs so the audit timeline can render a diff.
+ */
+export const SubjectTenantUpdatedPayload = z.object({
+  subject_tenant_id: Uuid,
+  fields_changed: z.record(z.string(), z.object({ from: z.unknown(), to: z.unknown() })),
+});
+export type SubjectTenantUpdatedPayload = z.infer<typeof SubjectTenantUpdatedPayload>;
+
+/**
+ * SUBJECT_TENANT_ARCHIVED — emitted by DELETE /v1/subject-tenants/:id.
+ * `archived_by_user_id` pins the actor so the audit chain reflects who
+ * triggered the soft-delete.
+ */
+export const SubjectTenantArchivedPayload = z.object({
+  subject_tenant_id: Uuid,
+  archived_by_user_id: Uuid,
+});
+export type SubjectTenantArchivedPayload = z.infer<typeof SubjectTenantArchivedPayload>;
+
+/**
+ * EMPLOYEE_UPDATED — emitted by PATCH /v1/employees/:id. Same
+ * `fields_changed` diff pattern as SUBJECT_TENANT_UPDATED.
+ */
+export const EmployeeUpdatedPayload = z.object({
+  employee_id: Uuid,
+  fields_changed: z.record(z.string(), z.object({ from: z.unknown(), to: z.unknown() })),
+});
+export type EmployeeUpdatedPayload = z.infer<typeof EmployeeUpdatedPayload>;
+
+/**
+ * EMPLOYEE_DEACTIVATED — emitted by DELETE /v1/employees/:id.
+ * `deactivated_by_user_id` pins the actor on the audit chain.
+ */
+export const EmployeeDeactivatedPayload = z.object({
+  employee_id: Uuid,
+  deactivated_by_user_id: Uuid,
+});
+export type EmployeeDeactivatedPayload = z.infer<typeof EmployeeDeactivatedPayload>;
+
+/**
+ * TIME_ENTRY_CREATED — emitted by POST /v1/time-entries (consultant
+ * session path). `source` is always `'consultant_manual'` on this path.
+ * `duration_minutes` is denormalised onto the payload so the audit
+ * timeline can render "X minutes" without re-joining.
+ */
+export const TimeEntryCreatedPayload = z.object({
+  time_entry_id: Uuid,
+  employee_id: Uuid,
+  started_at: Iso8601,
+  duration_minutes: z.number().int().positive(),
+});
+export type TimeEntryCreatedPayload = z.infer<typeof TimeEntryCreatedPayload>;
+
+/**
+ * TIME_ENTRY_UPDATED — emitted by PATCH /v1/time-entries/:id.
+ * Same `fields_changed` diff pattern as EMPLOYEE_UPDATED.
+ */
+export const TimeEntryUpdatedPayload = z.object({
+  time_entry_id: Uuid,
+  fields_changed: z.record(z.string(), z.object({ from: z.unknown(), to: z.unknown() })),
+});
+export type TimeEntryUpdatedPayload = z.infer<typeof TimeEntryUpdatedPayload>;
+
+/**
+ * TIME_ENTRY_DELETED — emitted by DELETE /v1/time-entries/:id.
+ * `deleted_by_user_id` pins the actor on the audit chain.
+ */
+export const TimeEntryDeletedPayload = z.object({
+  time_entry_id: Uuid,
+  deleted_by_user_id: Uuid,
+});
+export type TimeEntryDeletedPayload = z.infer<typeof TimeEntryDeletedPayload>;
+
+// ---------------------------------------------------------------------------
+// B+C narrative-approval flow — event payload schemas (0079).
+// ---------------------------------------------------------------------------
+
+/**
+ * NARRATIVE_APPROVED — emitted once by POST /v1/subject-tenants/:id/approve-narrative
+ * when the user bulk-approves all pending proposals for a subject tenant.
+ *
+ * Carries aggregate statistics for the approval action so downstream
+ * readers (audit timeline, assurance report) can render "approved N activities
+ * and M invoices" without re-scanning the individual ACTIVITY_CREATED events.
+ *
+ * `threshold` is the AUTO_CREATE_CONFIDENCE_THRESHOLD value in effect at
+ * approval time (stored so future audits can understand which records were
+ * auto-created vs. flagged for review).
+ *
+ * `_v: 1` is the payload-shape version stamp.
+ */
+export const NarrativeApprovedPayload = z.object({
+  _v: z.literal(1),
+  activities_created: z.number().int().nonnegative(),
+  invoices_created: z.number().int().nonnegative(),
+  total_aud: z.number().nonnegative(),
+  excluded_count: z.number().int().nonnegative(),
+  threshold: z.number().min(0).max(1),
+});
+export type NarrativeApprovedPayload = z.infer<typeof NarrativeApprovedPayload>;
+
+/**
+ * ACTIVITY_REVIEWED — emitted by POST /v1/activities/:id/mark-reviewed when
+ * a consultant clears the `needs_review` flag on an auto-created activity.
+ *
+ * `previously_confidence` is the proposal_confidence that caused the
+ * activity to be flagged in the first place (surfaces in the audit chain
+ * so reviewers understand the original classification signal).
+ */
+export const ActivityReviewedPayload = z.object({
+  _v: z.literal(1),
+  activity_id: Uuid,
+  reviewed_by_user_id: Uuid,
+  previously_confidence: z.number().min(0).max(1).nullable(),
+});
+export type ActivityReviewedPayload = z.infer<typeof ActivityReviewedPayload>;
+
+/**
+ * EXPENDITURE_REVIEWED — emitted by POST /v1/expenditures/:id/mark-reviewed
+ * when a consultant clears the `needs_review` flag on an auto-created
+ * expenditure record.
+ */
+export const ExpenditureReviewedPayload = z.object({
+  _v: z.literal(1),
+  expenditure_id: Uuid,
+  reviewed_by_user_id: Uuid,
+  previously_confidence: z.number().min(0).max(1).nullable(),
+});
+export type ExpenditureReviewedPayload = z.infer<typeof ExpenditureReviewedPayload>;

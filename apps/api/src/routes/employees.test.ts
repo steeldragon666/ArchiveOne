@@ -16,8 +16,14 @@ const SUBJECT_B1 = '00000000-0000-4000-8000-0000000f6023';
 const EMPLOYEE_PRESEED = '00000000-0000-4000-8000-0000000f6030';
 
 const cleanup = async (): Promise<void> => {
-  // FK-safe cleanup: magic_link_token → subject_tenant_employee → subject_tenant
-  // → tenant_user → user → tenant.
+  // FK-safe cleanup: events first (event.subject_tenant_id FKs to
+  // subject_tenant), then magic_link_token → subject_tenant_employee →
+  // subject_tenant → tenant_user → user → tenant.
+  //
+  // The event delete handles stale events from prior failed runs that
+  // would otherwise block the subject_tenant delete on FK constraint
+  // event_subject_tenant_id_subject_tenant_id_fk.
+  await privilegedSql`DELETE FROM event WHERE tenant_id IN (${TENANT_A}, ${TENANT_B})`;
   await privilegedSql`
     DELETE FROM magic_link_token WHERE employee_id IN (
       SELECT id FROM subject_tenant_employee WHERE tenant_id IN (${TENANT_A}, ${TENANT_B})
@@ -308,5 +314,183 @@ test('POST /v1/employees/:id/invite: 403 for viewer role', async () => {
     cookies: { cpa_session: await viewerJwt() },
   });
   assert.equal(res.statusCode, 403);
+  await app.close();
+});
+
+// =============================================================================
+// PATCH /v1/employees/:id (P5A)
+// =============================================================================
+
+test('PATCH /v1/employees/:id: 401 without session', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'PATCH',
+    url: `/v1/employees/${EMPLOYEE_PRESEED}`,
+    payload: { name: 'New Name' },
+  });
+  assert.equal(res.statusCode, 401);
+  await app.close();
+});
+
+test('PATCH /v1/employees/:id: 403 for viewer role', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'PATCH',
+    url: `/v1/employees/${EMPLOYEE_PRESEED}`,
+    cookies: { cpa_session: await viewerJwt() },
+    payload: { name: 'Should Fail' },
+  });
+  assert.equal(res.statusCode, 403);
+  await app.close();
+});
+
+test('PATCH /v1/employees/:id: 400 on invalid body (extra key)', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'PATCH',
+    url: `/v1/employees/${EMPLOYEE_PRESEED}`,
+    cookies: { cpa_session: await adminJwt() },
+    payload: { name: 'Valid', unknown_field: 'oops' },
+  });
+  assert.equal(res.statusCode, 400);
+  await app.close();
+});
+
+test('PATCH /v1/employees/:id: 404 cross-firm id (RLS isolation)', async () => {
+  // Seed a firm-B employee to use as a cross-firm id.
+  const FIRM_B_EMP_PATCH = '00000000-0000-4000-8000-0000000f6050';
+  await privilegedSql`
+    INSERT INTO subject_tenant_employee (
+      id, subject_tenant_id, tenant_id, email, name, invited_by_user_id
+    ) VALUES (
+      ${FIRM_B_EMP_PATCH}, ${SUBJECT_B1}, ${TENANT_B},
+      'firmb-patch@example.com', 'Firm B Patch', ${ADMIN_USER}
+    )
+  `;
+  try {
+    const app = buildApp();
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/v1/employees/${FIRM_B_EMP_PATCH}`,
+      cookies: { cpa_session: await adminJwt() },
+      payload: { name: 'Hijack' },
+    });
+    assert.equal(res.statusCode, 404);
+    await app.close();
+  } finally {
+    await privilegedSql`DELETE FROM subject_tenant_employee WHERE id = ${FIRM_B_EMP_PATCH}`;
+  }
+});
+
+test('PATCH /v1/employees/:id: 200 + updated row + EMPLOYEE_UPDATED event', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'PATCH',
+    url: `/v1/employees/${EMPLOYEE_PRESEED}`,
+    cookies: { cpa_session: await consultantJwt() },
+    payload: { name: 'Pre-Seed Updated', job_title: 'Senior Engineer' },
+  });
+  assert.equal(res.statusCode, 200);
+  const body = res.json<{ employee: { id: string; name: string; job_title: string | null } }>();
+  assert.equal(body.employee.id, EMPLOYEE_PRESEED);
+  assert.equal(body.employee.name, 'Pre-Seed Updated');
+  assert.equal(body.employee.job_title, 'Senior Engineer');
+
+  // Verify event landed on the chain.
+  const eventRows = await privilegedSql<{ kind: string }[]>`
+    SELECT kind FROM event
+     WHERE kind = 'EMPLOYEE_UPDATED'
+       AND payload ->> 'employee_id' = ${EMPLOYEE_PRESEED}
+     ORDER BY captured_at DESC LIMIT 1
+  `;
+  assert.equal(eventRows.length, 1);
+
+  await app.close();
+});
+
+// =============================================================================
+// DELETE /v1/employees/:id (P5A)
+// =============================================================================
+
+test('DELETE /v1/employees/:id: 401 without session', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'DELETE',
+    url: `/v1/employees/${EMPLOYEE_PRESEED}`,
+  });
+  assert.equal(res.statusCode, 401);
+  await app.close();
+});
+
+test('DELETE /v1/employees/:id: 403 for viewer role', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'DELETE',
+    url: `/v1/employees/${EMPLOYEE_PRESEED}`,
+    cookies: { cpa_session: await viewerJwt() },
+  });
+  assert.equal(res.statusCode, 403);
+  await app.close();
+});
+
+test('DELETE /v1/employees/:id: 404 cross-firm (RLS isolation)', async () => {
+  const FIRM_B_EMP_DEL = '00000000-0000-4000-8000-0000000f6051';
+  await privilegedSql`
+    INSERT INTO subject_tenant_employee (
+      id, subject_tenant_id, tenant_id, email, name, invited_by_user_id
+    ) VALUES (
+      ${FIRM_B_EMP_DEL}, ${SUBJECT_B1}, ${TENANT_B},
+      'firmb-del@example.com', 'Firm B Del', ${ADMIN_USER}
+    )
+  `;
+  try {
+    const app = buildApp();
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/v1/employees/${FIRM_B_EMP_DEL}`,
+      cookies: { cpa_session: await adminJwt() },
+    });
+    assert.equal(res.statusCode, 404);
+    await app.close();
+  } finally {
+    await privilegedSql`DELETE FROM subject_tenant_employee WHERE id = ${FIRM_B_EMP_DEL}`;
+  }
+});
+
+test('DELETE /v1/employees/:id: 204 soft-deactivates employee + emits EMPLOYEE_DEACTIVATED', async () => {
+  // Create a dedicated employee to deactivate (can't re-use EMPLOYEE_PRESEED
+  // as further invite tests depend on it being active).
+  const DEACTIVATE_EMP = '00000000-0000-4000-8000-0000000f6052';
+  await privilegedSql`
+    INSERT INTO subject_tenant_employee (
+      id, subject_tenant_id, tenant_id, email, name, invited_by_user_id
+    ) VALUES (
+      ${DEACTIVATE_EMP}, ${SUBJECT_A1}, ${TENANT_A},
+      'to-deactivate@example.com', 'To Deactivate', ${ADMIN_USER}
+    )
+  `;
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'DELETE',
+    url: `/v1/employees/${DEACTIVATE_EMP}`,
+    cookies: { cpa_session: await adminJwt() },
+  });
+  assert.equal(res.statusCode, 204);
+
+  // Row should be soft-deactivated.
+  const row = await privilegedSql<{ deactivated_at: Date | null }[]>`
+    SELECT deactivated_at FROM subject_tenant_employee WHERE id = ${DEACTIVATE_EMP}
+  `;
+  assert.ok(row[0]?.deactivated_at !== null);
+
+  // Chain event emitted.
+  const eventRows = await privilegedSql<{ kind: string }[]>`
+    SELECT kind FROM event
+     WHERE kind = 'EMPLOYEE_DEACTIVATED'
+       AND payload ->> 'employee_id' = ${DEACTIVATE_EMP}
+     ORDER BY captured_at DESC LIMIT 1
+  `;
+  assert.equal(eventRows.length, 1);
+
   await app.close();
 });

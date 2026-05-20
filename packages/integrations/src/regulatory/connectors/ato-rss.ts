@@ -7,6 +7,7 @@
  */
 
 import { registerConnector } from '../connector-factory.js';
+import { rifFetch } from '../fetch-with-retry.js';
 import type {
   ISourceConnector,
   RegulatorySourceRow,
@@ -15,14 +16,10 @@ import type {
 
 class AtoRssConnector implements ISourceConnector {
   async fetch(source: RegulatorySourceRow): Promise<RawRegulatoryEvent[]> {
-    const response = await globalThis.fetch(source.source_url, {
-      headers: { 'User-Agent': 'CPA-Platform-RIF/1.0' },
-      signal: AbortSignal.timeout(30_000),
+    // Prefer RSS/XML media types for the ATO feed endpoint.
+    const response = await rifFetch(source.source_url, {
+      headers: { Accept: 'application/rss+xml, application/xml, text/xml, */*' },
     });
-
-    if (!response.ok) {
-      throw new Error(`ATO RSS fetch failed: HTTP ${response.status}`);
-    }
 
     const xml = await response.text();
     return parseRssItems(xml, source.source_url);

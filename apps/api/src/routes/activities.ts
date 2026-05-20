@@ -59,9 +59,37 @@ interface RawActivityRow {
   actual_outcome: string | null;
   created_at: Date | string;
   updated_at: Date | string;
+  // Narrative-approval review metadata (migration 0079). Optional on the
+  // row because older callers (the existing PATCH/POST handlers) don't
+  // SELECT these columns; only the list/detail GETs do.
+  needs_review?: boolean;
+  proposal_confidence?: string | number | null;
+  proposed_from_event_id?: string | null;
+  // AusIndustry portal-fields jsonb (migration 0044). Always present in
+  // the DB (`NOT NULL DEFAULT '{}'::jsonb`) but optional on the row
+  // because only the detail GET selects it — POST/PATCH/list don't yet.
+  portal_fields?: Record<string, unknown>;
+  // Prior portal_fields snapshots (migration 0080). Same optional-on-row
+  // pattern — only detail GET selects it.
+  portal_fields_history?: Array<{
+    portal_fields: Record<string, unknown>;
+    saved_at: string;
+    source: 'agent' | 'edit';
+  }>;
 }
 
 const isoOf = (v: Date | string): string => (typeof v === 'string' ? v : v.toISOString());
+
+/**
+ * Coerce postgres NUMERIC(4,3) into a JS number. postgres.js returns
+ * NUMERIC as a string by default to preserve precision; the wire schema
+ * (`proposal_confidence: z.number().min(0).max(1).nullable()`) requires
+ * a real number. NULL passes through unchanged.
+ */
+const numericToNumber = (v: string | number | null | undefined): number | null => {
+  if (v == null) return null;
+  return typeof v === 'string' ? Number(v) : v;
+};
 
 const toApi = (r: RawActivityRow): Activity => ({
   id: r.id,
@@ -79,6 +107,26 @@ const toApi = (r: RawActivityRow): Activity => ({
   actual_outcome: r.actual_outcome,
   created_at: isoOf(r.created_at),
   updated_at: isoOf(r.updated_at),
+  ...(r.needs_review !== undefined ? { needs_review: r.needs_review } : {}),
+  ...(r.proposal_confidence !== undefined
+    ? { proposal_confidence: numericToNumber(r.proposal_confidence) }
+    : {}),
+  ...(r.proposed_from_event_id !== undefined
+    ? { proposed_from_event_id: r.proposed_from_event_id }
+    : {}),
+  // portal_fields always materialises as `{}` for activities not yet
+  // processed by the portal-fields agent — the column NOT-NULL default
+  // guarantees this. We only include it when the SELECT actually picked
+  // it up so list responses (which omit it for payload-size reasons) stay
+  // small. When present, hand it through verbatim.
+  ...(r.portal_fields !== undefined ? { portal_fields: r.portal_fields } : { portal_fields: {} }),
+  // portal_fields_history materialises as `[]` for activities that have
+  // never been regenerated. When the SELECT picks it up we hand it through
+  // verbatim; otherwise the default empty array keeps the wire shape
+  // consistent for clients.
+  ...(r.portal_fields_history !== undefined
+    ? { portal_fields_history: r.portal_fields_history }
+    : { portal_fields_history: [] }),
 });
 
 /**
@@ -384,7 +432,8 @@ export function registerActivities(app: FastifyInstance): void {
             SELECT id, tenant_id, project_id, claim_id, code, kind, title,
                    description, hypothesis, technical_uncertainty,
                    experimentation_log, expected_outcome, actual_outcome,
-                   created_at, updated_at
+                   created_at, updated_at,
+                   needs_review, proposal_confidence, proposed_from_event_id
               FROM activity
              WHERE claim_id = ${claim_id}
              ORDER BY code ASC
@@ -393,7 +442,8 @@ export function registerActivities(app: FastifyInstance): void {
             SELECT id, tenant_id, project_id, claim_id, code, kind, title,
                    description, hypothesis, technical_uncertainty,
                    experimentation_log, expected_outcome, actual_outcome,
-                   created_at, updated_at
+                   created_at, updated_at,
+                   needs_review, proposal_confidence, proposed_from_event_id
               FROM activity
              ORDER BY code ASC
           `;
@@ -416,7 +466,9 @@ export function registerActivities(app: FastifyInstance): void {
           SELECT id, tenant_id, project_id, claim_id, code, kind, title,
                  description, hypothesis, technical_uncertainty,
                  experimentation_log, expected_outcome, actual_outcome,
-                 created_at, updated_at
+                 created_at, updated_at,
+                 needs_review, proposal_confidence, proposed_from_event_id,
+                 portal_fields, portal_fields_history
             FROM activity
            WHERE id = ${id}
              AND tenant_id = ${tenantId}

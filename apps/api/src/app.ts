@@ -19,10 +19,19 @@ import { registerActivities } from './routes/activities.js';
 import { registerActivityPdf } from './routes/activity-pdf.js';
 import { registerActivityRegister } from './routes/activity-register.js';
 import { registerNarrative } from './routes/narrative.js';
+import { registerNarrativeAccept } from './routes/narrative-accept.js';
+import { registerPendingNarrative } from './routes/pending-narrative.js';
+import { registerPipelineStatus } from './routes/pipeline-status.js';
+import { registerProposedActivities } from './routes/proposed-activities.js';
+import { registerGenerateApplication } from './routes/generate-application.js';
+import { registerInsights } from './routes/insights.js';
+import { registerClaimBudget } from './routes/claim-budget.js';
+import { registerPortalFields } from './routes/portal-fields.js';
 import { registerApplyRules } from './routes/apply-rules.js';
 import { registerArtefactLinks } from './routes/artefact-links.js';
 import { registerGoogleAuth } from './routes/auth/google.js';
 import { registerMicrosoftAuth } from './routes/auth/microsoft.js';
+import { registerDevLogin } from './routes/auth/dev-login.js';
 import { registerSignout } from './routes/auth/signout.js';
 import { healthRoutes } from './routes/health.js';
 import { registerAuditScore } from './routes/audit-score.js';
@@ -33,6 +42,7 @@ import { registerClaimantMagicLinkRedeem } from './routes/claimant-magic-link.js
 import { registerClaimantStatus } from './routes/claimant-status.js';
 import { registerClaimants } from './routes/claimants.js';
 import { registerClaimPdf } from './routes/claim-pdf.js';
+import { registerClaimWorkflow } from './routes/claim-workflow.js';
 import { registerClaims } from './routes/claims.js';
 import { registerEmployees } from './routes/employees.js';
 import { registerMagicLinkRedeem } from './routes/magic-link.js';
@@ -74,6 +84,7 @@ import { registerRemoveUser } from './routes/users/remove.js';
 import { registerUpdateUser } from './routes/users/update.js';
 import { registerWhoami } from './routes/whoami.js';
 import { registerFederation } from './routes/federation/index.js';
+import { registerCloudSync } from './routes/cloud-sync.js';
 
 const DEFAULT_DEV_SESSION_SECRET = 'dev-only-32-bytes-of-entropy-pad!';
 const DEFAULT_SESSION_COOKIE_NAME = 'cpa_session';
@@ -301,6 +312,10 @@ export function buildApp(options: BuildAppOptions = {}): App {
     done();
   });
   app.register((instance, _opts, done) => {
+    registerClaimWorkflow(instance);
+    done();
+  });
+  app.register((instance, _opts, done) => {
     registerProjects(instance);
     done();
   });
@@ -314,6 +329,38 @@ export function buildApp(options: BuildAppOptions = {}): App {
   });
   app.register((instance, _opts, done) => {
     registerNarrative(instance);
+    done();
+  });
+  app.register((instance, _opts, done) => {
+    registerNarrativeAccept(instance);
+    done();
+  });
+  app.register((instance, _opts, done) => {
+    registerPendingNarrative(instance);
+    done();
+  });
+  app.register((instance, _opts, done) => {
+    registerPipelineStatus(instance);
+    done();
+  });
+  app.register((instance, _opts, done) => {
+    registerProposedActivities(instance);
+    done();
+  });
+  app.register((instance, _opts, done) => {
+    registerGenerateApplication(instance);
+    done();
+  });
+  app.register((instance, _opts, done) => {
+    registerInsights(instance);
+    done();
+  });
+  app.register((instance, _opts, done) => {
+    registerClaimBudget(instance);
+    done();
+  });
+  app.register((instance, _opts, done) => {
+    registerPortalFields(instance);
     done();
   });
   app.register((instance, _opts, done) => {
@@ -351,6 +398,11 @@ export function buildApp(options: BuildAppOptions = {}): App {
   // P9.3 Federation routes — cross-tenant read sharing.
   app.register((instance, _opts, done) => {
     registerFederation(instance);
+    done();
+  });
+  // Cloud sync connector routes (Google Drive OAuth + connection CRUD).
+  app.register((instance, _opts, done) => {
+    registerCloudSync(instance);
     done();
   });
   // Prompt-suggestions routes require explicit deps (esp. `runContractTest`,
@@ -444,6 +496,26 @@ export function buildApp(options: BuildAppOptions = {}): App {
         ttlSeconds,
         postLoginRedirect: DEFAULT_POST_LOGIN_REDIRECT,
       });
+    });
+  }
+
+  // GET /v1/dev/login — escape-hatch route that mints a real cpa_session
+  // for an existing user. ONLY registers when DEV_LOGIN_TOKEN is set
+  // in the env — production deployments without that env var see a
+  // 404 on this path. Designed for founder/operator emergency access
+  // when OIDC isn't configured or the IdP is down.
+  // See: apps/api/src/routes/auth/dev-login.ts for the full contract.
+  const devLoginToken = process.env['DEV_LOGIN_TOKEN'];
+  if (devLoginToken) {
+    app.register((instance, _opts, done) => {
+      registerDevLogin(instance, {
+        bypassToken: devLoginToken,
+        sessionSecret,
+        cookieName,
+        cookieSecure,
+        ttlSeconds,
+      });
+      done();
     });
   }
 

@@ -11,7 +11,9 @@
     "reconcile-prompt-suggestion-prs": "tsx --env-file-if-exists=../../.env reconcile-prompt-suggestion-prs.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
     "@cpa/agents": "workspace:*",
+    "@cpa/auth": "workspace:*",
     "@cpa/db": "workspace:*",
     "@cpa/integrations": "workspace:*"
   },

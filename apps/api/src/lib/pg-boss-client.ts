@@ -73,7 +73,27 @@ export async function getBoss(): Promise<PgBoss> {
       'pg-boss-client: DATABASE_URL not set (and DATABASE_URL_BOSS not set as override)',
     );
   }
-  const boss = new PgBoss(connectionString);
+  // Cap the pg-boss internal pool size. Default is 10; against a
+  // Supabase session-mode pooler with a 15-client cap, that competes
+  // with the postgres-js `sql` (DATABASE_POOL_MAX, default 3) and
+  // `privilegedSql` (hardcoded 5) pools and triggers
+  // `(EMAXCONNSESSION) max clients reached in session mode`. PG_BOSS_POOL_MAX
+  // can be overridden in prod where the connection budget is larger.
+  const bossPoolMax = Number(process.env['PG_BOSS_POOL_MAX'] ?? 5);
+  // Managed Postgres services (Supabase, Neon, AWS RDS) ship cert chains that
+  // include intermediates not in Node's default trust store, so node-postgres
+  // (which pg-boss wraps) rejects the connection with
+  //   "self-signed certificate in certificate chain".
+  // Keep TLS encryption, skip CA validation. Triggered by any sslmode= in the
+  // URL or NODE_ENV=production. Local docker pg (no sslmode in URL,
+  // NODE_ENV=development) gets ssl:false → plain TCP.
+  const useSSL =
+    /[?&]sslmode=(?!disable)/.test(connectionString) || process.env['NODE_ENV'] === 'production';
+  const boss = new PgBoss({
+    connectionString,
+    max: bossPoolMax,
+    ...(useSSL ? { ssl: { rejectUnauthorized: false } } : {}),
+  });
   // Attach the error listener BEFORE start() so any startup error
   // (schema-migration failure, connection refused, etc.) routes through
   // the same surface as steady-state errors.

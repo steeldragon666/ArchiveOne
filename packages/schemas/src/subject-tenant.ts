@@ -49,3 +49,21 @@ export const listSubjectTenantsQuery = z.object({
   kind: subjectTenantKind.optional(),
 });
 export type ListSubjectTenantsQuery = z.infer<typeof listSubjectTenantsQuery>;
+
+/**
+ * PATCH /v1/subject-tenants/:id body — partial update.
+ *
+ * `name` and `kind` are the only consultant-editable fields on a
+ * subject_tenant. Identity (`id`, `tenant_id`) and lifecycle
+ * timestamps (`created_at`, `updated_at`) are server-managed.
+ * Soft-delete uses DELETE /v1/subject-tenants/:id (sets `deleted_at`).
+ *
+ * `.strict()` rejects unknown keys — protects against silent typos.
+ */
+export const updateSubjectTenantBody = z
+  .object({
+    name: z.string().min(1).max(200).optional(),
+    kind: subjectTenantKind.optional(),
+  })
+  .strict();
+export type UpdateSubjectTenantBody = z.infer<typeof updateSubjectTenantBody>;

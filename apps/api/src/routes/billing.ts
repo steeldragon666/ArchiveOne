@@ -28,6 +28,13 @@ export function registerBilling(app: FastifyInstance, deps: BillingRouteDeps): v
     async (req, reply) => {
       const { success_url, cancel_url } = req.body as { success_url: string; cancel_url: string };
       const tenantId = req.user!.tenantId;
+      if (!tenantId) {
+        return reply.status(400).send({
+          error: 'no_tenant',
+          message: 'Session has no tenant context',
+          requestId: req.id,
+        });
+      }
 
       // Attempt to claim a founding-partner slot (race-safe via SKIP LOCKED).
       const hasFoundingSlot = await tryClaimFoundingPartnerSlot(tenantId);

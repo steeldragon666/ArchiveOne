@@ -25,7 +25,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
     "generate": "drizzle-kit generate",
-    "migrate": "tsx src/migrate.ts",
+    "migrate": "tsx --env-file-if-exists=../../.env src/migrate.ts",
     "studio": "drizzle-kit studio"
   },
   "dependencies": {

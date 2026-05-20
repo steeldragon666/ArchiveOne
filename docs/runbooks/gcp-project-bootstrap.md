@@ -1,6 +1,6 @@
 # Runbook: GCP Project Bootstrap
 
-**Scope:** Initial provisioning and ongoing maintenance of the `cpa-platform-prod` and `cpa-platform-stg` GCP projects.
+**Scope:** Initial provisioning and ongoing maintenance of the `claimsure-prod` and `claimsure-stg` GCP projects.
 **Scripts:** `tools/gcp/project-bootstrap.sh`, `tools/gcp/budget-alerts.sh`
 **Author:** P9.0.1
 **Last updated:** 2026-05-06
@@ -24,9 +24,11 @@
 ### Tools
 
 - **gcloud CLI** — version 450+ recommended.
+
   ```bash
   gcloud version
   ```
+
   Install: https://cloud.google.com/sdk/docs/install
 
 - **Authenticated gcloud session** with an account that has the following IAM roles on the GCP organisation (or folder):
@@ -35,6 +37,7 @@
   - `roles/billing.admin` (to create budget alerts)
 
   Authenticate:
+
   ```bash
   gcloud auth login
   gcloud auth application-default login
@@ -48,13 +51,13 @@
 
 ### Required permissions summary
 
-| Action | Required role |
-|---|---|
-| Create projects | `roles/resourcemanager.projectCreator` |
-| Link billing | `roles/billing.user` |
-| Enable APIs | `roles/serviceusage.serviceUsageAdmin` |
+| Action                             | Required role                                                             |
+| ---------------------------------- | ------------------------------------------------------------------------- |
+| Create projects                    | `roles/resourcemanager.projectCreator`                                    |
+| Link billing                       | `roles/billing.user`                                                      |
+| Enable APIs                        | `roles/serviceusage.serviceUsageAdmin`                                    |
 | Create service accounts + bind IAM | `roles/iam.serviceAccountAdmin` + `roles/resourcemanager.projectIamAdmin` |
-| Create budget alerts | `roles/billing.admin` |
+| Create budget alerts               | `roles/billing.admin`                                                     |
 
 ---
 
@@ -79,8 +82,8 @@ chmod +x tools/gcp/budget-alerts.sh
 export BILLING_ACCOUNT_ID="ABCDEF-123456-GHIJKL"   # required
 
 # Optional overrides (defaults shown):
-export PROD_PROJECT="cpa-platform-prod"
-export STG_PROJECT="cpa-platform-stg"
+export PROD_PROJECT="claimsure-prod"
+export STG_PROJECT="claimsure-stg"
 ```
 
 ### 4. Run the project bootstrap script
@@ -90,10 +93,11 @@ bash tools/gcp/project-bootstrap.sh
 ```
 
 The script will:
-- Create `cpa-platform-prod` and `cpa-platform-stg` projects (if they do not exist)
+
+- Create `claimsure-prod` and `claimsure-stg` projects (if they do not exist)
 - Link the billing account to both projects
 - Enable all required APIs on both projects
-- Create the `cpa-deploy` service account in the prod project
+- Create the `claimsure-deploy` service account in the prod project
 - Grant the deployment service account its required IAM roles
 
 Expected runtime: 3–8 minutes (API enablement is the slow step).
@@ -150,8 +154,8 @@ After running the bootstrap, verify each resource is active.
 ### Projects
 
 ```bash
-gcloud projects describe cpa-platform-prod
-gcloud projects describe cpa-platform-stg
+gcloud projects describe claimsure-prod
+gcloud projects describe claimsure-stg
 ```
 
 Expected output includes `lifecycleState: ACTIVE` for each.
@@ -159,8 +163,8 @@ Expected output includes `lifecycleState: ACTIVE` for each.
 ### Billing
 
 ```bash
-gcloud billing projects describe cpa-platform-prod
-gcloud billing projects describe cpa-platform-stg
+gcloud billing projects describe claimsure-prod
+gcloud billing projects describe claimsure-stg
 ```
 
 Expected: `billingEnabled: true` and `billingAccountName` matches your account.
@@ -168,7 +172,7 @@ Expected: `billingEnabled: true` and `billingAccountName` matches your account.
 ### APIs enabled
 
 ```bash
-gcloud services list --project=cpa-platform-prod --enabled \
+gcloud services list --project=claimsure-prod --enabled \
   --filter="name:(run.googleapis.com OR sqladmin.googleapis.com OR secretmanager.googleapis.com OR compute.googleapis.com OR cloudbuild.googleapis.com OR monitoring.googleapis.com OR logging.googleapis.com OR dns.googleapis.com OR iam.googleapis.com)"
 ```
 
@@ -178,22 +182,23 @@ All nine APIs should appear in the output.
 
 ```bash
 gcloud iam service-accounts describe \
-  cpa-deploy@cpa-platform-prod.iam.gserviceaccount.com \
-  --project=cpa-platform-prod
+  claimsure-deploy@claimsure-prod.iam.gserviceaccount.com \
+  --project=claimsure-prod
 ```
 
-Expected: account is listed with `displayName: CPA Platform Deployment SA`.
+Expected: account is listed with `displayName: Claimsure Deployment SA`.
 
 ### IAM bindings
 
 ```bash
-gcloud projects get-iam-policy cpa-platform-prod \
+gcloud projects get-iam-policy claimsure-prod \
   --flatten="bindings[].members" \
-  --filter="bindings.members:cpa-deploy@cpa-platform-prod.iam.gserviceaccount.com" \
+  --filter="bindings.members:claimsure-deploy@claimsure-prod.iam.gserviceaccount.com" \
   --format="table(bindings.role)"
 ```
 
 Expected roles:
+
 - `roles/cloudbuild.builds.builder`
 - `roles/cloudsql.admin`
 - `roles/run.admin`
@@ -213,8 +218,9 @@ https://console.cloud.google.com/billing/<BILLING_ACCOUNT_ID>/budgets
 ```
 
 You should see two budgets:
-- `CPA Platform Prod Monthly Budget` — $200 AUD, alerts at 50%/90%/100%
-- `CPA Platform Stg Monthly Budget` — $200 AUD, alerts at 50%/90%/100%
+
+- `Claimsure Prod Monthly Budget` — $200 AUD, alerts at 50%/90%/100%
+- `Claimsure Stg Monthly Budget` — $200 AUD, alerts at 50%/90%/100%
 
 ### Via CLI
 
@@ -254,13 +260,13 @@ Then re-run the bootstrap script.
 ERROR: (gcloud.projects.create) Project IDs must be unique across all of Google Cloud.
 ```
 
-**Cause:** GCP project IDs are globally unique. `cpa-platform-prod` or `cpa-platform-stg` may be registered to another organisation.
+**Cause:** GCP project IDs are globally unique. `claimsure-prod` or `claimsure-stg` may be registered to another organisation.
 
 **Fix:** Override the project ID variables and choose alternative IDs:
 
 ```bash
-export PROD_PROJECT="cpa-platform-prod-au"
-export STG_PROJECT="cpa-platform-stg-au"
+export PROD_PROJECT="claimsure-prod-au"
+export STG_PROJECT="claimsure-stg-au"
 bash tools/gcp/project-bootstrap.sh
 ```
 
@@ -277,7 +283,7 @@ ERROR: API [run.googleapis.com] not enabled on project
 **Fix:** Wait 60 seconds, then re-run:
 
 ```bash
-gcloud services enable run.googleapis.com --project=cpa-platform-prod --quiet
+gcloud services enable run.googleapis.com --project=claimsure-prod --quiet
 ```
 
 ### Error: `BILLING_ACCOUNT_ID must be set`
@@ -315,22 +321,22 @@ Filter for `Projects` and request an increase.
 
 ## Service account key rotation
 
-The `cpa-deploy` service account is used by CI/CD pipelines. Keys should be rotated every 90 days (or immediately on suspected compromise).
+The `claimsure-deploy` service account is used by CI/CD pipelines. Keys should be rotated every 90 days (or immediately on suspected compromise).
 
 ### 1. Create a new key
 
 ```bash
-gcloud iam service-accounts keys create /tmp/cpa-deploy-new.json \
-  --iam-account=cpa-deploy@cpa-platform-prod.iam.gserviceaccount.com \
-  --project=cpa-platform-prod
+gcloud iam service-accounts keys create /tmp/claimsure-deploy-new.json \
+  --iam-account=claimsure-deploy@claimsure-prod.iam.gserviceaccount.com \
+  --project=claimsure-prod
 ```
 
 ### 2. Update the secret in Secret Manager
 
 ```bash
-gcloud secrets versions add cpa-deploy-sa-key \
-  --data-file=/tmp/cpa-deploy-new.json \
-  --project=cpa-platform-prod
+gcloud secrets versions add claimsure-deploy-sa-key \
+  --data-file=/tmp/claimsure-deploy-new.json \
+  --project=claimsure-prod
 ```
 
 ### 3. Update CI secrets
@@ -348,22 +354,22 @@ List existing keys:
 
 ```bash
 gcloud iam service-accounts keys list \
-  --iam-account=cpa-deploy@cpa-platform-prod.iam.gserviceaccount.com \
-  --project=cpa-platform-prod
+  --iam-account=claimsure-deploy@claimsure-prod.iam.gserviceaccount.com \
+  --project=claimsure-prod
 ```
 
 Delete the old key (replace `KEY_ID` with the ID of the previous key):
 
 ```bash
 gcloud iam service-accounts keys delete KEY_ID \
-  --iam-account=cpa-deploy@cpa-platform-prod.iam.gserviceaccount.com \
-  --project=cpa-platform-prod
+  --iam-account=claimsure-deploy@claimsure-prod.iam.gserviceaccount.com \
+  --project=claimsure-prod
 ```
 
 ### 6. Shred the local key file
 
 ```bash
-shred -u /tmp/cpa-deploy-new.json
+shred -u /tmp/claimsure-deploy-new.json
 ```
 
 Never commit service account key JSON files to the repository.

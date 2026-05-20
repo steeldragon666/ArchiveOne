@@ -7,7 +7,10 @@ import { ActivitiesTab } from './activities-tab';
 import { DocumentsTab } from './documents-tab';
 import { EvidenceTab } from './evidence-tab';
 import { ExpenditureTab } from './expenditure-tab';
+import { LiveAnalysisPanel } from './live-analysis-panel';
 import { TimelineTab } from './timeline-tab';
+import { ReviewTab } from './review-tab';
+import { FinalDraftTab } from './final-draft-tab';
 
 /**
  * Tab strip + active tab body for /claims/[claim_id].
@@ -50,11 +53,14 @@ export function ClaimTabs({ claimId, activeTab }: ClaimTabsProps) {
   // the newly-active tab (roving-tabindex + automatic activation requires
   // focus to follow selection).
   const tabRefs = useRef<Record<ClaimTab, HTMLButtonElement | null>>({
+    analysis: null,
     activities: null,
+    review: null,
     evidence: null,
     expenditure: null,
     documents: null,
     timeline: null,
+    'final-draft': null,
   });
 
   const onSelect = useCallback(
@@ -135,8 +141,12 @@ export function ClaimTabs({ claimId, activeTab }: ClaimTabsProps) {
 
 function ActiveTabBody({ tab, claimId }: { tab: ClaimTab; claimId: string }) {
   switch (tab) {
+    case 'analysis':
+      return <LiveAnalysisPanel claimId={claimId} />;
     case 'activities':
       return <ActivitiesTab claimId={claimId} />;
+    case 'review':
+      return <ReviewTab claimId={claimId} />;
     case 'evidence':
       return <EvidenceTab claimId={claimId} />;
     case 'expenditure':
@@ -145,5 +155,7 @@ function ActiveTabBody({ tab, claimId }: { tab: ClaimTab; claimId: string }) {
       return <DocumentsTab claimId={claimId} />;
     case 'timeline':
       return <TimelineTab claimId={claimId} />;
+    case 'final-draft':
+      return <FinalDraftTab claimId={claimId} />;
   }
 }

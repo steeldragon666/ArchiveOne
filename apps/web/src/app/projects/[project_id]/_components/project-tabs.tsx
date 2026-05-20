@@ -31,7 +31,7 @@ import { PROJECT_TAB_LABELS, type ProjectTab } from '../../_lib/url-params';
  * omitted from the URL — matches the C4 view-toggle convention.
  */
 
-const ORDERED_TABS: ReadonlyArray<ProjectTab> = ['claims', 'timeline', 'settings'];
+const ORDERED_TABS: ReadonlyArray<ProjectTab> = ['claims', 'intake', 'timeline', 'settings'];
 
 interface ProjectTabsProps {
   active: ProjectTab;

@@ -1,42 +1,38 @@
 'use client';
 import type { Project } from '@cpa/schemas';
-
-/**
- * Project-detail Settings tab (T-A7).
- *
- * Read-only view of the project's editable fields (name, description,
- * dates). The PATCH wiring is intentionally deferred — see the TODO
- * below — so the consultant gets a structured-summary placeholder until
- * the form lands.
- *
- * Brief explicitly allows: "Stub the form interactions for now (TODO
- * references for PATCH wiring); rendering the read-only view is
- * sufficient if PATCH wiring takes too long."
- *
- * TODO(p4-a-followup): wire a real edit form here. Plan:
- *   - Use react-hook-form + Zod (UpdateProjectBody) for parity with the
- *     activity editor (apps/web/src/app/claims/[claim_id]/activities/
- *     [activity_id]/_components/activity-editor.tsx).
- *   - Submit via PATCH /v1/projects/:id and invalidate the
- *     ['project', id] query on success.
- *   - Archive control (DELETE /v1/projects/:id) goes here too — same
- *     shape as the user-soft-delete dialog at /users/[userId].
- */
+import { useWhoami } from '@/hooks/use-whoami';
+import { ArchiveProjectButton } from '../../_components/archive-project-button';
+import { EditProjectButton } from '../../_components/edit-project-button';
 
 export interface SettingsTabProps {
   project: Project;
 }
 
+/**
+ * Project-detail Settings tab (T-A7 / Phase 4B).
+ *
+ * Replaced the read-only stub (TODO(p4-a-followup)) with:
+ *   - EditProjectButton: Dialog + RHF + Zod + PATCH /v1/projects/:id
+ *   - ArchiveProjectButton: confirmation dialog + DELETE /v1/projects/:id
+ *
+ * The detail section below the buttons stays — consultants often want a
+ * quick read-only summary while the edit dialog is closed.
+ */
 export function SettingsTab({ project }: SettingsTabProps) {
+  const whoami = useWhoami();
+  const firmScope = whoami.data?.user.tenantId ?? 'unknown';
+
   return (
     <section className="space-y-6">
+      {/* --- Edit / Archive controls --- */}
+      <div className="flex items-center gap-3">
+        <EditProjectButton project={project} firmScope={firmScope} />
+        <ArchiveProjectButton project={project} firmScope={firmScope} />
+      </div>
+
+      {/* --- Read-only summary --- */}
       <div>
         <h2 className="text-base font-semibold mb-2">Project details</h2>
-        <p className="text-sm text-muted-foreground">
-          Read-only view. Editing controls are deferred to a later iteration; the API endpoints
-          (PATCH and DELETE /v1/projects/:id) already exist — see <code>TODO(p4-a-followup)</code>{' '}
-          in <code>settings-tab.tsx</code>.
-        </p>
       </div>
 
       <dl className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">

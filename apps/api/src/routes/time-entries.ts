@@ -1,11 +1,17 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import crypto from 'node:crypto';
 import { requireSession } from '@cpa/auth';
+import { insertEventWithChain } from '@cpa/db';
 import { privilegedSql, sql } from '@cpa/db/client';
 import {
   apportionmentBody,
+  createConsultantTimeEntryBody,
   createManualTimeEntryBody,
   listTimeEntriesQuery,
+  updateTimeEntryBody,
+  TimeEntryCreatedPayload,
+  TimeEntryDeletedPayload,
+  TimeEntryUpdatedPayload,
   type TimeEntry,
   type TimeEntrySource,
 } from '@cpa/schemas';
@@ -51,6 +57,7 @@ interface RawTimeEntryRow {
   apportioned_at: Date | string | null;
   notes: string | null;
   flagged_at: Date | string | null;
+  deleted_at: Date | string | null;
   created_at: Date | string;
 }
 
@@ -75,6 +82,7 @@ const toApi = (r: RawTimeEntryRow): TimeEntry => ({
   apportioned_at: isoOrNull(r.apportioned_at),
   notes: r.notes,
   flagged_at: isoOrNull(r.flagged_at),
+  deleted_at: isoOrNull(r.deleted_at),
   created_at: isoOf(r.created_at),
 });
 
@@ -226,13 +234,14 @@ export function registerTimeEntries(app: FastifyInstance): void {
       const r = await tx<RawTimeEntryRow[]>`
           SELECT id, tenant_id, subject_tenant_id, employee_id, source, external_id,
                  started_at, ended_at, duration_minutes, is_rd, apportionment_pct,
-                 apportioned_by_user_id, apportioned_at, notes, flagged_at, created_at
+                 apportioned_by_user_id, apportioned_at, notes, flagged_at, deleted_at, created_at
             FROM time_entry
            WHERE subject_tenant_id = ${q.subject_tenant_id}
              AND (${empFilter}::uuid IS NULL OR employee_id = ${empFilter}::uuid)
              AND (${fromTs}::timestamptz IS NULL OR started_at >= ${fromTs}::timestamptz)
              AND (${toTs}::timestamptz IS NULL OR started_at <= ${toTs}::timestamptz)
              AND (${q.include_flagged} = true OR flagged_at IS NULL)
+             AND deleted_at IS NULL
            ORDER BY started_at DESC
         `;
       return r;
@@ -241,48 +250,141 @@ export function registerTimeEntries(app: FastifyInstance): void {
     return { time_entries: rows.map(toApi) };
   });
 
-  // POST /v1/time-entries — manual create (mobile only).
-  app.post('/v1/time-entries', { preHandler: requireMobileSession }, async (req, reply) => {
-    const principal = req.mobileUser;
+  // POST /v1/time-entries — manual create (mobile OR consultant session).
+  //
+  // Mobile path: body is createManualTimeEntryBody; employee is derived from
+  // the JWT `sub`. Source = 'manual'. No chain event (mobile-created entries
+  // predate the consultant audit trail — consistent with the existing pattern).
+  //
+  // Consultant path: body is createConsultantTimeEntryBody; employee_id and
+  // subject_tenant_id are explicit. Source = 'consultant_manual'. Emits
+  // TIME_ENTRY_CREATED on the chain.
+  app.post('/v1/time-entries', { preHandler: requireConsultantOrMobile }, async (req, reply) => {
+    const principal = getPrincipal(req);
     if (!principal) {
-      // requireMobileSession already replied; defensive guard.
       if (!reply.sent) {
-        return reply.status(401).send(errEnvelope('unauthenticated', 'No mobile session', req.id));
+        return reply.status(401).send(errEnvelope('unauthenticated', 'No session', req.id));
       }
       return;
     }
 
-    const parsed = createManualTimeEntryBody.safeParse(req.body);
+    // ---- Mobile path ----
+    if (principal.kind === 'mobile') {
+      const parsed = createManualTimeEntryBody.safeParse(req.body);
+      if (!parsed.success) {
+        return reply
+          .status(400)
+          .send(
+            errEnvelope(
+              'invalid_body',
+              'Body must be { started_at, ended_at, is_rd?, notes? } with ended_at > started_at',
+              req.id,
+            ),
+          );
+      }
+      const { started_at, ended_at, is_rd, notes } = parsed.data;
+
+      // Confirm the mobile principal's employee row is still active.
+      const empRows = await privilegedSql<{ id: string; deactivated_at: Date | null }[]>`
+        SELECT id, deactivated_at FROM subject_tenant_employee
+         WHERE id = ${principal.employeeId}
+           AND tenant_id = ${principal.tenantId}
+           AND subject_tenant_id = ${principal.subjectTenantId}
+      `;
+      const emp = empRows[0];
+      if (!emp || emp.deactivated_at !== null) {
+        return reply
+          .status(401)
+          .send(errEnvelope('unauthenticated', 'employee not active', req.id));
+      }
+
+      const durationMs = new Date(ended_at).getTime() - new Date(started_at).getTime();
+      const duration_minutes = Math.round(durationMs / 60_000);
+      if (duration_minutes <= 0) {
+        return reply
+          .status(400)
+          .send(
+            errEnvelope(
+              'invalid_body',
+              'Duration must be positive (ended_at > started_at)',
+              req.id,
+            ),
+          );
+      }
+
+      const entryId = crypto.randomUUID();
+      const inserted = await privilegedSql<RawTimeEntryRow[]>`
+        INSERT INTO time_entry (
+          id, tenant_id, subject_tenant_id, employee_id,
+          source, external_id,
+          started_at, ended_at, duration_minutes,
+          is_rd, notes
+        ) VALUES (
+          ${entryId}, ${principal.tenantId}, ${principal.subjectTenantId},
+          ${principal.employeeId},
+          'manual', ${null},
+          ${started_at}::timestamptz, ${ended_at}::timestamptz,
+          ${duration_minutes},
+          ${is_rd}, ${notes ?? null}
+        )
+        RETURNING id, tenant_id, subject_tenant_id, employee_id, source, external_id,
+                  started_at, ended_at, duration_minutes, is_rd,
+                  apportionment_pct, apportioned_by_user_id, apportioned_at,
+                  notes, flagged_at, deleted_at, created_at
+      `;
+      const mobileRow = inserted[0];
+      if (!mobileRow) {
+        throw new Error('POST /v1/time-entries (mobile): INSERT returned no row');
+      }
+      return reply.status(201).send({ time_entry: toApi(mobileRow) });
+    }
+
+    // ---- Consultant path ----
+    const role = req.user!.role;
+    if (role !== 'admin' && role !== 'consultant') {
+      return reply
+        .status(403)
+        .send(errEnvelope('forbidden', 'Admin or consultant role required', req.id));
+    }
+
+    const parsed = createConsultantTimeEntryBody.safeParse(req.body);
     if (!parsed.success) {
       return reply
         .status(400)
         .send(
           errEnvelope(
             'invalid_body',
-            'Body must be { started_at, ended_at, is_rd?, notes? } with ended_at > started_at',
+            'Body must be { subject_tenant_id, employee_id, started_at, ended_at, is_rd?, notes? } with ended_at > started_at',
             req.id,
           ),
         );
     }
-    const { started_at, ended_at, is_rd, notes } = parsed.data;
+    const { subject_tenant_id, employee_id, started_at, ended_at, is_rd, notes } = parsed.data;
+    const tenantId = principal.tenantId;
+    const userId = req.user!.id;
 
-    // Confirm the mobile principal's employee row is still active.
-    // mobile-session refresh already does this, but we re-check to
-    // avoid letting a stale-cached token write rows for a since-
-    // deactivated employee.
-    const empRows = await privilegedSql<{ id: string; deactivated_at: Date | null }[]>`
-        SELECT id, deactivated_at FROM subject_tenant_employee
-         WHERE id = ${principal.employeeId}
-           AND tenant_id = ${principal.tenantId}
-           AND subject_tenant_id = ${principal.subjectTenantId}
+    // Verify the employee is active and belongs to the given claimant under RLS.
+    const empRows = await sql.begin(async (tx) => {
+      await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+      return await tx<{ id: string }[]>`
+        SELECT id FROM subject_tenant_employee
+         WHERE id = ${employee_id}
+           AND subject_tenant_id = ${subject_tenant_id}
+           AND deactivated_at IS NULL
       `;
-    const emp = empRows[0];
-    if (!emp || emp.deactivated_at !== null) {
-      return reply.status(401).send(errEnvelope('unauthenticated', 'employee not active', req.id));
+    });
+    if (!empRows[0]) {
+      return reply
+        .status(404)
+        .send(
+          errEnvelope(
+            'employee_not_found',
+            'No active employee with that id for this claimant',
+            req.id,
+          ),
+        );
     }
 
-    // Compute duration_minutes server-side. Round to nearest minute
-    // — sub-minute precision isn't useful for R&D apportionment.
     const durationMs = new Date(ended_at).getTime() - new Date(started_at).getTime();
     const duration_minutes = Math.round(durationMs / 60_000);
     if (duration_minutes <= 0) {
@@ -293,31 +395,63 @@ export function registerTimeEntries(app: FastifyInstance): void {
         );
     }
 
-    const id = crypto.randomUUID();
-    const inserted = await privilegedSql<RawTimeEntryRow[]>`
+    const entryId = crypto.randomUUID();
+    // Insert via sql.begin + RLS context (same pattern as projects.ts POST).
+    const inserted = await sql.begin(async (tx) => {
+      await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+      await tx`
         INSERT INTO time_entry (
           id, tenant_id, subject_tenant_id, employee_id,
           source, external_id,
           started_at, ended_at, duration_minutes,
           is_rd, notes
         ) VALUES (
-          ${id}, ${principal.tenantId}, ${principal.subjectTenantId},
-          ${principal.employeeId},
-          'manual', ${null},
+          ${entryId}, ${tenantId}, ${subject_tenant_id},
+          ${employee_id},
+          'consultant_manual', ${null},
           ${started_at}::timestamptz, ${ended_at}::timestamptz,
           ${duration_minutes},
           ${is_rd}, ${notes ?? null}
         )
-        RETURNING id, tenant_id, subject_tenant_id, employee_id, source, external_id,
-                  started_at, ended_at, duration_minutes, is_rd,
-                  apportionment_pct, apportioned_by_user_id, apportioned_at,
-                  notes, flagged_at, created_at
       `;
-    const row = inserted[0];
-    if (!row) {
-      throw new Error('POST /v1/time-entries: INSERT returned no row');
+      const rows = await tx<RawTimeEntryRow[]>`
+        SELECT id, tenant_id, subject_tenant_id, employee_id, source, external_id,
+               started_at, ended_at, duration_minutes, is_rd,
+               apportionment_pct, apportioned_by_user_id, apportioned_at,
+               notes, flagged_at, deleted_at, created_at
+          FROM time_entry
+         WHERE id = ${entryId}
+      `;
+      return rows[0] ?? null;
+    });
+
+    if (!inserted) {
+      throw new Error(
+        'POST /v1/time-entries (consultant): INSERT succeeded but SELECT returned 0 rows',
+      );
     }
-    return reply.status(201).send({ time_entry: toApi(row) });
+
+    const createdPayload = TimeEntryCreatedPayload.parse({
+      time_entry_id: inserted.id,
+      employee_id: inserted.employee_id,
+      started_at: isoOf(inserted.started_at),
+      duration_minutes: inserted.duration_minutes,
+    });
+    await insertEventWithChain({
+      tenant_id: tenantId,
+      subject_tenant_id: inserted.subject_tenant_id,
+      project_id: null,
+      kind: 'TIME_ENTRY_CREATED',
+      payload: createdPayload,
+      classification: null,
+      captured_at: new Date(),
+      captured_by_user_id: userId,
+      override_of_event_id: null,
+      override_new_kind: null,
+      override_reason: null,
+    });
+
+    return reply.status(201).send({ time_entry: toApi(inserted) });
   });
 
   // PATCH /v1/time-entries/:id/apportionment — consultant sets R&D %.
@@ -370,7 +504,7 @@ export function registerTimeEntries(app: FastifyInstance): void {
         RETURNING id, tenant_id, subject_tenant_id, employee_id, source, external_id,
                   started_at, ended_at, duration_minutes, is_rd,
                   apportionment_pct, apportioned_by_user_id, apportioned_at,
-                  notes, flagged_at, created_at
+                  notes, flagged_at, deleted_at, created_at
       `;
       const row = updated[0];
       if (!row) {
@@ -422,7 +556,7 @@ export function registerTimeEntries(app: FastifyInstance): void {
         RETURNING id, tenant_id, subject_tenant_id, employee_id, source, external_id,
                   started_at, ended_at, duration_minutes, is_rd,
                   apportionment_pct, apportioned_by_user_id, apportioned_at,
-                  notes, flagged_at, created_at
+                  notes, flagged_at, deleted_at, created_at
       `;
       const row = updated[0];
       if (!row) {
@@ -431,6 +565,240 @@ export function registerTimeEntries(app: FastifyInstance): void {
           .send(errEnvelope('time_entry_not_found', 'time_entry vanished mid-request', req.id));
       }
       return { time_entry: toApi(row) };
+    },
+  );
+
+  // -----------------------------------------------------------------------
+  // PATCH /v1/time-entries/:id — partial update of editable fields.
+  // Distinct from PATCH /v1/time-entries/:id/apportionment (R&D % only).
+  // -----------------------------------------------------------------------
+  app.patch<{ Params: { id: string } }>(
+    '/v1/time-entries/:id',
+    { preHandler: requireSession },
+    async (req, reply) => {
+      const role = req.user!.role;
+      if (role !== 'admin' && role !== 'consultant') {
+        return reply
+          .status(403)
+          .send(errEnvelope('forbidden', 'Admin or consultant role required', req.id));
+      }
+
+      const parsed = updateTimeEntryBody.safeParse(req.body);
+      if (!parsed.success) {
+        return reply
+          .status(400)
+          .send(
+            errEnvelope(
+              'invalid_body',
+              'Body must be a partial update of { started_at?, ended_at?, is_rd?, notes? } with no extra keys',
+              req.id,
+            ),
+          );
+      }
+      const patch = parsed.data;
+      const { id } = req.params;
+      const tenantId = req.user!.tenantId!;
+      const userId = req.user!.id;
+
+      const patchKeys = Object.keys(patch) as Array<keyof typeof patch>;
+
+      const result = await sql.begin(async (tx) => {
+        await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+        const before = await tx<RawTimeEntryRow[]>`
+          SELECT id, tenant_id, subject_tenant_id, employee_id, source, external_id,
+                 started_at, ended_at, duration_minutes, is_rd,
+                 apportionment_pct, apportioned_by_user_id, apportioned_at,
+                 notes, flagged_at, deleted_at, created_at
+            FROM time_entry
+           WHERE id = ${id} AND deleted_at IS NULL
+        `;
+        const prev = before[0];
+        if (!prev) return { kind: 'not_found' as const };
+        if (patchKeys.length === 0) {
+          return { kind: 'noop' as const, row: prev };
+        }
+
+        // Cross-field date validation (same pattern as projects.ts PATCH).
+        const resultingStartedAt =
+          patch.started_at !== undefined ? patch.started_at : isoOf(prev.started_at);
+        const resultingEndedAt =
+          patch.ended_at !== undefined ? patch.ended_at : isoOf(prev.ended_at);
+        if (new Date(resultingEndedAt) <= new Date(resultingStartedAt)) {
+          return { kind: 'invalid_range' as const };
+        }
+
+        // Recompute duration_minutes if either timestamp changes.
+        const newDuration =
+          patch.started_at !== undefined || patch.ended_at !== undefined
+            ? Math.round(
+                (new Date(resultingEndedAt).getTime() - new Date(resultingStartedAt).getTime()) /
+                  60_000,
+              )
+            : prev.duration_minutes;
+
+        const setStartedAt =
+          patch.started_at !== undefined
+            ? tx`started_at = ${patch.started_at}::timestamptz,`
+            : tx``;
+        const setEndedAt =
+          patch.ended_at !== undefined ? tx`ended_at = ${patch.ended_at}::timestamptz,` : tx``;
+        const setDuration =
+          patch.started_at !== undefined || patch.ended_at !== undefined
+            ? tx`duration_minutes = ${newDuration},`
+            : tx``;
+        const setIsRd = patch.is_rd !== undefined ? tx`is_rd = ${patch.is_rd},` : tx``;
+        const setNotes = patch.notes !== undefined ? tx`notes = ${patch.notes},` : tx``;
+
+        const updated = await tx<RawTimeEntryRow[]>`
+          UPDATE time_entry
+             SET ${setStartedAt}
+                 ${setEndedAt}
+                 ${setDuration}
+                 ${setIsRd}
+                 ${setNotes}
+                 flagged_at = flagged_at
+           WHERE id = ${id} AND deleted_at IS NULL
+          RETURNING id, tenant_id, subject_tenant_id, employee_id, source, external_id,
+                    started_at, ended_at, duration_minutes, is_rd,
+                    apportionment_pct, apportioned_by_user_id, apportioned_at,
+                    notes, flagged_at, deleted_at, created_at
+        `;
+        const row = updated[0];
+        if (!row) {
+          throw new Error('PATCH /v1/time-entries/:id: UPDATE returned no row');
+        }
+        return { kind: 'updated' as const, prev, row };
+      });
+
+      if (result.kind === 'not_found') {
+        return reply
+          .status(404)
+          .send(
+            errEnvelope('time_entry_not_found', 'No time_entry with that id in this firm', req.id),
+          );
+      }
+      if (result.kind === 'invalid_range') {
+        return reply
+          .status(400)
+          .send(errEnvelope('invalid_range', 'ended_at must be after started_at', req.id));
+      }
+      if (result.kind === 'noop') {
+        return reply.status(200).send({ time_entry: toApi(result.row) });
+      }
+
+      // Build diff and emit chain event when something changed.
+      const fieldsChanged: Record<string, { from: unknown; to: unknown }> = {};
+      if (patch.started_at !== undefined) {
+        const f = isoOf(result.prev.started_at);
+        const t = isoOf(result.row.started_at);
+        if (f !== t) fieldsChanged['started_at'] = { from: f, to: t };
+      }
+      if (patch.ended_at !== undefined) {
+        const f = isoOf(result.prev.ended_at);
+        const t = isoOf(result.row.ended_at);
+        if (f !== t) fieldsChanged['ended_at'] = { from: f, to: t };
+      }
+      if (patch.is_rd !== undefined && result.prev.is_rd !== result.row.is_rd) {
+        fieldsChanged['is_rd'] = { from: result.prev.is_rd, to: result.row.is_rd };
+      }
+      if (patch.notes !== undefined && result.prev.notes !== result.row.notes) {
+        fieldsChanged['notes'] = { from: result.prev.notes, to: result.row.notes };
+      }
+      if (result.prev.duration_minutes !== result.row.duration_minutes) {
+        fieldsChanged['duration_minutes'] = {
+          from: result.prev.duration_minutes,
+          to: result.row.duration_minutes,
+        };
+      }
+
+      if (Object.keys(fieldsChanged).length > 0) {
+        const updatedPayload = TimeEntryUpdatedPayload.parse({
+          time_entry_id: result.row.id,
+          fields_changed: fieldsChanged,
+        });
+        await insertEventWithChain({
+          tenant_id: tenantId,
+          subject_tenant_id: result.row.subject_tenant_id,
+          project_id: null,
+          kind: 'TIME_ENTRY_UPDATED',
+          payload: updatedPayload,
+          classification: null,
+          captured_at: new Date(),
+          captured_by_user_id: userId,
+          override_of_event_id: null,
+          override_new_kind: null,
+          override_reason: null,
+        });
+      }
+
+      return reply.status(200).send({ time_entry: toApi(result.row) });
+    },
+  );
+
+  // -----------------------------------------------------------------------
+  // DELETE /v1/time-entries/:id — soft-delete via deleted_at + emit TIME_ENTRY_DELETED.
+  // -----------------------------------------------------------------------
+  app.delete<{ Params: { id: string } }>(
+    '/v1/time-entries/:id',
+    { preHandler: requireSession },
+    async (req, reply) => {
+      const role = req.user!.role;
+      if (role !== 'admin' && role !== 'consultant') {
+        return reply
+          .status(403)
+          .send(errEnvelope('forbidden', 'Admin or consultant role required', req.id));
+      }
+
+      const { id } = req.params;
+      const tenantId = req.user!.tenantId!;
+      const userId = req.user!.id;
+
+      const result = await sql.begin(async (tx) => {
+        await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+        const rows = await tx<{ id: string; subject_tenant_id: string }[]>`
+          UPDATE time_entry
+             SET deleted_at = NOW()
+           WHERE id = ${id} AND deleted_at IS NULL
+           RETURNING id, subject_tenant_id
+        `;
+        if (rows[0]) return { kind: 'deleted' as const, row: rows[0] };
+        const existing = await tx<{ id: string; subject_tenant_id: string }[]>`
+          SELECT id, subject_tenant_id FROM time_entry WHERE id = ${id}
+        `;
+        if (!existing[0]) return { kind: 'not_found' as const };
+        return { kind: 'noop' as const };
+      });
+
+      if (result.kind === 'not_found') {
+        return reply
+          .status(404)
+          .send(
+            errEnvelope('time_entry_not_found', 'No time_entry with that id in this firm', req.id),
+          );
+      }
+
+      if (result.kind === 'deleted') {
+        const deletedPayload = TimeEntryDeletedPayload.parse({
+          time_entry_id: id,
+          deleted_by_user_id: userId,
+        });
+        await insertEventWithChain({
+          tenant_id: tenantId,
+          subject_tenant_id: result.row.subject_tenant_id,
+          project_id: null,
+          kind: 'TIME_ENTRY_DELETED',
+          payload: deletedPayload,
+          classification: null,
+          captured_at: new Date(),
+          captured_by_user_id: userId,
+          override_of_event_id: null,
+          override_new_kind: null,
+          override_reason: null,
+        });
+      }
+
+      // 204 for both first-delete and idempotent re-delete.
+      return reply.status(204).send();
     },
   );
 }

@@ -18,3 +18,13 @@ export {
 } from './stream.js';
 export { SECTION_KINDS, type SectionKind } from './types.js';
 export type { NarrativeSegment } from './validate.js';
+
+// Portal-fields prompt (v1.2.0). Side-effect import registers the prompt
+// in the runtime registry so callers can `getPrompt('draft-narrative@1.2.0')`
+// without reaching into the package's src/ themselves. The type export
+// gives API/UI consumers a strong type for the validated tool output.
+import './prompts/draft-narrative@1.2.0.js';
+export {
+  EMIT_PORTAL_FIELDS_TOOL_NAME,
+  type EmitPortalFieldsToolInput,
+} from './prompts/draft-narrative@1.2.0.js';

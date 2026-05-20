@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # =============================================================================
-# CPA Platform — DNS + Managed TLS Bootstrap
+# Claimsure — DNS + Managed TLS Bootstrap
 #
 # Idempotent script that:
 #   1. Creates a Cloud DNS managed zone for the production domain
@@ -14,10 +14,10 @@ set -euo pipefail
 #   bash tools/gcp/dns-bootstrap.sh
 #
 # All variables can be overridden via environment:
-#   PROD_PROJECT — defaults to cpa-platform-prod
+#   PROD_PROJECT — defaults to claimsure-prod
 #   REGION       — defaults to australia-southeast1
-#   DOMAIN       — defaults to cpa-platform.com.au
-#   ZONE_NAME    — defaults to cpa-platform-prod
+#   DOMAIN       — defaults to claimsure.com.au
+#   ZONE_NAME    — defaults to claimsure-prod
 #
 # Prerequisites:
 #   1. Domain registered at a registrar (manual step — cannot be automated)
@@ -32,10 +32,10 @@ set -euo pipefail
 #        roles/run.admin
 # =============================================================================
 
-PROD_PROJECT="${PROD_PROJECT:-cpa-platform-prod}"
+PROD_PROJECT="${PROD_PROJECT:-claimsure-prod}"
 REGION="${REGION:-australia-southeast1}"
-DOMAIN="${DOMAIN:-cpa-platform.com.au}"
-ZONE_NAME="${ZONE_NAME:-cpa-platform-prod}"
+DOMAIN="${DOMAIN:-claimsure.com.au}"
+ZONE_NAME="${ZONE_NAME:-claimsure-prod}"
 
 WEB_SUBDOMAIN="app.${DOMAIN}"
 API_SUBDOMAIN="api.${DOMAIN}"
@@ -51,7 +51,7 @@ skip() { log "SKIP  $*"; SKIPPED+=("$*"); }
 done_created() { log "DONE  $*"; CREATED+=("$*"); }
 warn() { log "WARN  $*"; }
 
-echo "=== CPA Platform — DNS + Managed TLS Bootstrap ==="
+echo "=== Claimsure — DNS + Managed TLS Bootstrap ==="
 echo "  Project    : ${PROD_PROJECT}"
 echo "  Region     : ${REGION}"
 echo "  Domain     : ${DOMAIN}"
@@ -74,7 +74,7 @@ else
   gcloud dns managed-zones create "${ZONE_NAME}" \
     --project="${PROD_PROJECT}" \
     --dns-name="${DOMAIN}." \
-    --description="CPA Platform production DNS" \
+    --description="Claimsure production DNS" \
     --visibility=public \
     --quiet
   done_created "DNS zone: ${ZONE_NAME}"
@@ -224,7 +224,7 @@ echo ""
 # 7. Summary
 # -----------------------------------------------------------------------------
 echo "============================================================"
-echo " CPA Platform DNS Bootstrap — Summary"
+echo " Claimsure DNS Bootstrap — Summary"
 echo "============================================================"
 echo " Project    : ${PROD_PROJECT}"
 echo " Region     : ${REGION}"

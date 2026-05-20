@@ -17,11 +17,14 @@
  */
 
 export const CLAIM_TAB_VALUES = [
+  'analysis',
   'activities',
+  'review',
   'evidence',
   'expenditure',
   'documents',
   'timeline',
+  'final-draft',
 ] as const;
 export type ClaimTab = (typeof CLAIM_TAB_VALUES)[number];
 
@@ -46,11 +49,14 @@ export function parseTab(raw: string | null | undefined): ClaimTab {
  * needs to render a tab name.
  */
 export const TAB_LABELS: Record<ClaimTab, string> = {
+  analysis: 'Analysis',
   activities: 'Activities',
+  review: 'Review',
   evidence: 'Evidence',
   expenditure: 'Expenditure',
   documents: 'Documents',
   timeline: 'Timeline',
+  'final-draft': 'Final Draft',
 };
 
 /**

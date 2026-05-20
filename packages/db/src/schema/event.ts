@@ -151,6 +151,17 @@ export const EVIDENCE_KINDS = [
   // to admit it by 0072_federation_read_event_kind.sql; this list
   // tracks the CHECK byte-for-byte.
   'FEDERATION_READ',
+  // P5A — subject-tenant, employee, and time-entry CRUD audit trail.
+  // The `event_kind_valid` CHECK is rebuilt to admit these by
+  // 0073_p5a_event_kinds_and_time_entry_soft_delete.sql; this list
+  // tracks the CHECK byte-for-byte.
+  'SUBJECT_TENANT_UPDATED',
+  'SUBJECT_TENANT_ARCHIVED',
+  'EMPLOYEE_UPDATED',
+  'EMPLOYEE_DEACTIVATED',
+  'TIME_ENTRY_CREATED',
+  'TIME_ENTRY_UPDATED',
+  'TIME_ENTRY_DELETED',
 ] as const;
 export type EvidenceKind = (typeof EVIDENCE_KINDS)[number];
 
@@ -185,6 +196,22 @@ export const event = pgTable(
     // hex SHA-256 fingerprint; null for OVERRIDE events. Partial unique
     // index below enforces dedupe WHERE NOT NULL.
     idempotencyKey: text('idempotency_key'),
+    // Auto-allocation suggestion columns (migration 0076).
+    // Null = event has never been through the allocator.
+    // suggestion_status options: 'pending' | 'confirmed' | 'rejected' | 'edited'
+    suggestedActivityId: uuid('suggested_activity_id'),
+    suggestedAt: timestamp('suggested_at', { withTimezone: true }),
+    suggestionConfidence: text('suggestion_confidence'),
+    suggestionStatus: text('suggestion_status', {
+      enum: ['pending', 'confirmed', 'rejected', 'edited'],
+    }),
+    // Document content extraction columns (migration 0078).
+    // Populated by the document-analyzer agent after client-side text
+    // extraction is uploaded alongside the file-upload event.
+    // extracted_content: jsonb with { activities, invoices, document_summary }
+    // extraction_status: null = not yet run | 'complete' | 'failed' | 'pending'
+    extractedContent: jsonb('extracted_content'),
+    extractionStatus: text('extraction_status'),
     capturedAt: timestamp('captured_at', { withTimezone: true }).notNull(),
     // Captured by EITHER a consultant `user` (firm-side) OR a claimant-side
     // `subject_tenant_employee` (mobile flow) — never both. Migration 0011

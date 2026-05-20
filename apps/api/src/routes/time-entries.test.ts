@@ -419,3 +419,247 @@ test('POST /v1/time-entries/:id/clear-flag: 403 for viewer role', async () => {
   assert.equal(res.statusCode, 403);
   await app.close();
 });
+
+// =============================================================================
+// POST /v1/time-entries — consultant session path (P5A)
+// =============================================================================
+
+test('POST /v1/time-entries (consultant): 201 + DB row + chain event + source=consultant_manual', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'POST',
+    url: '/v1/time-entries',
+    cookies: { cpa_session: await adminJwt() },
+    payload: {
+      subject_tenant_id: SUBJECT_A1,
+      employee_id: EMP_A1,
+      started_at: '2026-05-01T09:00:00Z',
+      ended_at: '2026-05-01T10:00:00Z',
+      notes: 'consultant manual entry',
+    },
+  });
+  assert.equal(res.statusCode, 201);
+  const body = res.json<{
+    time_entry: {
+      id: string;
+      employee_id: string;
+      duration_minutes: number;
+      source: string;
+    };
+  }>();
+  assert.equal(body.time_entry.employee_id, EMP_A1);
+  assert.equal(body.time_entry.source, 'consultant_manual');
+  assert.equal(body.time_entry.duration_minutes, 60);
+
+  // Verify chain event.
+  const eventRows = await privilegedSql<{ kind: string }[]>`
+    SELECT kind FROM event
+     WHERE kind = 'TIME_ENTRY_CREATED'
+       AND payload ->> 'time_entry_id' = ${body.time_entry.id}
+  `;
+  assert.equal(eventRows.length, 1);
+
+  // Cleanup.
+  await privilegedSql`DELETE FROM time_entry WHERE id = ${body.time_entry.id}`;
+  await privilegedSql`DELETE FROM event WHERE payload ->> 'time_entry_id' = ${body.time_entry.id}`;
+  await app.close();
+});
+
+test('POST /v1/time-entries (consultant): 403 for viewer role', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'POST',
+    url: '/v1/time-entries',
+    cookies: { cpa_session: await viewerJwt() },
+    payload: {
+      subject_tenant_id: SUBJECT_A1,
+      employee_id: EMP_A1,
+      started_at: '2026-05-01T09:00:00Z',
+      ended_at: '2026-05-01T10:00:00Z',
+    },
+  });
+  assert.equal(res.statusCode, 403);
+  await app.close();
+});
+
+test('POST /v1/time-entries (consultant): 404 cross-firm employee', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'POST',
+    url: '/v1/time-entries',
+    cookies: { cpa_session: await adminJwt() },
+    payload: {
+      subject_tenant_id: SUBJECT_A1,
+      employee_id: EMP_B1, // firm-B employee — should 404
+      started_at: '2026-05-01T09:00:00Z',
+      ended_at: '2026-05-01T10:00:00Z',
+    },
+  });
+  assert.equal(res.statusCode, 404);
+  await app.close();
+});
+
+// =============================================================================
+// PATCH /v1/time-entries/:id (P5A)
+// =============================================================================
+
+test('PATCH /v1/time-entries/:id: 401 without session', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'PATCH',
+    url: `/v1/time-entries/${ENTRY_MANUAL_OK}`,
+    payload: { notes: 'updated' },
+  });
+  assert.equal(res.statusCode, 401);
+  await app.close();
+});
+
+test('PATCH /v1/time-entries/:id: 403 for viewer role', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'PATCH',
+    url: `/v1/time-entries/${ENTRY_MANUAL_OK}`,
+    cookies: { cpa_session: await viewerJwt() },
+    payload: { notes: 'should fail' },
+  });
+  assert.equal(res.statusCode, 403);
+  await app.close();
+});
+
+test('PATCH /v1/time-entries/:id: 400 on invalid body (extra key)', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'PATCH',
+    url: `/v1/time-entries/${ENTRY_MANUAL_OK}`,
+    cookies: { cpa_session: await adminJwt() },
+    payload: { notes: 'valid', unknown_key: 'oops' },
+  });
+  assert.equal(res.statusCode, 400);
+  await app.close();
+});
+
+test('PATCH /v1/time-entries/:id: 404 cross-firm (RLS isolation)', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'PATCH',
+    url: `/v1/time-entries/${ENTRY_FIRM_B}`,
+    cookies: { cpa_session: await adminJwt() },
+    payload: { notes: 'hijack' },
+  });
+  assert.equal(res.statusCode, 404);
+  await app.close();
+});
+
+test('PATCH /v1/time-entries/:id: 200 + updated row + TIME_ENTRY_UPDATED event', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'PATCH',
+    url: `/v1/time-entries/${ENTRY_PAYROLL}`,
+    cookies: { cpa_session: await adminJwt() },
+    payload: { notes: 'payroll updated', is_rd: false },
+  });
+  assert.equal(res.statusCode, 200);
+  const body = res.json<{ time_entry: { id: string; notes: string | null; is_rd: boolean } }>();
+  assert.equal(body.time_entry.id, ENTRY_PAYROLL);
+  assert.equal(body.time_entry.notes, 'payroll updated');
+  assert.equal(body.time_entry.is_rd, false);
+
+  // Chain event.
+  const eventRows = await privilegedSql<{ kind: string }[]>`
+    SELECT kind FROM event
+     WHERE kind = 'TIME_ENTRY_UPDATED'
+       AND payload ->> 'time_entry_id' = ${ENTRY_PAYROLL}
+     ORDER BY captured_at DESC LIMIT 1
+  `;
+  assert.equal(eventRows.length, 1);
+
+  await app.close();
+});
+
+// =============================================================================
+// DELETE /v1/time-entries/:id (P5A)
+// =============================================================================
+
+test('DELETE /v1/time-entries/:id: 401 without session', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'DELETE',
+    url: `/v1/time-entries/${ENTRY_MANUAL_OK}`,
+  });
+  assert.equal(res.statusCode, 401);
+  await app.close();
+});
+
+test('DELETE /v1/time-entries/:id: 403 for viewer role', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'DELETE',
+    url: `/v1/time-entries/${ENTRY_MANUAL_OK}`,
+    cookies: { cpa_session: await viewerJwt() },
+  });
+  assert.equal(res.statusCode, 403);
+  await app.close();
+});
+
+test('DELETE /v1/time-entries/:id: 404 cross-firm (RLS isolation)', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'DELETE',
+    url: `/v1/time-entries/${ENTRY_FIRM_B}`,
+    cookies: { cpa_session: await adminJwt() },
+  });
+  assert.equal(res.statusCode, 404);
+  await app.close();
+});
+
+test('DELETE /v1/time-entries/:id: 204 soft-delete + TIME_ENTRY_DELETED event', async () => {
+  // Seed a dedicated entry to delete.
+  const DEL_ENTRY = '00000000-0000-4000-8000-0000000b2260';
+  await privilegedSql`
+    INSERT INTO time_entry (
+      id, tenant_id, subject_tenant_id, employee_id, source,
+      started_at, ended_at, duration_minutes, is_rd
+    ) VALUES (
+      ${DEL_ENTRY}, ${TENANT_A}, ${SUBJECT_A1}, ${EMP_A1}, 'manual',
+      '2026-05-02T09:00:00Z'::timestamptz, '2026-05-02T10:00:00Z'::timestamptz,
+      60, true
+    )
+  `;
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'DELETE',
+    url: `/v1/time-entries/${DEL_ENTRY}`,
+    cookies: { cpa_session: await adminJwt() },
+  });
+  assert.equal(res.statusCode, 204);
+
+  // Row should be soft-deleted.
+  const row = await privilegedSql<{ deleted_at: Date | null }[]>`
+    SELECT deleted_at FROM time_entry WHERE id = ${DEL_ENTRY}
+  `;
+  assert.ok(row[0]?.deleted_at !== null);
+
+  // Chain event emitted.
+  const eventRows = await privilegedSql<{ kind: string }[]>`
+    SELECT kind FROM event
+     WHERE kind = 'TIME_ENTRY_DELETED'
+       AND payload ->> 'time_entry_id' = ${DEL_ENTRY}
+     ORDER BY captured_at DESC LIMIT 1
+  `;
+  assert.equal(eventRows.length, 1);
+
+  await app.close();
+});
+
+test('DELETE /v1/time-entries/:id: 204 idempotent re-delete', async () => {
+  // DEL_ENTRY is already deleted — re-deleting should still return 204.
+  const DEL_ENTRY = '00000000-0000-4000-8000-0000000b2260';
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'DELETE',
+    url: `/v1/time-entries/${DEL_ENTRY}`,
+    cookies: { cpa_session: await adminJwt() },
+  });
+  assert.equal(res.statusCode, 204);
+  await app.close();
+});
