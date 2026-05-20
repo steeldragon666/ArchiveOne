@@ -26,6 +26,10 @@ const ENTRY_FIRM_B = '00000000-0000-4000-8000-0000000b2244';
 
 const cleanup = async (): Promise<void> => {
   await privilegedSql`DELETE FROM time_entry WHERE tenant_id IN (${TENANT_A}, ${TENANT_B})`;
+  // POST /v1/time-entries emits chain events that reference subject_tenant_id;
+  // they must be removed before the subject_tenant rows or the FK
+  // event_subject_tenant_id_subject_tenant_id_fk blocks the delete.
+  await privilegedSql`DELETE FROM event WHERE tenant_id IN (${TENANT_A}, ${TENANT_B})`;
   await privilegedSql`DELETE FROM subject_tenant_employee WHERE tenant_id IN (${TENANT_A}, ${TENANT_B})`;
   await privilegedSql`DELETE FROM subject_tenant_user WHERE subject_tenant_id IN (
     SELECT id FROM subject_tenant WHERE tenant_id IN (${TENANT_A}, ${TENANT_B})
