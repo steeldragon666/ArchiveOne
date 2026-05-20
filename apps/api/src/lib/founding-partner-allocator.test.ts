@@ -29,6 +29,12 @@ const ALL_SLOTS = [SLOT_SINGLE, SLOT_LAST];
 const cleanup = async (): Promise<void> => {
   await privilegedSql`DELETE FROM founding_partner_slots WHERE id = ANY(${ALL_SLOTS})`;
   await privilegedSql`DELETE FROM founding_partner_slots WHERE claimed_by_tenant_id = ANY(${ALL_TENANTS})`;
+  // Migration 0041 seeds 10 unclaimed slots. Each test in this suite needs
+  // deterministic control over how many unclaimed slots exist (test 1 wants
+  // exactly its own; test 2 wants zero; test 3 wants exactly one). Clear the
+  // seeded slots so the per-test INSERTs are the only ones the allocator
+  // can pick. Safe because no other test relies on these seeded rows.
+  await privilegedSql`DELETE FROM founding_partner_slots WHERE claimed_by_tenant_id IS NULL`;
   await sql`DELETE FROM tenant WHERE id = ANY(${ALL_TENANTS})`;
 };
 
