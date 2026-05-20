@@ -211,7 +211,7 @@ async function main(): Promise<void> {
   console.log('');
 
   // Side-effect of the v1.2.0 import above is the registry entry.
-  const prompt = getPrompt('draft-narrative@1.2.0');
+  const prompt = getPrompt<EmitPortalFieldsToolInput>('draft-narrative@1.2.0');
   console.log(`  prompt found : ${prompt.name}@${prompt.version}`);
   console.log(`  tool name    : ${prompt.tool.name}`);
   console.log(`  system chars : ${prompt.system.length}`);
@@ -244,7 +244,7 @@ async function main(): Promise<void> {
       model,
       system: prompt.system,
       user: userMessage,
-      tool: prompt.tool as typeof prompt.tool & { input_schema: typeof prompt.tool.input_schema },
+      tool: prompt.tool,
       max_tokens: maxTokens,
     },
   );

@@ -89,7 +89,6 @@ async function main(): Promise<void> {
     try {
       const result = await classifier.classify({
         raw_text: rawText,
-        captured_at: new Date().toISOString(),
       });
       // result is the canonical Classification shape: { kind, confidence, rationale, ... }
       const after = `${result.kind}/${result.confidence.toFixed(2)}`;
