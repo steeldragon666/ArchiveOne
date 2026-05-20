@@ -55,7 +55,7 @@ docker compose -f "$COMPOSE_FILE" exec -T api pnpm --filter @cpa/db migrate
 
 echo "==> Health check"
 sleep 5
-if docker compose -f "$COMPOSE_FILE" exec -T api wget --quiet --tries=1 --spider http://localhost:3000/v1/health; then
+if docker compose -f "$COMPOSE_FILE" exec -T api wget --quiet --tries=1 --spider http://localhost:3000/healthz; then
   echo "==> Deploy successful: now at $(git rev-parse --short HEAD)"
 else
   echo "ERROR: API health check failed after deploy" >&2
