@@ -41,9 +41,11 @@ let dbAvailable = false;
  */
 async function asAppTenant(tenantId: string) {
   // Create a new connection for cpa_app role
+  // Convention across the workspace is DATABASE_URL_APP (see
+  // packages/db/src/env.ts:40). CI sets this in .github/workflows/ci.yml.
+  // The localhost fallback matches the dev compose (port 5432, db cpa_dev).
   const appUrl =
-    process.env['APP_DATABASE_URL'] ??
-    'postgres://cpa_app:cpa_app_dev_pwd@localhost:5433/cpa_platform';
+    process.env['DATABASE_URL_APP'] ?? 'postgres://cpa_app:cpa_app_dev_pwd@localhost:5432/cpa_dev';
   const { default: postgres } = await import('postgres');
   const appSql = postgres(appUrl, { max: 1 });
   return {
