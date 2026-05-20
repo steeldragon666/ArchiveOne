@@ -91,7 +91,7 @@ services:
     networks:
       - cpa-internal
     healthcheck:
-      test: ['CMD', 'wget', '--quiet', '--tries=1', '--spider', 'http://localhost:3000/v1/health']
+      test: ['CMD', 'wget', '--quiet', '--tries=1', '--spider', 'http://localhost:3000/healthz']
       interval: 30s
       timeout: 5s
       retries: 5
