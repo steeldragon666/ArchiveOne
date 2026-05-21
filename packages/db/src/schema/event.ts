@@ -115,6 +115,12 @@ export const EVIDENCE_KINDS = [
   // 0025_expenditure_apportioned_kind.sql; this list tracks the
   // CHECK byte-for-byte.
   'EXPENDITURE_APPORTIONED',
+  // P5 Theme 5 Task 5.3 — emitted by POST /v1/expenditures/:id/unmap when
+  // a consultant explicitly clears a current mapping. Payload:
+  //   { expenditure_id, prior_activity_id?, unmapped_by_user_id, reason? }
+  // The event_kind_valid CHECK is rebuilt to admit it by
+  // 0082_expenditure_unmapped_kind.sql; this list tracks the CHECK byte-for-byte.
+  'EXPENDITURE_UNMAPPED',
   // P6 Task 1.1 — emitted by the future Agent A eligibility
   // classifier; binds an expenditure to an
   // `eligible | ineligible | needs_review` decision plus statutory
@@ -162,6 +168,20 @@ export const EVIDENCE_KINDS = [
   'TIME_ENTRY_CREATED',
   'TIME_ENTRY_UPDATED',
   'TIME_ENTRY_DELETED',
+  // Cloud sync connector — admitted by 0075_cloud_sync_connection.sql.
+  // CLOUD_SYNC_CONNECTED / CLOUD_SYNC_DISCONNECTED are state-transition
+  // events. EVIDENCE_UPLOADED is the file-ingestion event (classifiable
+  // evidence kind added to the claimant's chain per file).
+  'CLOUD_SYNC_CONNECTED',
+  'CLOUD_SYNC_DISCONNECTED',
+  'EVIDENCE_UPLOADED',
+  // B+C narrative-approval flow — admitted by 0079_narrative_approval_columns.sql.
+  // NARRATIVE_APPROVED is emitted once per bulk-approval action.
+  // ACTIVITY_REVIEWED / EXPENDITURE_REVIEWED are emitted when a consultant
+  // clears the needs_review flag on an auto-created record.
+  'NARRATIVE_APPROVED',
+  'ACTIVITY_REVIEWED',
+  'EXPENDITURE_REVIEWED',
 ] as const;
 export type EvidenceKind = (typeof EVIDENCE_KINDS)[number];
 

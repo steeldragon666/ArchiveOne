@@ -100,6 +100,10 @@ export const evidenceKind = z.enum([
   // 0025_expenditure_apportioned_kind.sql to admit it; this Zod enum
   // tracks the same set.
   'EXPENDITURE_APPORTIONED',
+  // P5 Theme 5 Task 5.3 — emitted by POST /v1/expenditures/:id/unmap.
+  // The CHECK is rebuilt by 0082_expenditure_unmapped_kind.sql to admit it;
+  // this Zod enum tracks the same set.
+  'EXPENDITURE_UNMAPPED',
   // P6 Task 1.1 — emitted by the future Agent A eligibility
   // classifier. The CHECK is rebuilt by
   // 0026_expenditure_classified_kind.sql to admit it; this Zod enum
@@ -118,6 +122,11 @@ export const evidenceKind = z.enum([
   // 0028_narrative_drafted_kind.sql to admit it; this Zod enum
   // tracks the same set.
   'NARRATIVE_DRAFTED',
+  // P9 Phase 3 Task 3.4 — emitted by the federation audit hook when a
+  // financier partner reads data via a federation_share. The CHECK is
+  // rebuilt to admit it by 0072_federation_read_event_kind.sql; this
+  // Zod enum tracks the same set.
+  'FEDERATION_READ',
   // P5A — subject-tenant, employee, and time-entry CRUD audit trail.
   // The CHECK is rebuilt by
   // 0073_p5a_event_kinds_and_time_entry_soft_delete.sql to admit
