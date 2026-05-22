@@ -50,6 +50,10 @@ interface ExpenditureRow {
   total_amount: string;
   ingest_band: 'rd_critical' | 'rd_supporting' | 'non_rd' | null;
   mapping_state: 'mapped' | 'apportioned' | 'unmapped' | 'voided';
+  /** Agent A's verdict on the EXPENDITURE_INGESTED event: 'INELIGIBLE'
+   *  means "ordinary business", anything else means R&D-related, null
+   *  means the classifier hasn't run yet. */
+  classification_kind: string | null;
 }
 
 interface NoteRow {
@@ -87,6 +91,25 @@ interface ClaimExpStats {
   leak_amount: number;
   leak_total_n: number;
   leak_total_amount: number;
+  /** Classification-based metrics — populated after eval-bulk-classify-
+   *  expenditures.ts has written classification.kind onto each
+   *  EXPENDITURE_INGESTED event. The Agent A INELIGIBLE verdict
+   *  substitutes for a full mapping pipeline (which would otherwise
+   *  require Agent B + a rule generator). */
+  classified_n: number;
+  classified_n_ineligible: number;
+  classified_n_eligible: number;
+  /** Of R&D-band rows ($-weighted): how many did Agent A correctly
+   *  predict as R&D-eligible (i.e. NOT INELIGIBLE)? */
+  cls_recall_rd_correct_n: number;
+  cls_recall_rd_correct_amount: number;
+  cls_recall_rd_total_n: number;
+  cls_recall_rd_total_amount: number;
+  /** Of non-R&D-band rows: how many did Agent A correctly flag INELIGIBLE? */
+  cls_contam_caught_n: number;
+  cls_contam_caught_amount: number;
+  cls_contam_leaked_n: number;
+  cls_contam_leaked_amount: number;
 }
 
 interface ClaimNoteStats {
@@ -128,7 +151,8 @@ async function loadExpenditures(tenantId: string): Promise<ExpenditureRow[]> {
     WITH ingest AS (
       SELECT
         (payload->>'expenditure_id')::uuid AS exp_id,
-        payload->>'rd_band_hint'           AS band
+        payload->>'rd_band_hint'           AS band,
+        classification->>'kind'            AS classification_kind
       FROM event
       WHERE tenant_id = ${tenantId}
         AND kind = 'EXPENDITURE_INGESTED'
@@ -159,6 +183,7 @@ async function loadExpenditures(tenantId: string): Promise<ExpenditureRow[]> {
       exp.tenant_id::text AS tenant_id,
       exp.total_amount::text AS total_amount,
       i.band AS ingest_band,
+      i.classification_kind AS classification_kind,
       CASE
         WHEN exp.voided_at IS NOT NULL THEN 'voided'
         WHEN ubE.kind = 'EXPENDITURE_APPORTIONED' THEN 'apportioned'
@@ -226,6 +251,17 @@ function tallyExpenditures(rows: ExpenditureRow[]): ClaimExpStats {
     leak_amount: 0,
     leak_total_n: 0,
     leak_total_amount: 0,
+    classified_n: 0,
+    classified_n_ineligible: 0,
+    classified_n_eligible: 0,
+    cls_recall_rd_correct_n: 0,
+    cls_recall_rd_correct_amount: 0,
+    cls_recall_rd_total_n: 0,
+    cls_recall_rd_total_amount: 0,
+    cls_contam_caught_n: 0,
+    cls_contam_caught_amount: 0,
+    cls_contam_leaked_n: 0,
+    cls_contam_leaked_amount: 0,
   };
 
   for (const r of rows) {
@@ -276,6 +312,34 @@ function tallyExpenditures(rows: ExpenditureRow[]): ClaimExpStats {
       if (isMapped) {
         stats.leak_n += 1;
         stats.leak_amount += amount;
+      }
+    }
+
+    // Classification-based scoring (Agent A run on the synthesised
+    // expenditure text). Independent of the mapping engine — gives a
+    // signal even when no EXPENDITURE_MAPPED events exist.
+    if (r.classification_kind !== null) {
+      stats.classified_n += 1;
+      const classifiedRD = r.classification_kind !== 'INELIGIBLE';
+      if (classifiedRD) stats.classified_n_eligible += 1;
+      else stats.classified_n_ineligible += 1;
+
+      if (band === 'rd_critical' || band === 'rd_supporting') {
+        stats.cls_recall_rd_total_n += 1;
+        stats.cls_recall_rd_total_amount += amount;
+        if (classifiedRD) {
+          stats.cls_recall_rd_correct_n += 1;
+          stats.cls_recall_rd_correct_amount += amount;
+        }
+      }
+      if (band === 'non_rd') {
+        if (!classifiedRD) {
+          stats.cls_contam_caught_n += 1;
+          stats.cls_contam_caught_amount += amount;
+        } else {
+          stats.cls_contam_leaked_n += 1;
+          stats.cls_contam_leaked_amount += amount;
+        }
       }
     }
   }
@@ -346,6 +410,24 @@ function renderClaim(r: ClaimReport): void {
       `   apportioned=${e.apportioned.n}/${aud(e.apportioned.amount_aud)}` +
       `   unmapped=${e.unmapped.n}/${aud(e.unmapped.amount_aud)}\n`,
   );
+  // Classification-based metrics — independent of mapping engine.
+  if (e.classified_n > 0) {
+    process.stdout.write(
+      `          Agent A on expenditures: classified=${e.classified_n}   eligible=${e.classified_n_eligible}   INELIGIBLE=${e.classified_n_ineligible}\n`,
+    );
+    process.stdout.write(
+      `          cls recall (R&D $ kept)      ${pct(
+        e.cls_recall_rd_correct_amount,
+        e.cls_recall_rd_total_amount,
+      )}   ($${e.cls_recall_rd_correct_amount.toFixed(0)} of $${e.cls_recall_rd_total_amount.toFixed(0)})\n`,
+    );
+    process.stdout.write(
+      `          cls contamination caught     ${pct(
+        e.cls_contam_caught_amount,
+        e.cls_contam_caught_amount + e.cls_contam_leaked_amount,
+      )}   ($${e.cls_contam_caught_amount.toFixed(0)} of $${(e.cls_contam_caught_amount + e.cls_contam_leaked_amount).toFixed(0)} non-R&D)\n`,
+    );
+  }
   if (mappedAny === 0) {
     process.stdout.write(
       `          [no mapping events yet — recall/precision/leak undefined; run the mapping engine then re-score]\n`,
@@ -461,7 +543,28 @@ function renderAggregate(reports: ClaimReport[]): void {
   process.stdout.write('\n' + '═'.repeat(78) + '\n');
   process.stdout.write('Aggregate — 10 claims\n');
   process.stdout.write('═'.repeat(78) + '\n');
+  // Aggregate classification metrics
+  let clsClassified = 0;
+  let clsRDCorrectAmt = 0;
+  let clsRDTotalAmt = 0;
+  let clsContamCaughtAmt = 0;
+  let clsContamLeakedAmt = 0;
+  for (const r of reports) {
+    clsClassified += r.exp.classified_n;
+    clsRDCorrectAmt += r.exp.cls_recall_rd_correct_amount;
+    clsRDTotalAmt += r.exp.cls_recall_rd_total_amount;
+    clsContamCaughtAmt += r.exp.cls_contam_caught_amount;
+    clsContamLeakedAmt += r.exp.cls_contam_leaked_amount;
+  }
+
   process.stdout.write(`Expenditures   total ${totalN}  ${aud(totalAmt)}\n`);
+  if (clsClassified > 0) {
+    process.stdout.write(
+      `  Agent A on expenditures: ${clsClassified} classified\n` +
+        `  cls recall ($)         ${pct(clsRDCorrectAmt, clsRDTotalAmt)}   ${aud(clsRDCorrectAmt)} of ${aud(clsRDTotalAmt)} R&D kept eligible\n` +
+        `  cls contamination caught ${pct(clsContamCaughtAmt, clsContamCaughtAmt + clsContamLeakedAmt)}   ${aud(clsContamCaughtAmt)} of ${aud(clsContamCaughtAmt + clsContamLeakedAmt)} non-R&D flagged INELIGIBLE\n`,
+    );
+  }
   if (mappedAny === 0) {
     process.stdout.write(
       `               no mapping events seeded · scoring inputs ready for the mapping engine\n`,
