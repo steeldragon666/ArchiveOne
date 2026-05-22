@@ -292,8 +292,8 @@ export function registerExpenditures(app: FastifyInstance): void {
       // Activity must belong to same claim.
       const actRows = await sql.begin(async (tx) => {
         await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
-        return tx<{ id: string; code: string; name: string; claim_id: string }[]>`
-          SELECT id::text, code, name, claim_id::text FROM activity WHERE id = ${activity_id}
+        return tx<{ id: string; code: string; title: string; claim_id: string }[]>`
+          SELECT id::text, code, title, claim_id::text FROM activity WHERE id = ${activity_id}
         `;
       });
       if (actRows.length === 0 || actRows[0]!.claim_id !== exp.claim_id) {
@@ -329,7 +329,7 @@ export function registerExpenditures(app: FastifyInstance): void {
         expenditure_id: expId,
         activity_id,
         activity_code: act.code,
-        activity_title: act.name,
+        activity_title: act.title,
       };
       const ev = await insertEventWithChain({
         tenant_id: tenantId,
@@ -404,8 +404,8 @@ export function registerExpenditures(app: FastifyInstance): void {
       const actIds = allocations.map((a) => a.activity_id);
       const actRows = await sql.begin(async (tx) => {
         await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
-        return tx<{ id: string; code: string; name: string; claim_id: string }[]>`
-          SELECT id::text, code, name, claim_id::text FROM activity WHERE id = ANY(${actIds})
+        return tx<{ id: string; code: string; title: string; claim_id: string }[]>`
+          SELECT id::text, code, title, claim_id::text FROM activity WHERE id = ANY(${actIds})
         `;
       });
       if (actRows.length !== actIds.length || actRows.some((a) => a.claim_id !== exp.claim_id)) {
@@ -423,7 +423,7 @@ export function registerExpenditures(app: FastifyInstance): void {
           return {
             activity_id: a.activity_id,
             activity_code: act.code,
-            activity_title: act.name,
+            activity_title: act.title,
             percentage: a.percentage,
           };
         }),

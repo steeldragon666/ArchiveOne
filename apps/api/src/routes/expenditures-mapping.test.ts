@@ -72,10 +72,11 @@ before(async () => {
                       VALUES (${CLAIM}, ${TENANT}, ${SUBJECT}, ${PROJECT}, 2026, 'engagement'),
                              (${OTHER_CLAIM}, ${TENANT}, ${SUBJECT}, ${PROJECT}, 2025, 'engagement')`;
   // Activities — first two in CLAIM, third in OTHER_CLAIM (for cross-claim 404 test).
-  await privilegedSql`INSERT INTO activity (id, tenant_id, project_id, claim_id, kind, code, name, hypothesis, technical_uncertainty, expected_outcome)
-                      VALUES (${ACTIVITY_CA}, ${TENANT}, ${PROJECT}, ${CLAIM}, 'core', 'CA-001', 'Activity One', 'h', 'u', 'o'),
-                             (${ACTIVITY_SA}, ${TENANT}, ${PROJECT}, ${CLAIM}, 'supporting', 'SA-001', 'Supporting', 'h', 'u', 'o'),
-                             (${ACTIVITY_OTHER_CLAIM}, ${TENANT}, ${PROJECT}, ${OTHER_CLAIM}, 'core', 'CA-002', 'Other Claim Activity', 'h', 'u', 'o')`;
+  // P7 Theme A added NOT NULL fy_label + hypothesis_formed_at — both required at INSERT.
+  await privilegedSql`INSERT INTO activity (id, tenant_id, project_id, claim_id, kind, code, title, fy_label, hypothesis_formed_at, hypothesis, technical_uncertainty, expected_outcome)
+                      VALUES (${ACTIVITY_CA}, ${TENANT}, ${PROJECT}, ${CLAIM}, 'core', 'CA-001', 'Activity One', 'FY26', '2026-01-01T00:00:00Z'::timestamptz, 'h', 'u', 'o'),
+                             (${ACTIVITY_SA}, ${TENANT}, ${PROJECT}, ${CLAIM}, 'supporting', 'SA-001', 'Supporting', 'FY26', '2026-01-01T00:00:00Z'::timestamptz, 'h', 'u', 'o'),
+                             (${ACTIVITY_OTHER_CLAIM}, ${TENANT}, ${PROJECT}, ${OTHER_CLAIM}, 'core', 'CA-002', 'Other Claim Activity', 'FY25', '2025-01-01T00:00:00Z'::timestamptz, 'h', 'u', 'o')`;
   // Expenditures
   await privilegedSql`INSERT INTO expenditure (id, tenant_id, subject_tenant_id, claim_id, source, vendor_name, expenditure_date, total_amount, currency)
                       VALUES (${E1},        ${TENANT}, ${SUBJECT}, ${CLAIM}, 'manual', 'Vendor 1', '2026-04-01', 100.00, 'AUD'),
