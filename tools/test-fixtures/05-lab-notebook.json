@@ -1,0 +1,26 @@
+{
+  "_doc": "Mocks an upload of a scanned lab notebook page (PDF). The platform stores the PDF externally and writes an EVIDENCE_UPLOADED chain event with this metadata + extracted_content (text content extracted client-side via pdfjs).",
+  "filename": "lab_book_p47_vant7_n12.pdf",
+  "mime": "application/pdf",
+  "size_bytes": 1184092,
+  "sha256_hex": "3a8b1e4c7f2d5a9b6e3c1f8a4d7b2e5c9f1a4d7b8e3c2f5a9b1e4d7c8f2a5b9d",
+  "page_count": 1,
+  "extracted_content": {
+    "document_summary": "Hand-written lab notebook page 47 dated 19 May 2026. Records the N12 quench run, observations, mass-loss reading, and the next-step plan. Counter-signed by the supervising researcher and timestamped with the iPad's signature timestamp.",
+    "pages": [
+      {
+        "page": 1,
+        "text": "p.47 — Vantage-7 / N12 cycle\nDate: 19 May 2026\nFurnace: held 830 °C ± 2 across cycle, argon shroud OK (P1=831, P2=829, P3=830 °C)\nQuench: 200 K/s achieved, bath 20.1 °C ± 0.2\nVisual post-quench: matte grey, no surface cracks. Two faint bands upper third — non-penetrating, 5× loupe.\nMass loss: 0.018 g (vs N7 ref 0.020 g; within 0.025 g tol)\nN10 ref @ 200 K/s: cracked at 1.6 mm fillet — N12 INTACT (key result)\nNext: XRD at 830 °C, confirm γ′ stability for 60 s window. If yes, close N7 hypothesis branch and open casting trial.\nSig: P.R.  ----  Co-sig: S.W.  ----  19 May 2026 14:31 AEST"
+      }
+    ],
+    "activities": [
+      {
+        "kind": "core",
+        "title": "Vantage-7 phase-stability program",
+        "evidence_strength": "primary",
+        "rationale": "Contemporaneous record of the N12 quench result + protocol decisions; co-signed by supervising researcher."
+      }
+    ]
+  },
+  "captured_at": "2026-05-19T14:31:09.000Z"
+}

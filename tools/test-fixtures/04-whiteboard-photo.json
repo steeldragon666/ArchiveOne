@@ -1,0 +1,30 @@
+{
+  "_doc": "Mocks an upload of a whiteboard photo from the claimant's iPhone. The platform stores the JPEG bytes externally (S3) and writes an EVIDENCE_UPLOADED chain event with this metadata + extracted_content.",
+  "filename": "whiteboard_vant7_n12_setup.jpg",
+  "mime": "image/jpeg",
+  "size_bytes": 4421337,
+  "sha256_hex": "9f1f4a8d2c6e3b5a8d1e9c4f7a2b8d6e3c5f1a9b4d7e8c2f5a1b9d4e7c8f2a5b",
+  "exif": {
+    "Make": "Apple",
+    "Model": "iPhone 15 Pro",
+    "DateTimeOriginal": "2026-05-19T09:14:22+10:00",
+    "GPSLatitude": -38.2087,
+    "GPSLongitude": 145.0469,
+    "GPSLocationName": "Mornington, VIC",
+    "PixelXDimension": 4032,
+    "PixelYDimension": 3024
+  },
+  "extracted_content": {
+    "document_summary": "Whiteboard diagram of the Vantage-7 N12 furnace setup: argon shroud assembly, crucible position, Type-K probe placement (3 probes labelled P1/P2/P3), quench bath geometry. Arrows annotate the gas flow direction and the post-cycle quench transfer path. Hypothesis line at the top: 'B+8% holds at 830 °C / 200 K/s / 60 s'.",
+    "ocr_text": "VANT-7 N12 SETUP\nARGON SHROUD\n  P1   P2   P3  (Type-K)\nCRUCIBLE @ 830 °C\nQUENCH 200 K/s\nHYP: B+8% holds at 830 °C / 200 K/s / 60 s\nN10 CRACK @ 1.6 mm FILLET\nN12 → INTACT?\nNEXT: XRD AT TEMP",
+    "activities": [
+      {
+        "kind": "core",
+        "title": "Vantage-7 phase-stability program",
+        "evidence_strength": "primary",
+        "rationale": "Contemporaneous setup diagram for a furnace cycle that produced the N12 result; documents the hypothesis line before the run."
+      }
+    ]
+  },
+  "captured_at": "2026-05-19T09:14:22.000Z"
+}

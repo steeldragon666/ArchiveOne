@@ -1,0 +1,22 @@
+N12 cycle complete — post-quench observation, lab notebook page 47
+
+Specimen survived the 200 K/s quench from 830 °C without surface
+cracking. First time we've achieved this with the B+8% composition.
+The N10 specimen at the same rate cracked at the 1.6 mm shoulder fillet
+during cooling; this run held all four corners intact through to room
+temperature.
+
+Visual: matte grey finish across the gauge section, no oxidation halo
+at the surface — the argon shroud held. Two faint banding marks at the
+upper third of the specimen but they don't penetrate the surface (5 ×
+loupe). Will confirm with metallographic cross-section tomorrow.
+
+Mass loss during cycle: 0.018 g (within the 0.025 g tolerance from N7).
+Quench bath temperature held 20.1 °C ± 0.2 across the run (Type-K probe
+3, calibration cert in lab book p.42). N12 protocol log attached
+separately at 14:31 (block #00184_3C).
+
+This is the prior-art-disproving result we were looking for. Next step:
+diffraction at 830 °C to confirm gamma-prime stability holds for the
+full 60 s window. If yes, we close the hypothesis from N7 and open the
+casting-trial branch.

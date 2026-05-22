@@ -1,0 +1,37 @@
+{
+  "_doc": "Mocks an upload of a Word document (the consultant's narrative draft for the Vantage-7 core activity). The platform stores the DOCX externally and writes an EVIDENCE_UPLOADED chain event with this metadata + extracted_content (extracted client-side via mammoth).",
+  "filename": "narrative_draft_vant7_core.docx",
+  "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "size_bytes": 38211,
+  "sha256_hex": "5a9b2e7c1f4d8a6b3c9e2f5a8d1b4c7e9f2a5d8c1b4e7a9c2f5b8e1d4a7c9f2b",
+  "extracted_content": {
+    "document_summary": "Draft narrative for the Vantage-7 core activity covering FY26 Q3–Q4. Structured as: Hypothesis · Technical uncertainty · Experimentation log · Outcome. Three figures referenced (microscopy plate, XRD spectrum, mass-loss chart) but only the body text is captured here.",
+    "sections": [
+      {
+        "heading": "Hypothesis",
+        "text": "The B+8% composition of the Vantage-7 high-temperature alloy will preserve gamma-prime phase stability at 830 °C under a 200 K/s quench for ≥ 60 s before nucleation onset. This extends the N7 result (22–28 s window) by a factor of ≥ 2× and is non-trivial because the B-substitution shifts the eutectic ratio outside any documented prior art."
+      },
+      {
+        "heading": "Technical uncertainty",
+        "text": "No published prior art exists for the phase-boundary behaviour of B-substituted γ' precipitate systems above 800 °C. The N10 and N11 attempts cracked at the 1.6 mm fillet during cooling, suggesting that quench-rate sensitivity dominates the result envelope. Whether the B+8% ratio is sufficient to suppress this sensitivity without introducing a creep-resistance penalty was not known prior to the N12 experiment."
+      },
+      {
+        "heading": "Experimentation log",
+        "text": "Twelve furnace runs (N1–N12) over FY26 Q3–Q4. N1–N6 calibrated the reference protocol against the published N7 result. N7 reproduced the published 22–28 s window. N8 introduced the B-substitution and failed to ignite (chamber leak — chamber rebuilt). N9 ignited but pinholed (gas pressure low; corrected). N10 cracked at the fillet during quench. N11 cracked at the same location with a slower quench, ruling out quench-rate as the sole driver. N12 succeeded — see lab book p.47."
+      },
+      {
+        "heading": "Outcome",
+        "text": "N12 held intact through to room temperature with mass loss within the N7 tolerance and no surface cracking. XRD at 830 °C is scheduled for Thu 21 May to confirm gamma-prime stability across the 60 s window. If confirmed, the casting-trial branch opens and the Vantage-7 program advances to FY27 Phase 2."
+      }
+    ],
+    "activities": [
+      {
+        "kind": "core",
+        "title": "Vantage-7 phase-stability program",
+        "evidence_strength": "primary",
+        "rationale": "Consultant-authored narrative draft summarising the FY26 Q3–Q4 work; covers hypothesis, uncertainty, experimentation, outcome."
+      }
+    ]
+  },
+  "captured_at": "2026-05-22T11:14:18.000Z"
+}

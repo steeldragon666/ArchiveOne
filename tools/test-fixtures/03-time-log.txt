@@ -1,0 +1,25 @@
+Time log — Priya Ramachandran, FY26 R&D (Vantage-7), week ending 22 May 2026
+
+Mon 18 May
+  08:30–12:30  Vantage-7 · furnace prep + argon shroud calibration (N12 setup)
+  13:30–17:00  Vantage-7 · B+8% composition mix + crucible loading
+
+Tue 19 May
+  09:00–11:30  Vantage-7 · N12 furnace cycle (live monitoring)
+  11:30–13:00  Vantage-7 · quench bath setup, Type-K probe calibration
+  14:00–18:00  Vantage-7 · N12 quench + post-cycle visual inspection
+
+Wed 20 May
+  08:30–12:00  Vantage-7 · cross-section preparation, metallographic etch
+  13:00–17:30  Vantage-7 · optical microscopy + grain-boundary mapping
+
+Thu 21 May
+  09:00–13:00  Vantage-7 · X-ray diffraction (high-temp stage), gamma-prime peak survey
+  14:00–17:00  Vantage-7 · diffraction-data reduction + comparison vs N7 reference
+
+Fri 22 May
+  08:30–11:00  Vantage-7 · result write-up for lab book + chain attestation
+  11:00–12:30  Vantage-7 · planning meeting for casting-trial branch
+
+Total: 32.5 h on Vantage-7 (CORE) this week. 0 h on other projects.
+Lab book entries on each session; all artefacts chained on capture.

@@ -1,0 +1,44 @@
+{
+  "_doc": "Mocks a Xero invoice sync. The platform's Xero connector creates an expenditure row + EXPENDITURE_INGESTED chain event. Then the consultant maps it to the supporting external-lab activity via POST /v1/expenditures/:id/map, which emits an EXPENDITURE_MAPPED event.",
+  "source": "xero_invoice",
+  "source_external_id": "INV-BLUESCOPE-2026-Q4-007",
+  "vendor_name": "Bluescope Labs Pty Ltd",
+  "reference": "Vant-7 phase-stability test suite — May 2026",
+  "expenditure_date": "2026-05-22",
+  "total_amount": "11750.00",
+  "currency": "AUD",
+  "raw_payload": {
+    "xero_invoice_id": "8c2a4e7d-1f3b-4d8e-9a6c-2b5f8e1d4c7a",
+    "contact_id": "5f8b2e1c-3a6d-4e9b-7c8a-1d4f7b2e5c8a",
+    "status": "AUTHORISED",
+    "due_date": "2026-06-21",
+    "line_items": [
+      {
+        "description": "Phase-stability testing — gamma-prime XRD scan, N12 specimen",
+        "quantity": 1,
+        "unit_amount": 5400,
+        "account_code": "5210",
+        "tax_amount": 540
+      },
+      {
+        "description": "Metallographic cross-section + optical microscopy",
+        "quantity": 1,
+        "unit_amount": 3950,
+        "account_code": "5210",
+        "tax_amount": 395
+      },
+      {
+        "description": "Specimen handling + courier",
+        "quantity": 1,
+        "unit_amount": 1465,
+        "account_code": "5301",
+        "tax_amount": 146.5
+      }
+    ],
+    "subtotal_excl_tax": 10815,
+    "tax_total": 935,
+    "total_incl_tax": 11750
+  },
+  "map_to_activity_kind": "supporting",
+  "map_rationale": "Bluescope is the external-lab contractor for the Vantage-7 phase-stability program; their testing supports the core activity without performing it."
+}
