@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 
 type SubmitState = 'idle' | 'submitting' | 'sent' | 'error';
+type SignupDelivery = 'email_sent' | 'manual_verification' | null;
 
 function Diamond({ className = '' }: { className?: string }) {
   return <span className={`inline-block rotate-45 bg-[#e1a23a] ${className}`} aria-hidden="true" />;
@@ -31,6 +32,7 @@ export default function SignupPage() {
   const [state, setState] = useState<SubmitState>('idle');
   const [error, setError] = useState('');
   const [verificationUrl, setVerificationUrl] = useState('');
+  const [delivery, setDelivery] = useState<SignupDelivery>(null);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -49,6 +51,7 @@ export default function SignupPage() {
       });
 
       const body = (await res.json().catch(() => ({}))) as {
+        delivery?: SignupDelivery;
         message?: string;
         verificationUrl?: string;
       };
@@ -60,6 +63,7 @@ export default function SignupPage() {
       }
 
       setVerificationUrl(body.verificationUrl ?? '');
+      setDelivery(body.delivery ?? null);
       setState('sent');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Signup could not be started.');
@@ -120,14 +124,25 @@ export default function SignupPage() {
                   <Diamond className="h-3 w-3" />
                 </div>
                 <div>
-                  <h2 className="font-display text-3xl font-light">Verification link sent.</h2>
-                  <p className="mt-4 font-body text-sm leading-7 text-[#cdc7bd]">
-                    We sent a verification link to {email.trim().toLowerCase()}. Open it to finish
-                    creating your Claimsure trial tenant.
-                  </p>
+                  <h2 className="font-display text-3xl font-light">
+                    {delivery === 'manual_verification'
+                      ? 'Verification link ready.'
+                      : 'Verification link sent.'}
+                  </h2>
+                  {delivery === 'manual_verification' ? (
+                    <p className="mt-4 font-body text-sm leading-7 text-[#cdc7bd]">
+                      Claimsure email delivery needs operator configuration. Use the secure
+                      verification link below to finish creating your trial tenant.
+                    </p>
+                  ) : (
+                    <p className="mt-4 font-body text-sm leading-7 text-[#cdc7bd]">
+                      We sent a verification link to {email.trim().toLowerCase()}. Open it to finish
+                      creating your Claimsure trial tenant.
+                    </p>
+                  )}
                   {verificationUrl && (
                     <p className="mt-4 break-all border border-[#e1a23a]/40 bg-[#e1a23a]/10 p-3 font-body text-sm leading-6 text-[#f0ebe2]">
-                      Email is not configured in this environment. Continue here:{' '}
+                      Continue here:{' '}
                       <Link href={verificationUrl} className="text-[#e1a23a] underline">
                         verify signup
                       </Link>

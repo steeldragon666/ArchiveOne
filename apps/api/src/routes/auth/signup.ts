@@ -84,6 +84,16 @@ async function uniqueSlug(base: string): Promise<string> {
   return slug;
 }
 
+function isEmailProviderConfigurationError(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false;
+  const message = 'message' in err && typeof err.message === 'string' ? err.message : '';
+  return (
+    message.includes('RESEND_API_KEY is not configured') ||
+    message.includes('domain is not verified') ||
+    message.includes('Domain not found')
+  );
+}
+
 export function registerSignupRoutes(app: FastifyInstance, deps: SignupRouteDeps): void {
   const { sessionSecret, verificationSecret, cookieName, cookieSecure, ttlSeconds } = deps;
 
@@ -124,12 +134,15 @@ export function registerSignupRoutes(app: FastifyInstance, deps: SignupRouteDeps
       await deps.sendVerificationEmail(email, token);
     } catch (err) {
       req.log.error({ err }, 'signup verification email failed');
-      if (!deps.allowManualVerification || !verificationUrl) throw err;
+      if ((!deps.allowManualVerification && !isEmailProviderConfigurationError(err)) || !verificationUrl) {
+        throw err;
+      }
       return reply.status(202).send({
         ok: true,
         delivery: 'manual_verification',
         verificationUrl,
-        message: 'Email delivery is not configured. Use the verification link below to continue.',
+        message:
+          'Email delivery needs operator configuration. Use the verification link below to continue.',
       });
     }
 
