@@ -1,5 +1,5 @@
 import type { Activity, Claim, Uuid } from '@cpa/schemas';
-import { filterExpenditures, STUB_EXPENDITURES, type ExpenditureRow } from './expenditure-stub';
+import { type ExpenditureKind, type ExpenditureRow } from './expenditure-stub';
 import { isValidAllocationSet, type ValidatedAllocation } from './apportionment';
 import type { ExpenditureFilter } from './url-params';
 import { apiFetch } from '@/lib/api';
@@ -65,159 +65,173 @@ export async function listActivities(claimId: string): Promise<ActivityWithRevie
   return body.activities;
 }
 
+// ─── A-endpoints wire shapes ────────────────────────────────────────────────
+// Mirror of the server's GET /v1/claims/:id/expenditures response. Kept inline
+// rather than imported from @cpa/agents/@cpa/db (web package boundary — see
+// CLAUDE.md "package boundary"); the structural shape matches the route in
+// `apps/api/src/routes/expenditures.ts` and the projection in
+// `apps/api/src/lib/expenditure-projection.ts`.
+
+interface ApiSingleMapping {
+  kind: 'single';
+  activity_id: string;
+  activity_code: string;
+  activity_title: string;
+}
+
+interface ApiApportionedMapping {
+  kind: 'apportioned';
+  allocations: Array<{
+    activity_id: string;
+    activity_code: string;
+    activity_title: string;
+    percentage: number;
+  }>;
+}
+
+type ApiCurrentMapping = ApiSingleMapping | ApiApportionedMapping | null;
+
+interface ApiExpenditure {
+  id: string;
+  vendor_name: string;
+  reference: string | null;
+  expenditure_date: string;
+  total_amount: string;
+  currency: string;
+  source: string;
+  voided_at: string | null;
+  current_mapping: ApiCurrentMapping;
+}
+
+const SOURCE_TO_KIND: Readonly<Record<string, ExpenditureKind | undefined>> = {
+  xero_invoice: 'INVOICE',
+  xero_bank_tx: 'BANK_TX',
+  xero_receipt: 'RECEIPT',
+};
+
+// Adapter — wire format → ExpenditureRow. Manual / voided rows are filtered
+// out (the C5 surface is "what came in from Xero?" and the UI today has no
+// affordance for voided rows; the API still 409s mutations on them).
+function toExpenditureRow(api: ApiExpenditure): ExpenditureRow | null {
+  if (api.voided_at !== null) return null;
+  const kind = SOURCE_TO_KIND[api.source];
+  if (!kind) return null;
+
+  const row: ExpenditureRow = {
+    id: api.id,
+    kind,
+    date: api.expenditure_date,
+    payee: api.vendor_name,
+    amount: api.total_amount,
+    currency: api.currency,
+    reference: api.reference,
+  };
+
+  // Split the API's discriminated union into the row's two-field shape
+  // (current_mapping for 'single', current_apportionment for 'apportioned').
+  // mapped_at / apportioned_at aren't part of the GET payload — they're only
+  // used by the optimistic update path on the client. Empty string is fine
+  // because no UI surface renders these timestamps for server-loaded rows.
+  if (api.current_mapping !== null) {
+    if (api.current_mapping.kind === 'single') {
+      row.current_mapping = {
+        activity_id: api.current_mapping.activity_id,
+        activity_code: api.current_mapping.activity_code,
+        activity_title: api.current_mapping.activity_title,
+        mapped_at: '',
+      };
+    } else {
+      row.current_apportionment = {
+        allocations: api.current_mapping.allocations,
+        apportioned_at: '',
+      };
+    }
+  }
+  return row;
+}
+
 /**
- * List expenditures for a claim, optionally filtered by mapping state.
+ * GET /v1/claims/:id/expenditures?filter=all|unmapped|mapped
  *
- * TODO(A?-mapping): replace with `apiFetch<{ expenditures: ExpenditureRow[] }>(
- *   `/v1/claims/${claimId}/expenditures?filter=${filter}`)` once the
- * endpoint ships. Likely wire shape:
- *
- *   GET /v1/claims/:id/expenditures?filter=all|unmapped|mapped
- *   200 OK {
- *     expenditures: ExpenditureRow[]  // joined: source row + xero_contact + projected current_mapping
- *   }
- *
- * Until then we read from the in-memory fixture and apply the filter
- * client-side so the tab is exercisable end-to-end.
- *
- * `current_mapping` on each row is the projection of the latest
- * `EXPENDITURE_MAPPED` event for that expenditure (see
- * `expenditure-projection.ts`). Today the fixture pre-populates a
- * couple of mapped rows directly; once A-swimlane ships, the projection
- * runs server-side and the row arrives pre-shaped.
+ * Real endpoint, RLS-scoped. The server walks the event chain and projects
+ * `current_mapping` per row (latest of EXPENDITURE_MAPPED / APPORTIONED /
+ * UNMAPPED). Manual-source and voided rows are filtered out client-side —
+ * the C5 surface only handles Xero-sourced, active expenditures.
  */
 export async function listExpenditures(
-  _claimId: string,
+  claimId: string,
   filter: ExpenditureFilter,
 ): Promise<ExpenditureRow[]> {
-  // TODO(A?-mapping): wire to GET /v1/claims/:id/expenditures.
-  return Promise.resolve(filterExpenditures(STUB_EXPENDITURES, filter));
+  const body = await apiFetch<{ expenditures: ApiExpenditure[] }>(
+    `/v1/claims/${claimId}/expenditures?filter=${filter}`,
+  );
+  return body.expenditures.flatMap((e) => {
+    const row = toExpenditureRow(e);
+    return row ? [row] : [];
+  });
 }
 
 /**
- * Map an expenditure to an activity within the current claim. Stub.
+ * POST /v1/expenditures/:id/map
  *
- * TODO(A?-mapping): this represents what will become an
- * `EXPENDITURE_MAPPED` event posted via:
+ * Emits an EXPENDITURE_MAPPED event. Idempotent — re-mapping to the same
+ * activity returns the existing chain row without appending a duplicate.
  *
- *   POST /v1/expenditures/:id/map
- *   Body: { activity_id: Uuid }
- *   200 OK: { event: Event }   // the appended chain entry
- *
- * Planned event payload (mirror in packages/schemas/src/event.ts when
- * A-swimlane lands; do NOT add the schema here — preempting it could
- * conflict with the eventual API design):
- *
- *   ExpenditureMappedPayload = {
- *     expenditure_id: Uuid,
- *     activity_id: Uuid,
- *     activity_code: string,
- *     activity_title: string,
- *     // mapped_at is implicit — it's the event's captured_at timestamp.
- *   }
- *
- * Why an event and not a column update? Mapping is an audit-relevant
- * decision and may be re-mapped multiple times (consultant changes
- * their mind, or the rule engine in F5 disagrees with a manual map).
- * The chain is the system of record; the row's `current_mapping`
- * column is a projection that can always be rebuilt by replaying
- * EXPENDITURE_MAPPED events filtered to this expenditure.
- *
- * Why not piggyback on `EXPENDITURE_LINE_MAPPED` (which already exists
- * in event.ts)? That event is keyed by `expenditure_line_id`, but
- * C5's surface maps the parent expenditure as a single unit (no
- * line-item splitting yet). Splitting is a P5+ concern; until then a
- * dedicated `EXPENDITURE_MAPPED` keyed by the parent id is cleaner.
- *
- * The stub resolves successfully — no error simulation. The
- * Promise.allSettled aggregation in expenditure-tab.tsx is exercised
- * regardless because the optimistic / revert paths still run.
+ * Typed errors from apiFetch:
+ *   - 401 → UnauthenticatedError
+ *   - 404 → NotFoundError (expenditure_not_found / activity_not_in_claim)
+ *   - 409 → ConflictError (expenditure_voided)
  */
-export async function mapExpenditure(_expenditureId: string, _activityId: string): Promise<void> {
-  // TODO(A?-mapping): wire to POST /v1/expenditures/:id/map.
-  return Promise.resolve();
+export async function mapExpenditure(expenditureId: string, activityId: Uuid): Promise<void> {
+  await apiFetch<{ event: unknown }>(`/v1/expenditures/${expenditureId}/map`, {
+    method: 'POST',
+    body: JSON.stringify({ activity_id: activityId }),
+  });
 }
 
 /**
- * TODO(A?-apportion): Submits an apportionment for a single expenditure
- * across multiple activities. The future endpoint is:
+ * POST /v1/expenditures/:id/apportion
  *
- *   POST /v1/expenditures/:id/apportion
- *   Body: {
- *     allocations: [
- *       { activity_id: Uuid, percentage: number },
- *       ...
- *     ]
- *   }
+ * Emits an EXPENDITURE_APPORTIONED event. Server validates: sum ≈ 100
+ * (±0.001), each pct > 0, length ∈ [1, 5], no duplicate activity ids, every
+ * activity in the same claim. Validation parity with `isValidAllocationSet`
+ * — the client guards against the same shapes before the network call so a
+ * bug here can't propagate to a confused revert.
  *
- * Server-side validation:
- *   - sum of percentages = 100.000 (±0.001 tolerance — must match the
- *     `SUM_TOLERANCE` constant in `apportionment.ts` so the client's
- *     disabled-submit and the server's reject align)
- *   - every percentage strictly > 0 (zero-rows would be nonsensical)
- *   - 1 ≤ allocations.length ≤ 5 (matches `MAX_ALLOCATIONS`)
- *   - every activity_id resolves to an Activity scoped to the same
- *     claim as the expenditure (server-side join)
- *
- * Emits an `EXPENDITURE_APPORTIONED` event (NEW kind — coordinate with
- * A-swimlane to add it to packages/schemas/src/event.ts; do NOT add the
- * event kind in this commit). Planned payload:
- *
- *   ExpenditureApportionedPayload = {
- *     expenditure_id: Uuid,
- *     allocations: [
- *       {
- *         activity_id: Uuid,
- *         activity_code: string,        // denormalised for projection display
- *         activity_title: string,       // denormalised for projection display
- *         percentage: number,           // 0 < pct ≤ 100
- *       },
- *       ...
- *     ],
- *     mapped_by_user_id: Uuid,          // from the auth context
- *     // apportioned_at is implicit — taken from the event's captured_at.
- *   }
- *
- * Why a separate event kind (not piggyback on EXPENDITURE_MAPPED with
- * an array)? Two reasons:
- *   1. EXPENDITURE_MAPPED is keyed to a single activity_id; reshaping
- *      it would break the projection helper (and the line-mapped
- *      sibling). A new kind keeps each event's payload single-purpose.
- *   2. Apportionment is a distinct user intent from "single mapping" —
- *      the audit story needs to differentiate "this consultant said
- *      this is one activity" from "this consultant said it's a split."
- *
- * Composition with existing events: see `expenditure-projection.ts`
- * JSDoc for the parent/line/apportionment composition rules.
- * EXPENDITURE_APPORTIONED is a third aggregate that takes precedence
- * over parent EXPENDITURE_MAPPED but is overridden by line-level
- * EXPENDITURE_LINE_MAPPED (which is the most specific).
- *
- * Stub implementation: simulates a small latency (so the dialog's
- * submit-disabled state is visible during dev), validates the same
- * shape the future server will reject on (so misuse from the dialog
- * is caught locally), and resolves successfully. No random failure
- * — error-path testing is exercised via the parent's
- * Promise.allSettled aggregation when the C2-shaped wrapper is in
- * place.
+ * Typed errors:
+ *   - 400 → Error (invalid_allocation)
+ *   - 404 → NotFoundError (expenditure_not_found / activity_not_in_claim)
+ *   - 409 → ConflictError (expenditure_voided)
  */
 export async function apportionExpenditure(
-  _expenditureId: Uuid,
+  expenditureId: Uuid,
   allocations: ReadonlyArray<ValidatedAllocation>,
 ): Promise<void> {
-  // Defensive parity with the future server-side validator. Reject
-  // anything the client should never send rather than silently letting
-  // the bug propagate to the optimistic-state revert.
-  //
-  // `ValidatedAllocation` is structurally a subtype of `Allocation`
-  // (same fields; activity_id strict-Uuid vs allocation's string with
-  // empty-sentinel) so the validation helper accepts it without a cast.
   if (!isValidAllocationSet(allocations)) {
     return Promise.reject(new Error('Invalid apportionment payload'));
   }
-  // Tiny simulated latency so the disabled-submit state is visible in
-  // dev. Removed the moment the real endpoint is wired — see TODO above.
-  await new Promise((resolve) => setTimeout(resolve, 150));
-  // TODO(A?-apportion): wire to POST /v1/expenditures/:id/apportion.
-  return Promise.resolve();
+  await apiFetch<{ event: unknown }>(`/v1/expenditures/${expenditureId}/apportion`, {
+    method: 'POST',
+    body: JSON.stringify({
+      allocations: allocations.map((a) => ({
+        activity_id: a.activity_id,
+        percentage: a.percentage,
+      })),
+    }),
+  });
+}
+
+/**
+ * POST /v1/expenditures/:id/unmap
+ *
+ * Emits an EXPENDITURE_UNMAPPED event clearing the current mapping. Not yet
+ * surfaced in the C5 UI; exported for future re-introduction of an explicit
+ * "unmap" affordance and to keep the four A-endpoints all accessible from
+ * one module.
+ */
+export async function unmapExpenditure(expenditureId: string, reason?: string): Promise<void> {
+  await apiFetch<{ event: unknown }>(`/v1/expenditures/${expenditureId}/unmap`, {
+    method: 'POST',
+    body: JSON.stringify(reason ? { reason } : {}),
+  });
 }
