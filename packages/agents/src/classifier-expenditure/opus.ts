@@ -12,9 +12,15 @@ import type {
 const PROMPT_KEY = 'classify-expenditure@1.0.0';
 
 /**
- * Production expenditure classifier backed by the Anthropic SDK + Claude Haiku.
+ * Production expenditure classifier backed by the Anthropic SDK + Claude Opus.
  *
- * Mirrors the structure of `classifier/haiku.ts`:
+ * Previously a Haiku-backed implementation; in bulk-claim contamination
+ * runs Haiku was leaking ~6 % of non-R&D expenditure $ back into the
+ * claim — the failure mode was dual-use vendors (AWS / GitHub /
+ * Notion / Slack) in admin-context line items that Haiku couldn't
+ * disambiguate from R&D usage. Opus's stronger reasoning resolves the
+ * dual-use call when given the project + recent-evidence context.
+ *
  *   - The `import './prompts/classify-expenditure@1.0.0.js'` side-effect import
  *     is what registers the versioned prompt with the runtime registry.
  *   - The model is forced to invoke the `classify_expenditure` tool and the
@@ -28,9 +34,9 @@ const PROMPT_KEY = 'classify-expenditure@1.0.0';
  * Defense-in-depth: if the model echoes back a different `expenditure_id`
  * than the input, we throw rather than silently corrupt downstream events.
  */
-export class HaikuExpenditureClassifier implements ExpenditureClassifier {
+export class OpusExpenditureClassifier implements ExpenditureClassifier {
   async classify(input: ExpenditureClassifierInput): Promise<ExpenditureClassifierOutput> {
-    const model = process.env.EXPENDITURE_CLASSIFIER_MODEL ?? 'claude-haiku-4-5';
+    const model = process.env.EXPENDITURE_CLASSIFIER_MODEL ?? 'claude-opus-4-7';
     const prompt = getPrompt<ClassifyExpenditureToolInput>(PROMPT_KEY);
     // Serialise the entire input bundle as the user message — the system
     // prompt teaches the model the JSON shape.

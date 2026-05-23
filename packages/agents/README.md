@@ -21,7 +21,7 @@ import { makeClassifier } from '@cpa/agents';
 import { withAgentSpan, getPrompt, computeIdempotencyKey } from '@cpa/agents/runtime';
 
 // Just the classifier (factory + interfaces + impls).
-import { makeClassifier, StubClassifier, HaikuClassifier } from '@cpa/agents/classifier';
+import { makeClassifier, StubClassifier, OpusClassifier } from '@cpa/agents/classifier';
 ```
 
 Use the narrowest import path that satisfies the call site — `runtime`
@@ -30,11 +30,11 @@ the root re-export only for cases that genuinely need both.
 
 ## Environment variables
 
-| Variable            | Required                          | Default                          | Notes                                                                                                                                  |
-| ------------------- | --------------------------------- | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `CLASSIFIER_IMPL`   | no                                | `haiku` (or `stub` if `CI=true`) | Selects the `Classifier` impl returned by `makeClassifier()`. Honored verbatim if set; unknown values throw at startup.                |
-| `ANTHROPIC_API_KEY` | only when `CLASSIFIER_IMPL=haiku` | —                                | Real Anthropic API key. Missing key throws an explanatory error from `getAnthropicClient()` pointing at the stub fallback.             |
-| `CLASSIFIER_MODEL`  | no                                | `claude-haiku-4-5`               | Override the Anthropic model id the `HaikuClassifier` calls. Used in tests to pin to a specific snapshot model when SDK defaults move. |
+| Variable            | Required                          | Default                          | Notes                                                                                                                                 |
+| ------------------- | --------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `CLASSIFIER_IMPL`   | no                                | `haiku` (or `stub` if `CI=true`) | Selects the `Classifier` impl returned by `makeClassifier()`. Honored verbatim if set; unknown values throw at startup.               |
+| `ANTHROPIC_API_KEY` | only when `CLASSIFIER_IMPL=haiku` | —                                | Real Anthropic API key. Missing key throws an explanatory error from `getAnthropicClient()` pointing at the stub fallback.            |
+| `CLASSIFIER_MODEL`  | no                                | `claude-haiku-4-5`               | Override the Anthropic model id the `OpusClassifier` calls. Used in tests to pin to a specific snapshot model when SDK defaults move. |
 
 The `factory.ts` resolution order is:
 
@@ -73,7 +73,7 @@ back to `haiku` once a key is set is a one-env-var change.
 `CI=true` is set automatically by GitHub Actions, which means the stub
 is selected with no env-var rewrite needed. Keeping CI off the live
 model avoids cost-per-PR + flake risk on Anthropic outages. A small
-amount of nock-mocked `HaikuClassifier` coverage exists in
+amount of nock-mocked `OpusClassifier` coverage exists in
 `src/classifier/haiku.test.ts` for the live-path contract.
 
 ## Adding a new agent
@@ -167,7 +167,7 @@ the repo-wide convention from ADR-0001. Tests live alongside source
 
 ### Mocking Anthropic with nock
 
-`HaikuClassifier` hits `https://api.anthropic.com/v1/messages` through
+`OpusClassifier` hits `https://api.anthropic.com/v1/messages` through
 the SDK. Tests intercept with `nock`:
 
 ```ts
@@ -180,7 +180,7 @@ beforeEach(() => {
   nock.cleanAll();
 });
 
-test('HaikuClassifier round-trips through Anthropic SDK', async () => {
+test('OpusClassifier round-trips through Anthropic SDK', async () => {
   nock('https://api.anthropic.com')
     .post('/v1/messages')
     .reply(200, {
@@ -206,7 +206,7 @@ test('HaikuClassifier round-trips through Anthropic SDK', async () => {
       usage: { input_tokens: 200, output_tokens: 50 },
     });
 
-  const c = new HaikuClassifier();
+  const c = new OpusClassifier();
   const out = await c.classify({ raw_text: '...' });
   // assert on out.kind, out.confidence, out.tokens_in, out.tokens_out
 });

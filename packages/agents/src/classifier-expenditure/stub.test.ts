@@ -43,12 +43,18 @@ const cases: Array<{
   expected_confidence: number;
 }> = [
   {
-    name: 'AWS subscription → ineligible 0.92',
+    // AWS is now DUAL-USE in the stub: it gets routed via project +
+    // recent-evidence context. The default test project ("Project Foo"
+    // / "biotech") matches RD_CONTEXT_KEYWORDS, so AWS in this fixture
+    // resolves to eligible §355-30 (supporting compute for R&D).
+    // A non-R&D-shaped project would resolve it to ineligible — see
+    // the dual-use tests further down.
+    name: 'AWS in a biotech project → eligible §355-30 (dual-use, context: R&D)',
     vendor_name: 'Amazon Web Services',
     description: 'AWS monthly subscription',
-    expected_decision: 'ineligible',
-    expected_anchor: 'ineligible',
-    expected_confidence: 0.92,
+    expected_decision: 'eligible',
+    expected_anchor: 's.355-30',
+    expected_confidence: 0.7,
   },
   {
     name: 'Atlassian → ineligible',
@@ -59,12 +65,13 @@ const cases: Array<{
     expected_confidence: 0.92,
   },
   {
-    name: 'GitHub → ineligible',
+    // GitHub same story as AWS — dual-use, eligible in an R&D project.
+    name: 'GitHub in a biotech project → eligible §355-30 (dual-use, context: R&D)',
     vendor_name: 'GitHub Inc.',
     description: 'Team plan',
-    expected_decision: 'ineligible',
-    expected_anchor: 'ineligible',
-    expected_confidence: 0.92,
+    expected_decision: 'eligible',
+    expected_anchor: 's.355-30',
+    expected_confidence: 0.7,
   },
   {
     name: 'Stripe → ineligible',
@@ -136,12 +143,18 @@ const cases: Array<{
   },
   // — broader semantic patterns added in the contamination-handling pass —
   {
+    // "Annual PI premium" hits ADMIN_CONTEXT_KEYWORDS (description-
+    // level admin override) before the vendor-specific insurance
+    // pattern can match, so the confidence is 0.88 not 0.9. Outcome
+    // (ineligible) is unchanged — and the admin path actually
+    // catches this BETTER (matches "Annual PI premium" issued by
+    // any vendor name, not just the canonical insurance vendors).
     name: 'Aon Risk Services → ineligible (insurance)',
     vendor_name: 'Aon Risk Services',
     description: 'Annual PI premium',
     expected_decision: 'ineligible',
     expected_anchor: 'ineligible',
-    expected_confidence: 0.9,
+    expected_confidence: 0.88,
   },
   {
     name: 'PwC Tax → ineligible (tax / accounting)',
@@ -160,20 +173,22 @@ const cases: Array<{
     expected_confidence: 0.9,
   },
   {
+    // "Fleet fuel" hits ADMIN_CONTEXT_KEYWORDS first → 0.88.
     name: 'Caltex StarCard → ineligible (fuel)',
     vendor_name: 'Caltex StarCard',
     description: 'Fleet fuel',
     expected_decision: 'ineligible',
     expected_anchor: 'ineligible',
-    expected_confidence: 0.9,
+    expected_confidence: 0.88,
   },
   {
+    // "CRM seats" hits ADMIN_CONTEXT_KEYWORDS first → 0.88.
     name: 'Salesforce → ineligible (sales SaaS)',
     vendor_name: 'Salesforce Australia',
     description: 'CRM seats',
     expected_decision: 'ineligible',
     expected_anchor: 'ineligible',
-    expected_confidence: 0.9,
+    expected_confidence: 0.88,
   },
   {
     name: 'Telstra → ineligible (telco)',
@@ -192,12 +207,13 @@ const cases: Array<{
     expected_confidence: 0.9,
   },
   {
+    // "Stationery" hits ADMIN_CONTEXT_KEYWORDS first → 0.88.
     name: 'Officeworks → ineligible (retail)',
     vendor_name: 'Officeworks',
     description: 'Stationery and printer paper',
     expected_decision: 'ineligible',
     expected_anchor: 'ineligible',
-    expected_confidence: 0.9,
+    expected_confidence: 0.88,
   },
   {
     name: 'CASA permit → ineligible (regulator fee)',
@@ -247,6 +263,96 @@ test('determinism: same input twice → same output', async () => {
   const a = await c.classify(input);
   const b = await c.classify(input);
   assert.deepEqual(a, b);
+});
+
+// — Dual-use SaaS context routing —
+// AWS, GitHub, Notion, Slack, JetBrains, Zoom, Datadog, Sentry are
+// vendors with BOTH R&D and admin usage patterns. The stub uses the
+// project / recent-evidence context to decide which branch applies.
+
+test('dual-use: Slack in a sales-team project → ineligible (no R&D context)', async () => {
+  const out = await c.classify({
+    expenditure_id: VALID_UUID,
+    expenditure: {
+      vendor_name: 'Slack Technologies',
+      description: 'monthly subscription',
+      total_amount: '1000.00',
+      currency: 'AUD',
+      expenditure_date: '2025-07-01',
+      source: 'xero_invoice',
+      kind: 'INVOICE',
+    },
+    project: {
+      // No R&D keywords here — the dual-use branch falls through to
+      // ineligible.
+      name: 'Sales operations FY26',
+      industry_sector: 'sales',
+      fiscal_year: 2026,
+    },
+    existing_activities: [],
+    recent_evidence_events: [],
+  });
+  assert.equal(out.decision, 'ineligible');
+  assert.equal(out.statutory_anchor, 'ineligible');
+  assert.equal(out.eligibility_probability, 0.78);
+});
+
+test('dual-use: Notion in a research project → eligible §355-30', async () => {
+  const out = await c.classify({
+    expenditure_id: VALID_UUID,
+    expenditure: {
+      vendor_name: 'Notion Labs',
+      description: 'team plan',
+      total_amount: '500.00',
+      currency: 'AUD',
+      expenditure_date: '2025-07-01',
+      source: 'xero_invoice',
+      kind: 'INVOICE',
+    },
+    project: {
+      name: 'Hi-temp alloy phase-stability research program',
+      industry_sector: 'materials',
+      fiscal_year: 2026,
+    },
+    existing_activities: [],
+    recent_evidence_events: [],
+  });
+  assert.equal(out.decision, 'eligible');
+  assert.equal(out.statutory_anchor, 's.355-30');
+  assert.equal(out.eligibility_probability, 0.7);
+});
+
+test('dual-use: GitHub eligible via recent_evidence even when project is generic', async () => {
+  const out = await c.classify({
+    expenditure_id: VALID_UUID,
+    expenditure: {
+      vendor_name: 'GitHub Inc.',
+      description: 'team plan',
+      total_amount: '500.00',
+      currency: 'AUD',
+      expenditure_date: '2025-07-01',
+      source: 'xero_invoice',
+      kind: 'INVOICE',
+    },
+    project: {
+      // Generic project name with no R&D keywords.
+      name: 'Q4 program',
+      industry_sector: null,
+      fiscal_year: 2026,
+    },
+    existing_activities: [],
+    recent_evidence_events: [
+      {
+        id: '22222222-2222-4222-8222-222222222222',
+        kind: 'HYPOTHESIS',
+        captured_at: '2025-06-15T10:00:00Z',
+        summary: 'We hypothesise that the new kernel improves inference latency by 30%',
+      },
+    ],
+  });
+  assert.equal(out.decision, 'eligible');
+  assert.equal(out.statutory_anchor, 's.355-30');
+  assert.equal(out.eligibility_probability, 0.7);
 });
 
 test('expenditure_id is echoed exactly', async () => {

@@ -2,7 +2,7 @@ import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeClassifier } from './factory.js';
 import { StubClassifier } from './stub.js';
-import { HaikuClassifier } from './haiku.js';
+import { OpusClassifier } from './opus.js';
 
 beforeEach(() => {
   delete process.env.CLASSIFIER_IMPL;
@@ -15,10 +15,10 @@ test('CLASSIFIER_IMPL=stub → StubClassifier', () => {
   assert.ok(makeClassifier() instanceof StubClassifier);
 });
 
-test('CLASSIFIER_IMPL=haiku + ANTHROPIC_API_KEY set → HaikuClassifier', () => {
+test('CLASSIFIER_IMPL=haiku + ANTHROPIC_API_KEY set → OpusClassifier', () => {
   process.env.CLASSIFIER_IMPL = 'haiku';
   process.env.ANTHROPIC_API_KEY = 'k';
-  assert.ok(makeClassifier() instanceof HaikuClassifier);
+  assert.ok(makeClassifier() instanceof OpusClassifier);
 });
 
 test('CI=true and unset CLASSIFIER_IMPL → StubClassifier', () => {

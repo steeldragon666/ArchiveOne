@@ -54,6 +54,57 @@ const N_NARRATIVE_DRAFTS = 1;
  */
 const CONTAMINATION_RATE = 0.3;
 
+/**
+ * Per-band line-item descriptors appended to each transaction's
+ * reference field, so the seed mirrors real Xero invoice line-item
+ * descriptions rather than pure invoice-number strings. The classifier
+ * stub uses these to disambiguate dual-use SaaS rows (e.g. Slack
+ * Technologies in nonRd → "sales team workspace subscription";
+ * Slack Technologies in rdSupporting → "R&D engineering team workspace").
+ *
+ * Tuned to be domain-agnostic so the same pool can drive every claim
+ * without leaking ground truth — the descriptors are honest about
+ * what the spend is for, which is exactly what a real-world AP feed
+ * would expose.
+ */
+const REFERENCE_DESCRIPTORS: Record<'rd_critical' | 'rd_supporting' | 'non_rd', string[]> = {
+  rd_critical: [
+    'R&D experimental supplies',
+    'lab consumables for testing',
+    'specimen analysis service',
+    'instrumentation calibration',
+    'research-grade reagents',
+    'prototype materials',
+    'experimental rig components',
+    'R&D pilot-batch inputs',
+  ],
+  rd_supporting: [
+    'R&D engineering team workspace',
+    'R&D compute resources',
+    'developer tooling for the research team',
+    'R&D supporting service',
+    'simulation cluster runtime',
+    'engineering team subscription',
+  ],
+  non_rd: [
+    'annual PI premium renewal',
+    'sales team CRM seats',
+    'corporate travel — conference booking',
+    'office stationery and supplies',
+    'tax preparation handover',
+    'company secretarial services',
+    'fleet fuel card',
+    'office lease renewal',
+    'admin team subscription',
+    'marketing agency retainer',
+    'payroll system fees',
+    'general counsel hours',
+    'sales team workspace',
+    'marketing site hosting',
+    'board pack production',
+  ],
+};
+
 // FY26: 1 Jul 2025 — 30 Jun 2026. Times generated within this window.
 const FY_START = new Date('2025-07-01T00:00:00Z');
 const FY_END = new Date('2026-06-30T23:59:59Z');
@@ -216,7 +267,14 @@ function genTransaction(rng: RandFn, d: Domain, i: number, n: number): PendingEx
     .replace(/[^A-Za-z0-9]/g, '')
     .slice(0, 6)
     .toUpperCase();
-  const reference = `${vendorPrefix}-${date.slice(0, 7)}-${String(n).padStart(4, '0')}`;
+  // Real Xero invoice references carry line-item descriptions, not just
+  // an invoice number. The bulk seed's reference field now mirrors that
+  // shape — invoice-id + a band-typed semantic suffix — so the
+  // classifier stub can disambiguate dual-use SaaS rows (Slack /
+  // Notion / AWS / GitHub in nonRd context vs the same vendors in
+  // rdSupporting context). See REFERENCE_DESCRIPTORS below.
+  const descriptor = pick(rng, REFERENCE_DESCRIPTORS[band]);
+  const reference = `${vendorPrefix}-${date.slice(0, 7)}-${String(n).padStart(4, '0')} — ${descriptor}`;
 
   return {
     claimIdx: i,
