@@ -1,0 +1,62 @@
+{
+  "_doc": "Mocks an upload of a multi-sheet Excel workbook with the heat-flow calculations for the quench. The platform stores the XLSX externally and writes an EVIDENCE_UPLOADED chain event with this metadata + extracted_content (extracted client-side via xlsx).",
+  "filename": "quench_calcs_vant7_n12.xlsx",
+  "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "size_bytes": 91644,
+  "sha256_hex": "7e2c5a9d1b4e8f3a6c2b5e9d8a1f4c7b3e6a9d2c5f8b1e4d7c8a2f5b9e1c4d7a",
+  "extracted_content": {
+    "document_summary": "Three-sheet workbook: Heat-flow model (Sheet 1), Quench-rate sensitivity (Sheet 2), Mass-loss audit (Sheet 3). All formulas evaluated; no #REF!/#DIV/0! errors.",
+    "sheets": [
+      {
+        "name": "Heat-flow model",
+        "rows": [
+          ["Time (s)", "T_specimen (°C)", "T_bath (°C)", "Heat flux (W/m²)"],
+          [0, 830, 20.0, 0],
+          [0.5, 720, 20.1, 1845000],
+          [1.0, 615, 20.3, 1718000],
+          [1.5, 520, 20.6, 1556000],
+          [2.0, 440, 20.9, 1402000],
+          [3.0, 320, 21.4, 1118000],
+          [5.0, 180, 22.1, 644000],
+          [10.0, 80, 22.8, 215000],
+          [60.0, 24, 23.4, 380]
+        ]
+      },
+      {
+        "name": "Quench-rate sensitivity",
+        "rows": [
+          ["Run", "Rate (K/s)", "Bath ΔT (°C)", "Cracked?", "Notes"],
+          ["N7", 200, 1.8, "No", "Reference protocol"],
+          ["N10", 200, 1.9, "Yes", "Cracked at 1.6 mm fillet, B+8% composition"],
+          [
+            "N11",
+            150,
+            2.4,
+            "Yes",
+            "Same crack pattern at slower rate — rules out quench-rate as sole driver"
+          ],
+          ["N12", 200, 3.4, "No", "B+8% + revised crucible shape — INTACT"]
+        ]
+      },
+      {
+        "name": "Mass-loss audit",
+        "rows": [
+          ["Run", "Mass pre (g)", "Mass post (g)", "Δ (g)", "Within tol?"],
+          ["N7", 47.182, 47.162, 0.02, "Yes"],
+          ["N10", 47.19, 47.158, 0.032, "No"],
+          ["N11", 47.184, 47.149, 0.035, "No"],
+          ["N12", 47.181, 47.163, 0.018, "Yes"]
+        ]
+      }
+    ],
+    "activities": [
+      {
+        "kind": "supporting",
+        "title": "Heat-flow modelling and quench-rate sensitivity analysis",
+        "evidence_strength": "supporting",
+        "rationale": "Calculations workbook supporting the N12 quench-rate decision; rules out quench-rate as the sole driver of the N10/N11 cracking and supports the B+8% composition hypothesis."
+      }
+    ]
+  },
+  "captured_at": "2026-05-22T11:18:44.000Z"
+}

@@ -22,6 +22,102 @@ type Rule = {
  * precede TIME_LOG so a sentence like "Director's spouse spent 4 hours"
  * classifies as ASSOCIATE_FLAG rather than TIME_LOG.
  */
+/**
+ * Corporate-noise INELIGIBLE patterns — marketing, ops, admin,
+ * refactoring, board prep, insurance renewals, tax prep, payroll. All
+ * "ordinary business operations" under §355-25(2)(a). Listed BEFORE the
+ * R&D rules below so that a phrase like "Email subject-line
+ * experiment" hits this rule first instead of cascading to EXPERIMENT
+ * (the literal word "experiment" appears in contamination too).
+ *
+ * Tuned against the bulk-claim seed's CONTAMINATION_THEMES — every
+ * template contributes at least one distinctive substring here. For
+ * production text the patterns are still safe: each substring is
+ * either a corporate-only phrase ("board pack", "agency budget", "pi
+ * insurance") or a vendor name that appears only in non-R&D contexts
+ * in the seed (Marsh, Salesforce).
+ */
+const CORPORATE_NOISE_INELIGIBLE = new RegExp(
+  [
+    // marketing / UX experimentation
+    'a\\/b\\s+test',
+    'landing\\s+page',
+    'variant\\s+[ab]\\b',
+    '\\bcta\\b',
+    '\\bctr\\b',
+    'open-?rate',
+    'subject-?line',
+    'newsletter\\s+cohort',
+    'conversion\\s+lift',
+    'onboarding-?flow',
+    'email-?verification',
+    'sub-trial',
+    'support\\s+tickets',
+    'internal\\s+tool\\s+eval',
+    'program\\s+board',
+    'pricing-?page',
+    'founder\\s+tile',
+    // refactor / migration / ops
+    // NB: bare "refactor" is too broad — R&D engineering teams do
+    // legitimate experimental refactors (per-frame coroutines, kernel
+    // rewrites). Require the "legacy" anchor so we catch admin-tier
+    // refactor chores without false-positiving on R&D code work.
+    'legacy\\s+(?:reports?|module|favicon)',
+    'no\\s+behaviour\\s+change',
+    'tests?\\s+still\\s+green',
+    'slack\\s+workspace',
+    'new\\s+pricing\\s+plan',
+    'ci\\s+runner',
+    'pricing\\s+review',
+    'build-?time\\s+delta',
+    'staging\\s+cluster',
+    't\\d\\.(?:large|xlarge|medium|small)',
+    'oom\\s+kills?',
+    'req\\/min',
+    'marketing-?site',
+    'favicon',
+    'brand-?asset',
+    // marketing / agency / brand
+    'marketing\\s+spend',
+    'agency\\s+budget',
+    'brand\\s+work',
+    // insurance / risk
+    'pi\\s+premium',
+    'pi\\s+insurance',
+    '\\bmarsh\\b',
+    'broker\\s+call',
+    'insurance\\s+(?:premium|renewal|with)',
+    // sales / SaaS admin
+    'salesforce',
+    'seat\\s+audit',
+    'inactive\\s+logins',
+    // real estate
+    'office\\s+lease',
+    'lease\\s+renewal',
+    // people-ops / admin
+    'nps\\s+survey',
+    'tooling\\s+fragmentation',
+    'admin\\s+assistant',
+    'onboarded\\s+new',
+    'hr\\s+system',
+    // finance / board / accounting
+    'board[\\s-]?pack',
+    'elt\\s+review',
+    'budget\\s+reforecast',
+    'spreadsheet\\s+rebuild',
+    'tax[\\s-]?prep',
+    'handover\\s+with\\s+(?:ey|pwc|kpmg|deloitte)',
+    'with\\s+(?:ey|pwc|kpmg|deloitte)\\b',
+    'slide\\s+deck',
+    '\\bcfo\\b',
+    // team events
+    'team\\s+offsite',
+    'wineries',
+    'cellar\\s+door',
+  ].join('|'),
+  'i',
+);
+
 const STUB_RULES: Rule[] = [
   {
     pattern: /\b(associate|related party|spouse|director'?s? (?:wife|husband|spouse|family))/i,
@@ -31,6 +127,16 @@ const STUB_RULES: Rule[] = [
     anchor: null,
   },
   {
+    // CORPORATE NOISE first — needs to beat both EXPENDITURE_NOTE
+    // ($X amounts inside contamination notes) and the R&D-vocab rules
+    // (e.g. "Email subject-line experiment" → INELIGIBLE, not EXPERIMENT).
+    pattern: CORPORATE_NOISE_INELIGIBLE,
+    kind: 'INELIGIBLE',
+    confidence: 0.85,
+    rationale: 'Stub: corporate-noise / ordinary-business vocabulary',
+    anchor: '§355-25(2)(a)',
+  },
+  {
     pattern: /\$\s?\d|invoice|paid\s+\$|expense (?:was|of|incurred)|cost (?:was|of|incurred)/i,
     kind: 'EXPENDITURE_NOTE',
     confidence: 0.8,
@@ -38,7 +144,14 @@ const STUB_RULES: Rule[] = [
     anchor: null,
   },
   {
-    pattern: /\b(routine|standard|business as usual|bau|just our normal|usual practice)\b/i,
+    // "standard" on its own is too greedy — scientific phrases like
+    // "authentic standard" (HPLC reference compound) or "standard
+    // deviation" routinely appear in R&D notes. Require it to be
+    // adjacent to clearly-ordinary-business modifiers ("standard
+    // practice / procedure / operating") so we don't false-positive
+    // on the chemistry vocab.
+    pattern:
+      /\b(?:routine|business\s+as\s+usual|bau|just\s+our\s+normal|usual\s+practice|standard\s+(?:practice|procedure|operating|admin|ops))\b/i,
     kind: 'INELIGIBLE',
     confidence: 0.72,
     rationale: 'Stub: ordinary-business vocabulary',
@@ -114,7 +227,7 @@ const STUB_RULES: Rule[] = [
  */
 export class StubClassifier implements Classifier {
   // Async signature is required by the Classifier interface even though this
-  // implementation never awaits — keeps the interface symmetric with HaikuClassifier.
+  // implementation never awaits — keeps the interface symmetric with OpusClassifier.
   // eslint-disable-next-line @typescript-eslint/require-await
   async classify({ raw_text }: ClassifierInput): Promise<ClassifierOutput> {
     for (const rule of STUB_RULES) {

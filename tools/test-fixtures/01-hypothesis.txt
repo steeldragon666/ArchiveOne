@@ -1,0 +1,18 @@
+Vantage-7 alloy phase-stability hypothesis (pre-run, furnace cycle N12)
+
+We hypothesise that the modified B+8% composition will preserve the
+gamma-prime phase-stability ceiling observed in N7 (830 °C ± 8) while
+reducing the quench-rate sensitivity that caused the N10/N11 cracking.
+Specifically: at 830 °C with a 200 K/s quench, the new composition
+should hold phase boundary stability for ≥ 60 s before nucleation onset,
+versus the 22–28 s window observed in the reference alloy.
+
+This is a non-trivial extension of the N7 protocol — the B-substitution
+shifts the eutectic ratio by ~3 %, and we have no prior literature on
+the resulting phase boundary behaviour above 800 °C. If the hypothesis
+holds, it unlocks a 14 % weight reduction in the downstream casting
+without sacrificing creep resistance.
+
+Tests planned for this evidence: post-cycle microscopy, X-ray
+diffraction at 830 °C, and metallographic analysis of the quench cross-
+section. All artefacts will be hashed and chained on capture.

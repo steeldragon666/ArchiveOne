@@ -30,7 +30,7 @@ type SynthesizeRegisterToolOutput = {
  * what registers the versioned prompt with the runtime registry — without it
  * `getPrompt(PROMPT_KEY)` would throw on first synthesize() call.
  *
- * Mirror of {@link HaikuClassifier}, just pinned to Sonnet 4.5 because the
+ * Mirror of {@link OpusClassifier}, just pinned to Sonnet 4.5 because the
  * clustering task is significantly more open-ended than per-event
  * classification and benefits from the larger model.
  */

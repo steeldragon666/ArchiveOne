@@ -1,0 +1,78 @@
+{
+  "_doc": "Kitchen-sink fixture for the full claim flow. Adds three more expenditures (with different vendors / sources) to the Vantage-7 claim, runs an Agent-B-style activity-register draft pass (ACTIVITY_REGISTER_DRAFTED) and an Agent-C narrative draft pass (NARRATIVE_DRAFTED + persisted narrative_draft + narrative_segment rows). Closes with an apportionment of one expenditure across both activities so the apportionment-mapping pipeline is exercised end-to-end.",
+  "expenditures": [
+    {
+      "source": "xero_invoice",
+      "vendor": "CSIRO Test Suite",
+      "reference": "INV-CSIRO-2026-04-12",
+      "expenditure_date": "2026-04-12",
+      "total_amount": "6400.00",
+      "currency": "AUD",
+      "map_to": "supporting"
+    },
+    {
+      "source": "xero_bank_tx",
+      "vendor": "AWS Australia Pty Ltd",
+      "reference": "AWS-COMPUTE-MAY2026",
+      "expenditure_date": "2026-05-15",
+      "total_amount": "4820.00",
+      "currency": "AUD",
+      "map_to": "supporting"
+    },
+    {
+      "source": "xero_invoice",
+      "vendor": "Agilent Metrology",
+      "reference": "INV-AGILENT-2026-Q4-028",
+      "expenditure_date": "2026-05-28",
+      "total_amount": "9150.00",
+      "currency": "AUD",
+      "apportion": [
+        { "kind": "core", "percentage": 60 },
+        { "kind": "supporting", "percentage": 40 }
+      ]
+    }
+  ],
+  "activity_register_proposal": {
+    "summary": "Agent B's draft register proposes the existing CORE + SUPPORTING activities (proposed_from chain walk) and flags no new activities to add. Confidence is high because the evidence stream concentrates around a single furnace program with one external-lab contractor.",
+    "proposed_activities": [
+      {
+        "kind": "core",
+        "title": "Vantage-7 phase-stability program",
+        "rationale": "Twelve furnace runs (N1–N12), B-substituted γ' alloy, contemporaneous documentation across hypothesis / observation / time-log / voice-note / lab-book / XRD evidence.",
+        "confidence": 0.94
+      },
+      {
+        "kind": "supporting",
+        "title": "Heat-flow and metrology support",
+        "rationale": "Bluescope external-lab testing, CSIRO test suite, AWS compute for heat-flow modelling, and Agilent metrology services that supported the core activity without performing it.",
+        "confidence": 0.88
+      }
+    ],
+    "unclustered_event_ids": []
+  },
+  "narrative_draft": {
+    "summary": "Agent C's narrative draft for the CORE activity, structured under the four standard headings. Cites the contemporaneous evidence events captured in cases 01–07 + 09; the per-segment citation events line up to the seeded event IDs.",
+    "sections": [
+      {
+        "section_kind": "hypothesis",
+        "version": 1,
+        "segments_summary": "One claim segment citing the case-01 hypothesis text event + case-04 whiteboard photo + case-06 narrative draft (Hypothesis section)."
+      },
+      {
+        "section_kind": "technical_uncertainty",
+        "version": 1,
+        "segments_summary": "One prose segment + one claim segment citing case-06 (Technical uncertainty section) + case-07 quench-rate sensitivity sheet."
+      },
+      {
+        "section_kind": "experimentation",
+        "version": 1,
+        "segments_summary": "Three prose segments + two claim segments across case-02 observation, case-05 lab-book PDF, case-09 voice transcript, and case-07 mass-loss audit."
+      },
+      {
+        "section_kind": "outcome",
+        "version": 1,
+        "segments_summary": "One prose + one claim segment citing case-02 + case-05 + case-09 (the N12-INTACT result) and the case-06 narrative-draft Outcome section."
+      }
+    ]
+  }
+}

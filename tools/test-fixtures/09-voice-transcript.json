@@ -1,0 +1,23 @@
+{
+  "_doc": "Mocks an upload of a voice note from the claimant's iPhone (post-cycle standup). The platform stores the M4A externally and writes an EVIDENCE_UPLOADED chain event with this metadata + extracted_content (audio transcript via Whisper-class ASR client-side).",
+  "filename": "standup_post_n12_quench.m4a",
+  "mime": "audio/mp4",
+  "size_bytes": 518244,
+  "sha256_hex": "1d4a7c2f5b8e1c4a7d2f5b8e1c4a7d2f5b8e1c4a7d2f5b8e1c4a7d2f5b8e1c4a",
+  "duration_seconds": 34,
+  "extracted_content": {
+    "document_summary": "Post-N12-quench voice standup recorded by Priya Ramachandran. Reports the result, the comparison vs N10/N11, the visual inspection, and the planned XRD follow-up. Spoken in English; transcribed locally before upload (no cloud round-trip).",
+    "transcript": "Okay quick note for the record. N12 is out of the quench bath. Specimen is intact — all four corners, no cracking at the fillet, no visible defects in the gauge section. This is the first B+8% run that's survived the 200 K per second quench from 830. N10 and N11 both cracked at the 1.6 mm fillet so this is a real result. Mass loss looks like point zero one eight grams, which is within the N7 tolerance. I want to get the cross section under the microscope tomorrow and book the high-temp XRD stage for Thursday. If diffraction confirms gamma-prime stability for the full 60 second window we close the N7 hypothesis branch and we open the casting trial. End of note.",
+    "speaker": "Priya Ramachandran",
+    "language": "en-AU",
+    "activities": [
+      {
+        "kind": "core",
+        "title": "Vantage-7 phase-stability program",
+        "evidence_strength": "primary",
+        "rationale": "Contemporaneous voice record of the N12 quench outcome and the next-step decision tree."
+      }
+    ]
+  },
+  "captured_at": "2026-05-19T14:25:21.000Z"
+}

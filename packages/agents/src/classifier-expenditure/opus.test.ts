@@ -2,7 +2,7 @@ import { test, beforeEach, afterEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 import nock from 'nock';
 
-import { HaikuExpenditureClassifier } from './haiku.js';
+import { OpusExpenditureClassifier } from './opus.js';
 import { _resetAnthropicClientForTests } from '../runtime/anthropic-client.js';
 import type { ExpenditureClassifierInput } from './types.js';
 
@@ -51,14 +51,14 @@ after(() => {
   nock.cleanAll();
 });
 
-test('HaikuExpenditureClassifier round-trips through Anthropic SDK', async () => {
+test('OpusExpenditureClassifier round-trips through Anthropic SDK', async () => {
   nock('https://api.anthropic.com')
     .post('/v1/messages')
     .reply(200, {
       id: 'msg',
       type: 'message',
       role: 'assistant',
-      model: 'claude-haiku-4-5',
+      model: 'claude-opus-4-7',
       content: [
         {
           type: 'tool_use',
@@ -80,7 +80,7 @@ test('HaikuExpenditureClassifier round-trips through Anthropic SDK', async () =>
       usage: { input_tokens: 420, output_tokens: 90 },
     });
 
-  const c = new HaikuExpenditureClassifier();
+  const c = new OpusExpenditureClassifier();
   const out = await c.classify(makeInput());
 
   assert.equal(out.expenditure_id, VALID_UUID);
@@ -89,7 +89,7 @@ test('HaikuExpenditureClassifier round-trips through Anthropic SDK', async () =>
   assert.equal(out.statutory_anchor, 's.355-25');
   assert.equal(out.suggested_activity_id, ACTIVITY_UUID);
   assert.equal(out.uncertainty_reason, null);
-  assert.equal(out.model, 'claude-haiku-4-5');
+  assert.equal(out.model, 'claude-opus-4-7');
   assert.equal(out.prompt_version, 'classify-expenditure@1.0.0');
   assert.equal(out.tokens_in, 420);
   assert.equal(out.tokens_out, 90);
@@ -102,7 +102,7 @@ test('mismatched expenditure_id throws (model corruption guard)', async () => {
       id: 'msg',
       type: 'message',
       role: 'assistant',
-      model: 'claude-haiku-4-5',
+      model: 'claude-opus-4-7',
       content: [
         {
           type: 'tool_use',
@@ -125,12 +125,12 @@ test('mismatched expenditure_id throws (model corruption guard)', async () => {
       usage: { input_tokens: 100, output_tokens: 30 },
     });
 
-  const c = new HaikuExpenditureClassifier();
+  const c = new OpusExpenditureClassifier();
   await assert.rejects(() => c.classify(makeInput()), /classifier echoed wrong expenditure_id/);
 });
 
 test('EXPENDITURE_CLASSIFIER_MODEL env override is respected', async () => {
-  process.env.EXPENDITURE_CLASSIFIER_MODEL = 'claude-haiku-4-5-experimental';
+  process.env.EXPENDITURE_CLASSIFIER_MODEL = 'claude-opus-4-7-experimental';
   let capturedBody: unknown = null;
   nock('https://api.anthropic.com')
     .post('/v1/messages', (body: unknown) => {
@@ -141,7 +141,7 @@ test('EXPENDITURE_CLASSIFIER_MODEL env override is respected', async () => {
       id: 'msg',
       type: 'message',
       role: 'assistant',
-      model: 'claude-haiku-4-5-experimental',
+      model: 'claude-opus-4-7-experimental',
       content: [
         {
           type: 'tool_use',
@@ -163,11 +163,11 @@ test('EXPENDITURE_CLASSIFIER_MODEL env override is respected', async () => {
       usage: { input_tokens: 50, output_tokens: 20 },
     });
 
-  const c = new HaikuExpenditureClassifier();
+  const c = new OpusExpenditureClassifier();
   const out = await c.classify(makeInput());
 
-  assert.equal(out.model, 'claude-haiku-4-5-experimental');
-  assert.equal((capturedBody as { model: string }).model, 'claude-haiku-4-5-experimental');
+  assert.equal(out.model, 'claude-opus-4-7-experimental');
+  assert.equal((capturedBody as { model: string }).model, 'claude-opus-4-7-experimental');
 });
 
 test('the user message carries the serialised input bundle', async () => {
@@ -182,7 +182,7 @@ test('the user message carries the serialised input bundle', async () => {
       id: 'msg',
       type: 'message',
       role: 'assistant',
-      model: 'claude-haiku-4-5',
+      model: 'claude-opus-4-7',
       content: [
         {
           type: 'tool_use',
@@ -204,7 +204,7 @@ test('the user message carries the serialised input bundle', async () => {
       usage: { input_tokens: 1, output_tokens: 1 },
     });
 
-  const c = new HaikuExpenditureClassifier();
+  const c = new OpusExpenditureClassifier();
   await c.classify(makeInput());
 
   assert.ok(capturedBody, 'expected to capture the request body');
