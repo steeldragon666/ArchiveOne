@@ -54,8 +54,26 @@ COPY packages/ packages/
 # Copy web app source
 COPY apps/web/ apps/web/
 
-# Build Next.js app
-RUN pnpm --filter @cpa/web build
+# Build workspace deps FIRST, then web.
+#
+# Why: every workspace package's package.json `exports` field points at
+# `./dist/index.js` (the compiled output). When Next.js's webpack tries
+# to resolve `import { Foo } from '@cpa/schemas'` during `next build`, it
+# reads packages/schemas/package.json, finds `"import": "./dist/index.js"`,
+# and looks for that file — which doesn't exist unless we built it first.
+#
+# `pnpm -r --filter=...@cpa/web build` selects @cpa/web and everything
+# it transitively depends on (currently @cpa/email and @cpa/schemas at
+# runtime, plus @cpa/auth and @cpa/db as devDeps for type-only imports),
+# then runs `build` in topological order. So schemas/email get `tsc -b`'d
+# first, producing their dist/ outputs, then @cpa/web's `next build`
+# resolves the imports cleanly.
+#
+# (The api Dockerfile gets away with `pnpm --filter @cpa/api build`
+# because @cpa/api's build is itself `tsc -b`, which is recursively
+# topology-aware. Next.js is not — hence the explicit recursive filter
+# here.)
+RUN pnpm -r --filter=...@cpa/web build
 
 # ─── Stage 3: runner ─────────────────────────────────────────────────────────
 FROM node:22-alpine AS runner
