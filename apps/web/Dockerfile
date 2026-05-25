@@ -111,6 +111,12 @@ COPY --from=builder /app/apps/web/package.json apps/web/package.json
 # Copy next.config.ts so `next start` can resolve the outputFileTracingRoot
 COPY --from=builder /app/apps/web/next.config.ts apps/web/next.config.ts
 
+# Workspace symlinks from pnpm (e.g., apps/web/node_modules/@cpa/schemas ->
+# ../../packages/schemas). Next.js's server-side runtime resolves these at
+# request time, so the symlinks must be present in the runner image. First
+# deploy crash-loop on archiveone.com.au was MODULE_NOT_FOUND from web start.
+COPY --from=deps /app/apps/web/node_modules    apps/web/node_modules
+
 # pnpm workspace manifests (needed for module resolution at runtime)
 COPY pnpm-workspace.yaml ./
 COPY package.json        ./
