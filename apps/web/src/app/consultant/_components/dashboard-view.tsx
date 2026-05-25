@@ -1,5 +1,7 @@
 'use client';
 
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   amber,
   bone,
@@ -16,10 +18,95 @@ import {
   rust,
 } from './tokens';
 import { Diamond, MonoLabel, StatusPill, type StatusKind } from './atoms';
+import { useCreateClaim } from '@/lib/hooks/use-create-claim';
+import { ImportClientDialog } from './import-client-dialog';
 
-export function DashboardView() {
+// ----------------------------------------------------------------------------
+// D5 stubs — replaced by their real hooks once F1, D1 and D2 land.
+//
+// F1: useWhoami → consultant identity for greeting personalisation.
+// D1: useConsultantClaims → count of claims with status='needs_judgement'.
+// D2: useConsultantSignals → count of overnight regulatory signals.
+//
+// Until those land, the subtitle reads "Quiet morning. No signals, no
+// judgement calls pending." (the both-zero branch), and the greeting
+// addresses the consultant as "there".
+// ----------------------------------------------------------------------------
+
+function useWhoamiStub(): { data: { firstName: string } | undefined } {
+  return { data: { firstName: 'there' } };
+}
+
+function useConsultantClaimsStub(_params: { fy?: number; status?: string }): {
+  data: { claims: unknown[] };
+} {
+  return { data: { claims: [] } };
+}
+
+function useConsultantSignalsStub(_params: { window?: string }): {
+  data: { signals: unknown[] };
+} {
+  return { data: { signals: [] } };
+}
+
+/**
+ * Time-of-day greeting picker. Uses the browser's wall-clock hour so the
+ * word adapts as the consultant works through the day. AEST-only for now;
+ * once `user.timezone` lands in the session we'll switch to that.
+ */
+function greetingForHour(hour: number): string {
+  if (hour < 12) return 'Good morning';
+  if (hour < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
+/**
+ * Header subtitle copy. When both counts are zero the consultant has a
+ * truly empty inbox — render the alternative "quiet morning" line so the
+ * dashboard doesn't feel broken.
+ */
+function subtitleFor(signalCount: number, judgementCount: number): string {
+  if (signalCount === 0 && judgementCount === 0) {
+    return 'Quiet morning. No signals, no judgement calls pending.';
+  }
+  return `${signalCount} signals overnight. ${judgementCount} claims need your judgement today.`;
+}
+
+function DashboardHeader() {
+  const router = useRouter();
+  const [importOpen, setImportOpen] = useState(false);
+
+  const { data: whoami } = useWhoamiStub();
+  const firstName = whoami?.firstName ?? 'there';
+
+  const { data: signalsData } = useConsultantSignalsStub({ window: '12h' });
+  const { data: claimsData } = useConsultantClaimsStub({
+    fy: 2026,
+    status: 'needs_judgement',
+  });
+  const signalCount = signalsData?.signals.length ?? 0;
+  const judgementCount = claimsData?.claims.length ?? 0;
+
+  const greeting = greetingForHour(new Date().getHours());
+  const subtitle = subtitleFor(signalCount, judgementCount);
+
+  const createClaim = useCreateClaim();
+  const onNewClaim = (): void => {
+    if (createClaim.isPending) return;
+    createClaim.mutate(
+      { client_id: null },
+      {
+        onSuccess: (resp) => {
+          router.push(`/consultant/claim/${resp.id}/wizard`);
+        },
+        // No toast system is wired in the consultant workspace yet; the
+        // button re-enables automatically when isPending flips back.
+      },
+    );
+  };
+
   return (
-    <div style={{ padding: 28, color: bone, height: '100%', overflow: 'auto' }}>
+    <>
       <div
         style={{
           display: 'flex',
@@ -43,7 +130,7 @@ export function DashboardView() {
               margin: '10px 0 0',
             }}
           >
-            Good morning, Anna.
+            {greeting}, {firstName}.
           </h1>
           <p
             style={{
@@ -53,11 +140,13 @@ export function DashboardView() {
               margin: '8px 0 0',
             }}
           >
-            Three signals overnight. Two claims need your judgement today.
+            {subtitle}
           </p>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
           <button
+            type="button"
+            onClick={() => setImportOpen(true)}
             style={{
               padding: '10px 18px',
               background: 'transparent',
@@ -73,6 +162,10 @@ export function DashboardView() {
             + Import client
           </button>
           <button
+            type="button"
+            onClick={onNewClaim}
+            disabled={createClaim.isPending}
+            aria-busy={createClaim.isPending}
             style={{
               padding: '10px 18px',
               background: amber,
@@ -82,14 +175,24 @@ export function DashboardView() {
               fontFamily: fMono,
               fontSize: 11,
               letterSpacing: '0.18em',
-              cursor: 'pointer',
+              cursor: createClaim.isPending ? 'wait' : 'pointer',
               fontWeight: 600,
+              opacity: createClaim.isPending ? 0.6 : 1,
             }}
           >
-            + New claim
+            {createClaim.isPending ? '+ Creating…' : '+ New claim'}
           </button>
         </div>
       </div>
+      <ImportClientDialog open={importOpen} onClose={() => setImportOpen(false)} />
+    </>
+  );
+}
+
+export function DashboardView() {
+  return (
+    <div style={{ padding: 28, color: bone, height: '100%', overflow: 'auto' }}>
+      <DashboardHeader />
 
       <div
         style={{
