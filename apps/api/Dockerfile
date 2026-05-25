@@ -104,6 +104,13 @@ COPY --from=builder /app/packages/schemas/package.json packages/schemas/package.
 COPY --from=builder /app/apps/api/dist        apps/api/dist
 COPY --from=builder /app/apps/api/package.json apps/api/package.json
 
+# Workspace symlinks from pnpm (e.g., apps/api/node_modules/@cpa/agents ->
+# ../../packages/agents). Without this, Node's module resolver walking up
+# from /app/apps/api/dist/server.js can't find `@cpa/*` packages — they're
+# not hoisted to /app/node_modules by pnpm. First-deploy crash-loop on
+# archiveone.com.au was: ERR_MODULE_NOT_FOUND '@cpa/agents'.
+COPY --from=deps /app/apps/api/node_modules    apps/api/node_modules
+
 # pnpm workspace manifests (needed for module resolution at runtime)
 COPY pnpm-workspace.yaml ./
 COPY package.json        ./
