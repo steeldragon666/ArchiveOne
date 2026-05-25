@@ -61,10 +61,10 @@ const geist = Geist({
 
 export const metadata: Metadata = {
   title: {
-    default: 'Claimsure',
-    template: '%s · Claimsure',
+    default: 'ArchiveOne',
+    template: '%s - ArchiveOne',
   },
-  description: 'Forensic R&D Tax Incentive consulting platform.',
+  description: 'Evidence infrastructure for Australian R&D Tax Incentive claim work.',
 };
 
 export const viewport: Viewport = { width: 'device-width', initialScale: 1 };

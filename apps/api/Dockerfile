@@ -83,6 +83,7 @@ COPY --from=builder /app/packages/audit-score/package.json packages/audit-score/
 COPY --from=builder /app/packages/auth/dist            packages/auth/dist
 COPY --from=builder /app/packages/auth/package.json    packages/auth/package.json
 COPY --from=builder /app/packages/db/dist              packages/db/dist
+COPY --from=builder /app/packages/db/migrations        packages/db/migrations
 COPY --from=builder /app/packages/db/package.json      packages/db/package.json
 COPY --from=builder /app/packages/documents/dist       packages/documents/dist
 COPY --from=builder /app/packages/documents/package.json packages/documents/package.json

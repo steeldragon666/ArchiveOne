@@ -1,0 +1,8 @@
+archiveone.com.au, www.archiveone.com.au {
+	encode zstd gzip
+
+	@api path /v1/* /healthz
+	reverse_proxy @api api:3000
+
+	reverse_proxy web:5173
+}

@@ -1,0 +1,19 @@
+#!/usr/bin/env sh
+set -eu
+
+: "${CPA_APP_PASSWORD:?CPA_APP_PASSWORD is required}"
+
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<SQL
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+DO \$\$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'cpa_app') THEN
+    CREATE ROLE cpa_app LOGIN PASSWORD '${CPA_APP_PASSWORD}';
+  ELSE
+    ALTER ROLE cpa_app WITH LOGIN PASSWORD '${CPA_APP_PASSWORD}';
+  END IF;
+END
+\$\$;
+SQL

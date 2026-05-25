@@ -10,16 +10,12 @@ function Diamond({ className = '' }: { className?: string }) {
   return <span className={`inline-block rotate-45 bg-[#e1a23a] ${className}`} aria-hidden="true" />;
 }
 
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block space-y-2">
-      <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#8a857c]">{label}</span>
+      <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#8a857c]">
+        {label}
+      </span>
       {children}
     </label>
   );
@@ -83,9 +79,12 @@ export default function SignupPage() {
         <nav className="flex items-center justify-between">
           <Link href="/" className="inline-flex items-center gap-3">
             <Diamond className="h-2.5 w-2.5 shadow-[0_0_14px_rgba(225,162,58,0.55)]" />
-            <span className="font-display text-xl font-semibold">ClaimSure</span>
+            <span className="font-display text-xl font-semibold">ArchiveOne</span>
           </Link>
-          <Link href="/login" className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#8a857c] hover:text-[#f0ebe2]">
+          <Link
+            href="/login"
+            className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#8a857c] hover:text-[#f0ebe2]"
+          >
             Sign in
           </Link>
         </nav>
@@ -94,23 +93,25 @@ export default function SignupPage() {
           <section>
             <div className="flex w-fit items-center gap-3 border border-[#f0ebe2]/20 bg-[#131316] px-4 py-2 font-mono text-[11px] uppercase tracking-[0.18em] text-[#e1a23a]">
               <Diamond className="h-1.5 w-1.5" />
-              Founding partner intake
+              Founder workspace intake
             </div>
             <h1 className="mt-7 max-w-2xl font-display text-5xl font-light leading-[0.98] tracking-[-0.03em] md:text-7xl">
               Create the first claim chain.
             </h1>
             <p className="mt-6 max-w-xl font-body text-base leading-8 text-[#cdc7bd]">
-              Verify a firm admin account and Claimsure provisions a trial workspace for
-              evidence capture, accounting-source connection, narrative drafting, and claim-pack review.
+              Verify a firm admin account and ArchiveOne provisions a trial workspace for evidence
+              capture, accounting-source connection, narrative drafting, and claim-pack review.
             </p>
             <div className="mt-10 divide-y divide-[#f0ebe2]/10 border-y border-[#f0ebe2]/10">
               {[
                 'Verification link expires after 24 hours.',
                 'Trial tenant starts with 30 days of access.',
-                'Founder slots are reserved for qualified R&DTI firms.',
+                'Pilot slots are reserved for qualified R&DTI firms.',
               ].map((item, index) => (
                 <div key={item} className="flex gap-4 py-4">
-                  <span className="font-mono text-sm text-[#e1a23a]">{String(index + 1).padStart(2, '0')}</span>
+                  <span className="font-mono text-sm text-[#e1a23a]">
+                    {String(index + 1).padStart(2, '0')}
+                  </span>
                   <p className="font-body text-sm leading-6 text-[#cdc7bd]">{item}</p>
                 </div>
               ))}
@@ -131,13 +132,13 @@ export default function SignupPage() {
                   </h2>
                   {delivery === 'manual_verification' ? (
                     <p className="mt-4 font-body text-sm leading-7 text-[#cdc7bd]">
-                      Claimsure email delivery needs operator configuration. Use the secure
+                      ArchiveOne email delivery needs operator configuration. Use the secure
                       verification link below to finish creating your trial tenant.
                     </p>
                   ) : (
                     <p className="mt-4 font-body text-sm leading-7 text-[#cdc7bd]">
                       We sent a verification link to {email.trim().toLowerCase()}. Open it to finish
-                      creating your Claimsure trial tenant.
+                      creating your ArchiveOne trial tenant.
                     </p>
                   )}
                   {verificationUrl && (
@@ -162,7 +163,9 @@ export default function SignupPage() {
                   <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-[#e1a23a]">
                     Workspace registration
                   </div>
-                  <h2 className="mt-3 font-display text-3xl font-light">Founding partner signup</h2>
+                  <h2 className="mt-3 font-display text-3xl font-light">
+                    Founder workspace signup
+                  </h2>
                   <p className="mt-3 font-body text-sm leading-7 text-[#cdc7bd]">
                     Use your work email so the workspace can be associated with your firm.
                   </p>

@@ -32,7 +32,8 @@ import { registerDocumentExtractJob } from './jobs/document-extract.js';
 import { registerGenerateApplicationJob } from './jobs/generate-application.js';
 
 const repoRoot = process.env['REPO_ROOT'] ?? process.cwd();
-const appBaseUrl = process.env['APP_BASE_URL'] ?? process.env['WEB_BASE_URL'] ?? 'http://localhost:5173';
+const appBaseUrl =
+  process.env['APP_BASE_URL'] ?? process.env['WEB_BASE_URL'] ?? 'http://localhost:5173';
 const sessionSecret = process.env['SESSION_JWT_SECRET'] ?? 'dev-only-32-bytes-of-entropy-pad!';
 const verificationSecret =
   process.env['SIGNUP_VERIFICATION_SECRET'] ??
@@ -54,14 +55,14 @@ async function sendSignupVerificationEmail(to: string, token: string): Promise<v
     fromAddress:
       process.env['SIGNUP_FROM_ADDRESS'] ??
       process.env['BETA_FROM_ADDRESS'] ??
-      'Claimsure <noreply@claimsure.app>',
+      'ArchiveOne <noreply@archiveone.com.au>',
   });
 
   await sender.send({
     to,
-    subject: 'Verify your Claimsure trial signup',
-    text: `Complete your Claimsure trial signup:\n\n${verifyUrl}\n\nThis link expires in 24 hours.`,
-    html: `<p>Complete your Claimsure trial signup:</p><p><a href="${verifyUrl}">${verifyUrl}</a></p><p>This link expires in 24 hours.</p>`,
+    subject: 'Verify your ArchiveOne workspace signup',
+    text: `Complete your ArchiveOne workspace signup:\n\n${verifyUrl}\n\nThis link expires in 24 hours.`,
+    html: `<p>Complete your ArchiveOne workspace signup:</p><p><a href="${verifyUrl}">${verifyUrl}</a></p><p>This link expires in 24 hours.</p>`,
   });
 }
 
