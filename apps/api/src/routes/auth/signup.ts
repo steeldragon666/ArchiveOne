@@ -134,7 +134,10 @@ export function registerSignupRoutes(app: FastifyInstance, deps: SignupRouteDeps
       await deps.sendVerificationEmail(email, token);
     } catch (err) {
       req.log.error({ err }, 'signup verification email failed');
-      if ((!deps.allowManualVerification && !isEmailProviderConfigurationError(err)) || !verificationUrl) {
+      if (
+        (!deps.allowManualVerification && !isEmailProviderConfigurationError(err)) ||
+        !verificationUrl
+      ) {
         throw err;
       }
       return reply.status(202).send({
@@ -201,7 +204,7 @@ export function registerSignupRoutes(app: FastifyInstance, deps: SignupRouteDeps
       if (typeof err === 'object' && err !== null && 'code' in err && err.code === '23505') {
         return reply.status(409).send({
           error: 'already_registered',
-          message: 'An account with this email already exists. Please sign in instead.',
+          message: 'An account with this email already exists. Please request approved access.',
           requestId: req.id,
         });
       }
@@ -215,7 +218,7 @@ export function registerSignupRoutes(app: FastifyInstance, deps: SignupRouteDeps
       // User is already a tenant member — treat as already registered
       return reply.status(409).send({
         error: 'already_registered',
-        message: 'An account with this email already exists. Please sign in instead.',
+        message: 'An account with this email already exists. Please request approved access.',
         requestId: req.id,
       });
     }

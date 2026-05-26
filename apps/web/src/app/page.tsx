@@ -78,20 +78,12 @@ export default function MarketingHomePage() {
               Pilot
             </Link>
           </div>
-          <div className="flex items-center gap-3">
-            <Link
-              href="/login"
-              className="hidden border border-[#f7f1e4]/16 px-4 py-3 font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-[#cfc5b3] hover:border-[#f7f1e4]/35 hover:text-[#f7f1e4] sm:inline-flex"
-            >
-              Sign in
-            </Link>
-            <Link
-              href="/signup"
-              className="bg-[#d8b15f] px-4 py-3 font-mono text-[11px] font-bold uppercase tracking-[0.16em] text-[#10130f] transition hover:bg-[#f0c96f]"
-            >
-              Request access
-            </Link>
-          </div>
+          <Link
+            href="/signup"
+            className="bg-[#d8b15f] px-4 py-3 font-mono text-[11px] font-bold uppercase tracking-[0.16em] text-[#10130f] transition hover:bg-[#f0c96f]"
+          >
+            Request access
+          </Link>
         </nav>
 
         <div className="relative z-10 mx-auto grid min-h-[calc(100vh-86px)] max-w-[1420px] gap-12 px-5 pb-10 pt-16 sm:px-8 lg:grid-cols-[1.05fr_0.95fr] lg:items-center lg:px-12 lg:pt-8">
@@ -112,10 +104,10 @@ export default function MarketingHomePage() {
                 Start pilot intake
               </Link>
               <Link
-                href="/consultant"
+                href="/signup"
                 className="border border-[#f7f1e4]/20 px-5 py-4 font-mono text-[11px] font-bold uppercase tracking-[0.16em] text-[#f7f1e4] transition hover:border-[#d8b15f] hover:text-[#d8b15f]"
               >
-                View app workspace
+                Request approved access
               </Link>
             </div>
           </section>

@@ -477,17 +477,15 @@ export function buildApp(options: BuildAppOptions = {}): App {
     done();
   });
 
-  // OIDC routes only register when both clientId AND clientSecret are
-  // present. In tests + bare-bones dev, env vars are unset and the
-  // routes simply don't exist; the rest of the API still works. This
-  // avoids a network call to Issuer.discover during cold start when
-  // we don't even have credentials configured.
   const cookieSecure = process.env['NODE_ENV'] === 'production';
   const ttlSeconds = Number(process.env['SESSION_TTL_SECONDS'] ?? DEFAULT_SESSION_TTL_SECONDS);
+  // External login providers are disabled while ArchiveOne uses approved
+  // signup as the only public account path.
+  const publicLoginRoutesEnabled = false;
 
   const msClientId = process.env['MICROSOFT_OIDC_CLIENT_ID'];
   const msClientSecret = process.env['MICROSOFT_OIDC_CLIENT_SECRET'];
-  if (msClientId && msClientSecret) {
+  if (publicLoginRoutesEnabled && msClientId && msClientSecret) {
     app.register(async (instance) => {
       await registerMicrosoftAuth(instance, {
         tenantId: process.env['MICROSOFT_OIDC_TENANT'] ?? 'common',
@@ -507,7 +505,7 @@ export function buildApp(options: BuildAppOptions = {}): App {
 
   const gClientId = process.env['GOOGLE_OIDC_CLIENT_ID'];
   const gClientSecret = process.env['GOOGLE_OIDC_CLIENT_SECRET'];
-  if (gClientId && gClientSecret) {
+  if (publicLoginRoutesEnabled && gClientId && gClientSecret) {
     app.register(async (instance) => {
       await registerGoogleAuth(instance, {
         clientId: gClientId,
@@ -533,7 +531,7 @@ export function buildApp(options: BuildAppOptions = {}): App {
   const auth0Domain = process.env['AUTH0_DOMAIN'];
   const auth0ClientId = process.env['AUTH0_CLIENT_ID'];
   const auth0ClientSecret = process.env['AUTH0_CLIENT_SECRET'];
-  if (auth0Domain && auth0ClientId && auth0ClientSecret) {
+  if (publicLoginRoutesEnabled && auth0Domain && auth0ClientId && auth0ClientSecret) {
     app.register(async (instance) => {
       await registerAuth0Auth(instance, {
         domain: auth0Domain,
@@ -551,7 +549,7 @@ export function buildApp(options: BuildAppOptions = {}): App {
   }
 
   const devLoginToken = process.env['DEV_LOGIN_TOKEN'];
-  if (devLoginToken) {
+  if (publicLoginRoutesEnabled && devLoginToken) {
     app.register((instance, _opts, done) => {
       registerDevLogin(instance, {
         bypassToken: devLoginToken,

@@ -81,12 +81,9 @@ export default function SignupPage() {
             <Diamond className="h-2.5 w-2.5 shadow-[0_0_14px_rgba(225,162,58,0.55)]" />
             <span className="font-display text-xl font-semibold">ArchiveOne</span>
           </Link>
-          <Link
-            href="/login"
-            className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#8a857c] hover:text-[#f0ebe2]"
-          >
-            Sign in
-          </Link>
+          <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#8a857c]">
+            Approved signup only
+          </span>
         </nav>
 
         <div className="grid flex-1 items-center gap-10 py-12 lg:grid-cols-[0.95fr_1.05fr]">
@@ -99,13 +96,13 @@ export default function SignupPage() {
               Create the first claim chain.
             </h1>
             <p className="mt-6 max-w-xl font-body text-base leading-8 text-[#cdc7bd]">
-              Verify a firm admin account and ArchiveOne provisions a trial workspace for evidence
-              capture, accounting-source connection, narrative drafting, and claim-pack review.
+              Request an approved firm admin account for evidence capture, accounting-source
+              connection, narrative drafting, and claim-pack review.
             </p>
             <div className="mt-10 divide-y divide-[#f0ebe2]/10 border-y border-[#f0ebe2]/10">
               {[
-                'Verification link expires after 24 hours.',
-                'Trial tenant starts with 30 days of access.',
+                'Access is issued through the approved signup path only.',
+                'Verification links expire after 24 hours.',
                 'Pilot slots are reserved for qualified R&DTI firms.',
               ].map((item, index) => (
                 <div key={item} className="flex gap-4 py-4">
