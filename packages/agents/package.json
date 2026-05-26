@@ -49,6 +49,14 @@
     "./document-analyzer": {
       "types": "./dist/document-analyzer/index.d.ts",
       "import": "./dist/document-analyzer/index.js"
+    },
+    "./ip-search-query": {
+      "types": "./dist/ip-search-query/index.d.ts",
+      "import": "./dist/ip-search-query/index.js"
+    },
+    "./ip-search-verdict": {
+      "types": "./dist/ip-search-verdict/index.d.ts",
+      "import": "./dist/ip-search-verdict/index.js"
     }
   },
   "scripts": {
