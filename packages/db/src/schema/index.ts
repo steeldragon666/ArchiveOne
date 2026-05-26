@@ -43,3 +43,4 @@ export * from './federation_share.js';
 export * from './federation_invitation.js';
 export * from './federation_audit.js';
 export * from './cloud_sync_connection.js';
+export * from './ip-search.js';
