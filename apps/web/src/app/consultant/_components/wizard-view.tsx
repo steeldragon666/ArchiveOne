@@ -17,6 +17,21 @@ import {
   ruleStrong,
 } from './tokens';
 import { Check, Diamond, MonoLabel, StatusPill } from './atoms';
+import { WizardStep2, type WizardStep2Hypothesis } from './wizard-step-2';
+
+// Demo claim id + hypotheses for the Step 2 (Hypotheses → IP search)
+// panel. The wizard-view component is currently a static design
+// demo — once the consultant workspace is wired to a real claim
+// loader, replace these with the real claim id + activity/hypothesis
+// rows pulled from the activity list endpoint.
+const DEMO_CLAIM_ID = '00000000-0000-4000-8000-000000000000';
+const DEMO_STEP_2_HYPOTHESES: WizardStep2Hypothesis[] = [
+  {
+    activityId: '00000000-0000-4000-8000-000000000001',
+    hypothesisText:
+      'We sought to determine whether a novel hi-temp alloy phase-stability process could reduce yield loss by 12% under cyclic thermal stress.',
+  },
+];
 
 interface WizardStep {
   k: string;
@@ -179,7 +194,14 @@ export function WizardView() {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 14 }}>
-        <ApportionmentStep />
+        {step === 1 ? (
+          // Step 2 of the wizard (HYPOTHESES position, zero-indexed = 1):
+          // IP-search per hypothesis. Pulls verdicts + hits via the
+          // /v1/.../ip-search/* endpoints. See `WizardStep2`.
+          <WizardStep2 claimId={DEMO_CLAIM_ID} hypotheses={DEMO_STEP_2_HYPOTHESES} />
+        ) : (
+          <ApportionmentStep />
+        )}
         <EvidenceStreamPanel />
       </div>
     </div>
