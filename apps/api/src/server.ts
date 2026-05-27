@@ -26,6 +26,7 @@ import { registerClaimEvidenceBindingJob } from './jobs/claim-evidence-binding.j
 import { registerDocumentExtractJob } from './jobs/document-extract.js';
 import { registerGenerateApplicationJob } from './jobs/generate-application.js';
 import { registerEngagementLetterRenderPdfJob } from './jobs/engagement-letter-render-pdf.js';
+import { registerEngagementReminderTickJob } from './jobs/engagement-reminder-tick.js';
 import { registerIpSearchReportRenderPdfJob } from './jobs/ip-search-report-render-pdf.js';
 import { getPublicBaseUrl, publicUrl } from './lib/public-base-url.js';
 import { assertDistinctProductionSecrets, readSecretEnv } from './lib/production-secrets.js';
@@ -122,6 +123,27 @@ if (process.env['NODE_ENV'] !== 'test') {
     app.log.info('generate-application job registered');
     await registerEngagementLetterRenderPdfJob(boss);
     app.log.info('engagement-letter-render-pdf job registered');
+    // Wizard Step 1 Task 04 — daily engagement-letter reminder + auto-expire
+    // tick. Lazy-imports the @cpa/email transport so the dependency only
+    // resolves in the boot path (test harness uses NODE_ENV=test which
+    // short-circuits this whole block above).
+    const { createResendClient, createEmailSender } = await import('@cpa/email');
+    const resendApiKey = process.env['RESEND_API_KEY'];
+    if (resendApiKey !== undefined && resendApiKey.length > 0) {
+      const reminderClient = createResendClient({ apiKey: resendApiKey });
+      const reminderSender = createEmailSender(reminderClient, {
+        fromAddress:
+          process.env['ENGAGEMENT_FROM_ADDRESS'] ??
+          process.env['BETA_FROM_ADDRESS'] ??
+          'ArchiveOne <noreply@archiveone.com.au>',
+      });
+      await registerEngagementReminderTickJob(boss, reminderSender);
+      app.log.info('engagement-reminder-tick job registered');
+    } else {
+      app.log.warn(
+        'RESEND_API_KEY unset — engagement-reminder-tick job not registered (configure to enable)',
+      );
+    }
     await registerIpSearchReportRenderPdfJob(boss);
     app.log.info('ip-search-report-render-pdf job registered');
   } catch (err) {

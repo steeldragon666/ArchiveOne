@@ -92,6 +92,7 @@ import { registerIpSearchReportRoute } from './routes/ip-search/report.js';
 import { registerConsultantChain } from './routes/consultant/chain.js';
 import { registerConsultantKpis } from './routes/consultant/kpis.js';
 import { registerConsultantSignals } from './routes/consultant/signals.js';
+import { registerIpSearch } from './routes/ip-search/index.js';
 import { registerEngagementRoutes } from './routes/engagement/index.js';
 import { publicUrl } from './lib/public-base-url.js';
 import { readSecretEnv } from './lib/production-secrets.js';
@@ -439,6 +440,11 @@ export function buildApp(options: BuildAppOptions = {}): App {
   // Consultant dashboard KPI strip (GET /v1/consultant/kpis) — D4.
   app.register((instance, _opts, done) => {
     registerConsultantKpis(instance);
+    done();
+  });
+  // Wizard Step 2 — IP-search prior-art (6 endpoints under /v1/.../ip-search).
+  app.register((instance, _opts, done) => {
+    registerIpSearch(instance);
     done();
   });
   // Engagement letter endpoints — Wizard Step 1 (Task 02).

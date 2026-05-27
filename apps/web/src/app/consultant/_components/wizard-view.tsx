@@ -17,19 +17,26 @@ import {
   ruleStrong,
 } from './tokens';
 import { Check, Diamond, MonoLabel, StatusPill } from './atoms';
+import { WizardStep2, type WizardStep2Hypothesis } from './wizard-step-2';
 import { EngagementPanel, isEngagementUnblocked } from './engagement-panel';
 import { useClaimEngagement } from '@/lib/hooks/use-claim-engagement';
 
 /**
- * Demo claim id used while the wizard is wired to fixtures rather than
- * to a real route param. Matches the VANT-7 example throughout the
- * design export — the API will treat unknown ids as 404 and the
- * engagement hook handles that as `pending_send`. Once the wizard gets
- * a real `/claims/[id]` route this constant goes away.
+ * Demo claim id + hypotheses used while the wizard is wired to fixtures
+ * rather than to a real route param. The API will treat an unknown id
+ * as 404 and the engagement hook handles that as `pending_send`. Once
+ * the wizard gets a real `/claims/[id]` route these constants go away.
  */
-const DEMO_CLAIM_ID = 'vant-7';
+const DEMO_CLAIM_ID = '00000000-0000-4000-8000-000000000000';
 const DEMO_CLAIMANT_NAME = 'Vantage Industries';
 const DEMO_FY_LABEL = 'FY26';
+const DEMO_STEP_2_HYPOTHESES: WizardStep2Hypothesis[] = [
+  {
+    activityId: '00000000-0000-4000-8000-000000000001',
+    hypothesisText:
+      'We sought to determine whether a novel hi-temp alloy phase-stability process could reduce yield loss by 12% under cyclic thermal stress.',
+  },
+];
 
 interface WizardStep {
   k: string;
@@ -224,7 +231,14 @@ export function WizardView() {
           }}
           aria-hidden={!downstreamUnlocked}
         >
-          <ApportionmentStep />
+          {step === 1 ? (
+            // Step 2 of the wizard (HYPOTHESES position, zero-indexed = 1):
+            // IP-search per hypothesis. Pulls verdicts + hits via the
+            // /v1/.../ip-search/* endpoints. See `WizardStep2`.
+            <WizardStep2 claimId={DEMO_CLAIM_ID} hypotheses={DEMO_STEP_2_HYPOTHESES} />
+          ) : (
+            <ApportionmentStep />
+          )}
           <EvidenceStreamPanel />
         </div>
         {!downstreamUnlocked && <EngagementRequiredOverlay />}
