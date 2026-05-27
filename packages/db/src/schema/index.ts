@@ -46,3 +46,4 @@ export * from './federation_audit.js';
 export * from './cloud_sync_connection.js';
 export * from './ip-search.js';
 export * from './signup_decision.js';
+export * from './auth-magic-link.js';
