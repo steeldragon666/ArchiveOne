@@ -428,6 +428,13 @@
       "when": 1779519600000,
       "tag": "0090_engagement_reminder_timestamps",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1779606000000,
+      "tag": "0091_auth_magic_link",
+      "breakpoints": true
     }
   ]
 }
