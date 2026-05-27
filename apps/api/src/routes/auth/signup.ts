@@ -1,13 +1,14 @@
 import crypto from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { privilegedSql } from '@cpa/db/client';
+import { sql as db, privilegedSql } from '@cpa/db/client';
 import { findOrCreateUser, lookupActiveTenant, signSession } from '@cpa/auth';
 import { makeSignupEvaluator, type SignupEvaluator } from '@cpa/agents/signup-evaluator';
 import {
   runSignupPipeline,
   writeSignupDecisionAudit,
   type SignupPipelineDeps,
+  type SignupPipelineResult,
 } from '../../lib/signup-pipeline.js';
 
 /**
@@ -79,16 +80,20 @@ function slugify(name: string): string {
     .slice(0, 63);
 }
 
-/** Ensure the slug is unique by appending a short random suffix if needed. */
-async function uniqueSlug(base: string): Promise<string> {
-  let slug = base;
-  if (slug === '') slug = `firm-${crypto.randomBytes(3).toString('hex')}`;
-  const rows = await privilegedSql<{ slug: string }[]>`
-    SELECT slug FROM tenant WHERE slug = ${slug} AND deleted_at IS NULL LIMIT 1
-  `;
-  if (rows.length === 0) return slug;
-  // Collision — append 6 random hex chars
-  return `${base}-${crypto.randomBytes(3).toString('hex')}`;
+/** Number of suffixed attempts the slug generator will try before giving up. */
+const MAX_SLUG_ATTEMPTS = 5;
+
+/**
+ * Generate a candidate slug for INSERT. `attempt === 0` returns the bare
+ * slugified base; subsequent attempts append a fresh hex suffix. The
+ * caller's responsibility is to drive this in a try-INSERT-catch-23505 loop;
+ * read-before-write was previously racy (between SELECT and INSERT a
+ * concurrent signup could claim the same slug, and our INSERT would 500).
+ */
+function candidateSlug(base: string, attempt: number): string {
+  const root = base === '' ? `firm-${crypto.randomBytes(3).toString('hex')}` : base;
+  if (attempt === 0) return root;
+  return `${root}-${crypto.randomBytes(3).toString('hex')}`;
 }
 
 interface CreatedTenantResult {
@@ -99,11 +104,59 @@ interface CreatedTenantResult {
 }
 
 /**
+ * Distinguishable error class — the caller maps this to a 409 response with
+ * `already_registered` and writes a route-side audit row with that reason.
+ *
+ * Was previously expressed as a generic Error with `.code = '23505'`, which
+ * collided with real DB unique-violations (slug collisions) and made the
+ * 409-vs-500 branching brittle. A named class is more explicit.
+ */
+class AlreadyRegisteredError extends Error {
+  constructor() {
+    super('user already has an active tenant');
+    this.name = 'AlreadyRegisteredError';
+  }
+}
+
+/** Detect a Postgres unique-violation, optionally on a specific constraint. */
+function isUniqueViolation(err: unknown, constraint?: string): boolean {
+  if (typeof err !== 'object' || err === null) return false;
+  const e = err as { code?: unknown; constraint_name?: unknown; message?: unknown };
+  if (e.code !== '23505') return false;
+  if (!constraint) return true;
+  if (e.constraint_name === constraint) return true;
+  return typeof e.message === 'string' && e.message.includes(constraint);
+}
+
+/**
  * Create the user + tenant + tenant_user trio for an approved signup.
  *
- * Throws an Error with `.code === '23505'` if the email is already taken
- * or if the user already has a tenant (treated as "already registered" by
- * the route).
+ * Race-safety:
+ *   - User insert is via `findOrCreateUser`, which already uses an advisory
+ *     lock + email-unique recovery (see @cpa/auth.users.ts).
+ *   - Tenant + tenant_user inserts are wrapped in a single `db.begin`
+ *     transaction. Inside the tx we:
+ *       1. Set `app.current_tenant_id` to the soon-to-be tenant_id so the
+ *          tenant_user RLS USING / WITH CHECK predicate passes.
+ *       2. Re-check `lookupActiveTenant(user.id)` AFTER acquiring an advisory
+ *          lock keyed on the user_id — a concurrent signup that got past the
+ *          earlier check is now blocked on the lock and will see the row we
+ *          INSERT on commit.
+ *       3. INSERT tenant.
+ *       4. INSERT tenant_user. The partial unique index
+ *          `tenant_user_one_default_per_user_uniq` (migration 0089) is the
+ *          DB-layer safety net: even if both transactions race past the
+ *          re-check, only one succeeds.
+ *
+ * RLS bootstrap (CLAUDE.md: never use privilegedSql for application paths):
+ *   - We use the RLS-enforcing `db` client and set the GUC inside the tx so
+ *     the tenant_user policy fires correctly. This restores the immutable
+ *     rule that signup is no different from any other application write.
+ *
+ * Throws `AlreadyRegisteredError` if the user already has an active tenant
+ * (either discovered by the re-check or by the partial-unique-index violation
+ * on tenant_user); throws other 23505s up the stack so the route can decide
+ * whether to retry the slug or 500.
  */
 async function createTenantForApprovedSignup(args: {
   email: string;
@@ -113,7 +166,8 @@ async function createTenantForApprovedSignup(args: {
   const { email, firmName, displayName } = args;
 
   // Reuse @cpa/auth.findOrCreateUser for the email-idp insert (handles all
-  // the dual-unique race-recovery for us).
+  // the dual-unique race-recovery for us). This runs as its own transaction
+  // with its own advisory lock keyed on (primary_idp, external_id).
   const user = await findOrCreateUser({
     primaryIdp: 'email',
     externalId: email,
@@ -121,32 +175,93 @@ async function createTenantForApprovedSignup(args: {
     displayName,
   });
 
-  // If the user already had a tenant from a prior signup, refuse to create
-  // another one — surface as "already registered". This is rare with the
-  // new pipeline (each signup creates a new tenant) but possible during
-  // the transition or if an admin manually inserts a user.
+  // Pre-tx fast path: if the user already has an active tenant, refuse
+  // immediately without burning a tx. The in-tx re-check below is the
+  // authoritative check; this one just saves work in the common case.
   const existingActive = await lookupActiveTenant(user.id);
   if (existingActive.activeTenantId !== null) {
-    const err = new Error('user already has a tenant') as Error & { code?: string };
-    err.code = '23505';
-    throw err;
+    throw new AlreadyRegisteredError();
   }
 
-  const tenantId = crypto.randomUUID();
-  const slug = await uniqueSlug(slugify(firmName));
+  const baseSlug = slugify(firmName);
   const trialEndsAt = new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
-  await privilegedSql`
-    INSERT INTO tenant (id, name, slug, primary_idp, trial_status, trial_ends_at, billing_mode)
-    VALUES (${tenantId}, ${firmName}, ${slug}, 'mixed', 'active', ${trialEndsAt}, 'trial')
-  `;
+  let lastSlugErr: unknown = null;
+  for (let attempt = 0; attempt < MAX_SLUG_ATTEMPTS; attempt++) {
+    const tenantId = crypto.randomUUID();
+    const slug = candidateSlug(baseSlug, attempt);
+    try {
+      const result = await db.begin(async (tx) => {
+        // SET LOCAL ROLE cpa_app is injected by the client.ts wrapper so RLS
+        // policies fire as the application role (not as the table owner).
+        // Set the tenant GUC to the just-generated tenant_id; the
+        // tenant_user policy compares `tenant_id = NULLIF(current_setting(...), '')::uuid`
+        // and will pass for INSERTs where tenant_id = ${tenantId}.
+        await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
 
-  await privilegedSql`
-    INSERT INTO tenant_user (id, tenant_id, user_id, role, is_default)
-    VALUES (gen_random_uuid(), ${tenantId}, ${user.id}, 'admin', true)
-  `;
+        // Serialise concurrent same-user signup creations at the DB layer.
+        // pg_advisory_xact_lock auto-releases on commit/rollback. hashtext is
+        // 32-bit; collisions across different user_ids are harmless (brief
+        // throughput penalty only).
+        await tx`SELECT pg_advisory_xact_lock(hashtext(${`signup:${user.id}`}))`;
 
-  return { tenantId, userId: user.id, slug, firmName };
+        // Re-check inside the tx, AFTER the lock. A concurrent signup that
+        // was scheduled before us has now committed its tenant_user; we'll
+        // see it here and bail.
+        const existing = await tx<{ tenant_id: string }[]>`
+          SELECT tu.tenant_id
+            FROM tenant_user tu
+            JOIN tenant t ON t.id = tu.tenant_id AND t.deleted_at IS NULL
+           WHERE tu.user_id = ${user.id}
+             AND tu.deleted_at IS NULL
+             AND tu.is_default = true
+           LIMIT 1
+        `;
+        if (existing.length > 0) {
+          throw new AlreadyRegisteredError();
+        }
+
+        // tenant has no RLS — INSERT proceeds straight.
+        await tx`
+          INSERT INTO tenant (id, name, slug, primary_idp, trial_status, trial_ends_at, billing_mode)
+          VALUES (${tenantId}, ${firmName}, ${slug}, 'mixed', 'active', ${trialEndsAt}, 'trial')
+        `;
+
+        // tenant_user IS RLS-protected. The GUC set above means the WITH CHECK
+        // predicate (`tenant_id = NULLIF(current_setting(...), '')::uuid`)
+        // evaluates ${tenantId} = ${tenantId} → pass.
+        await tx`
+          INSERT INTO tenant_user (id, tenant_id, user_id, role, is_default)
+          VALUES (gen_random_uuid(), ${tenantId}, ${user.id}, 'admin', true)
+        `;
+
+        return { tenantId, slug };
+      });
+      return { tenantId: result.tenantId, userId: user.id, slug: result.slug, firmName };
+    } catch (err) {
+      // AlreadyRegistered escapes immediately — no retry.
+      if (err instanceof AlreadyRegisteredError) throw err;
+
+      // The DB-layer safety-net constraint fired: another tx beat us to
+      // the partial unique index. Surface as AlreadyRegistered.
+      if (isUniqueViolation(err, 'tenant_user_one_default_per_user_uniq')) {
+        throw new AlreadyRegisteredError();
+      }
+
+      // Slug collision — retry with a fresh hex suffix.
+      if (isUniqueViolation(err, 'tenant_slug_unique')) {
+        lastSlugErr = err;
+        continue;
+      }
+
+      // Any other unique violation (or anything else) bubbles up.
+      throw err;
+    }
+  }
+  // Exhausted attempts — surface the last slug-collision as a hard error.
+  // In practice this never happens (5 attempts × 24 bits of entropy each).
+  if (lastSlugErr instanceof Error) throw lastSlugErr;
+  throw new Error('uniqueSlug: exhausted retries');
 }
 
 export function registerSignupRoutes(app: FastifyInstance, deps: SignupRouteDeps): void {
@@ -181,22 +296,70 @@ export function registerSignupRoutes(app: FastifyInstance, deps: SignupRouteDeps
     const clientIp = req.ip ?? null;
     const userAgent = req.headers['user-agent'] ?? null;
 
-    const pipelineDeps: SignupPipelineDeps = {
-      privilegedSql,
-      evaluator: getEvaluator(),
-      logger: req.log,
-    };
-
-    const result = await runSignupPipeline(
-      {
-        email: normalizedEmail,
-        firmName,
-        displayName: displayName ?? null,
-        clientIp,
-        userAgent,
-      },
-      pipelineDeps,
-    );
+    // Run the pipeline inside a single privilegedSql transaction so the
+    // pg_advisory_xact_lock(hashtext(client_ip)) serialises concurrent
+    // same-IP signups against the 5/hour rate-limit step. Without this lock,
+    // two concurrent same-IP signups both see count=N, both decide N < 5,
+    // both proceed, both audit-row count=N+1 → 6/hour passed through.
+    //
+    // Lock auto-releases on commit/rollback so we never leak it. The Anthropic
+    // call sits inside this tx — that's a deliberate tradeoff: privilegedSql
+    // is pool max=5 so at most 5 concurrent signup pipelines can be in flight,
+    // which is fine for the expected QPS (autonomous signup is bursty but
+    // sparse; the bottleneck is the LLM, not the DB pool).
+    //
+    // On infra failure we surface `infra_failure_permissive` (same as the
+    // pipeline's existing non-tx failure mode).
+    let result: SignupPipelineResult;
+    try {
+      result = await privilegedSql.begin(async (tx) => {
+        if (clientIp) {
+          // hashtext is 32-bit. Collisions across different IPs are harmless:
+          // unrelated signups momentarily serialise, no correctness impact.
+          await tx`SELECT pg_advisory_xact_lock(hashtext(${`signup-ip:${clientIp}`}))`;
+        }
+        const pipelineDeps: SignupPipelineDeps = {
+          privilegedSql: tx as unknown as typeof privilegedSql,
+          evaluator: getEvaluator(),
+          logger: req.log,
+        };
+        return await runSignupPipeline(
+          {
+            email: normalizedEmail,
+            firmName,
+            displayName: displayName ?? null,
+            clientIp,
+            userAgent,
+          },
+          pipelineDeps,
+        );
+      });
+    } catch (err) {
+      req.log.error(
+        { err: err instanceof Error ? err.message : String(err) },
+        'signup: pipeline tx failed; falling through to permissive approve',
+      );
+      // Preserve the permissive bias on infra failure. Manufacture a
+      // result that the existing approve-path code handles unchanged.
+      result = {
+        outcome: { decision: 'approve', reason: 'infra_failure_permissive' },
+        audit: {
+          adminOverrideHit: false,
+          rateLimitCountInWindow: null,
+          emailShapeOk: null,
+          abrLookup: null,
+          claudeConfidence: null,
+          claudeDecision: null,
+          claudeRationale: null,
+          claudeRedFlags: null,
+          classifierModel: null,
+          promptVersion: null,
+          tokensIn: null,
+          tokensOut: null,
+          elapsedMs: 0,
+        },
+      };
+    }
 
     // -----------------------------------------------------------------------
     // DENY path
@@ -245,9 +408,11 @@ export function registerSignupRoutes(app: FastifyInstance, deps: SignupRouteDeps
         displayName: displayName ?? null,
       });
     } catch (err) {
-      if (typeof err === 'object' && err !== null && 'code' in err && err.code === '23505') {
+      if (err instanceof AlreadyRegisteredError) {
         // Already registered. Still write the audit row so an operator can
         // see the duplicate attempt, but DON'T set resulting_{tenant,user}_id.
+        // Use the route-level terminal reason `already_registered` — the
+        // pipeline approved but tenant creation refused.
         try {
           await writeSignupDecisionAudit(privilegedSql, {
             email: normalizedEmail,
@@ -257,7 +422,7 @@ export function registerSignupRoutes(app: FastifyInstance, deps: SignupRouteDeps
             userAgent,
             resultingTenantId: null,
             resultingUserId: null,
-            outcome: result.outcome,
+            outcome: { decision: 'deny', reason: 'already_registered' },
             audit: result.audit,
           });
         } catch (auditErr) {

@@ -13,9 +13,12 @@ const TEST_VERIFICATION_SECRET = 'test-signup-verification-secret-p9163!!';
 const TEST_EMAIL = 'signup-test-p9163@example.com';
 const TEST_EMAIL_DENY = 'signup-test-deny-p9163@example.com';
 const TEST_EMAIL_OVERRIDE = 'override-test-p9163@example.com';
+const TEST_EMAIL_DUPE = 'signup-test-dupe-p9163@example.com';
 const TEST_FIRM = 'P9 Test Firm (signup)';
 const TEST_FIRM_DENY = 'P9 Test Firm (deny)';
 const TEST_FIRM_OVERRIDE = 'P9 Test Firm (override)';
+const TEST_FIRM_DUPE_FIRST = 'P9 Test Firm (dupe-first)';
+const TEST_FIRM_DUPE_SECOND = 'P9 Test Firm (dupe-second)';
 
 // ---------------------------------------------------------------------------
 // Mock evaluators
@@ -88,8 +91,14 @@ function buildSignupApp(evaluator: SignupEvaluator) {
 // ---------------------------------------------------------------------------
 
 async function cleanup() {
-  const firms = [TEST_FIRM, TEST_FIRM_DENY, TEST_FIRM_OVERRIDE];
-  const emails = [TEST_EMAIL, TEST_EMAIL_DENY, TEST_EMAIL_OVERRIDE];
+  const firms = [
+    TEST_FIRM,
+    TEST_FIRM_DENY,
+    TEST_FIRM_OVERRIDE,
+    TEST_FIRM_DUPE_FIRST,
+    TEST_FIRM_DUPE_SECOND,
+  ];
+  const emails = [TEST_EMAIL, TEST_EMAIL_DENY, TEST_EMAIL_OVERRIDE, TEST_EMAIL_DUPE];
   await privilegedSql`DELETE FROM tenant_user WHERE tenant_id IN (
     SELECT id FROM tenant WHERE name = ANY(${firms}::text[])
   )`;
@@ -257,6 +266,83 @@ test('POST /v1/auth/signup: admin override approves without calling evaluator', 
   } finally {
     delete process.env['SIGNUP_AUTO_APPROVE_OVERRIDE_EMAILS'];
   }
+});
+
+// ---------------------------------------------------------------------------
+// Duplicate-registration regression (PR #101 hardening, finding #12)
+// ---------------------------------------------------------------------------
+
+test('POST /v1/auth/signup: second signup with same email returns 409 and creates no extra tenant/user', async () => {
+  await cleanup();
+  // First signup — approved + tenant created.
+  const first = buildSignupApp(approveEvaluator());
+  const firstRes = await first.app.inject({
+    method: 'POST',
+    url: '/v1/auth/signup',
+    payload: { email: TEST_EMAIL_DUPE, firmName: TEST_FIRM_DUPE_FIRST, displayName: 'Dupe One' },
+  });
+  assert.equal(firstRes.statusCode, 200);
+  await first.app.close();
+
+  // Capture state after the first signup.
+  const tenantsBefore = await sql<
+    { id: string; name: string }[]
+  >`SELECT id, name FROM tenant WHERE name = ANY(${[TEST_FIRM_DUPE_FIRST, TEST_FIRM_DUPE_SECOND]}::text[])`;
+  assert.equal(tenantsBefore.length, 1, 'first signup should produce exactly one tenant');
+  const usersBefore = await sql<
+    { id: string }[]
+  >`SELECT id FROM "user" WHERE email = ${TEST_EMAIL_DUPE}`;
+  assert.equal(usersBefore.length, 1, 'first signup should produce exactly one user');
+
+  // Second signup — same email, different firm name. Must 409 already_registered.
+  const second = buildSignupApp(approveEvaluator());
+  const secondRes = await second.app.inject({
+    method: 'POST',
+    url: '/v1/auth/signup',
+    payload: {
+      email: TEST_EMAIL_DUPE,
+      firmName: TEST_FIRM_DUPE_SECOND,
+      displayName: 'Dupe Two',
+    },
+  });
+  assert.equal(secondRes.statusCode, 409);
+  const secondBody: { error: string } = secondRes.json();
+  assert.equal(secondBody.error, 'already_registered');
+  await second.app.close();
+
+  // No NEW tenant created (only the original).
+  const tenantsAfter = await sql<
+    { name: string }[]
+  >`SELECT name FROM tenant WHERE name = ANY(${[TEST_FIRM_DUPE_FIRST, TEST_FIRM_DUPE_SECOND]}::text[])`;
+  assert.equal(tenantsAfter.length, 1, 'second signup must not create a tenant');
+  assert.equal(tenantsAfter[0]?.name, TEST_FIRM_DUPE_FIRST);
+
+  // No NEW user created.
+  const usersAfter = await sql<
+    { id: string }[]
+  >`SELECT id FROM "user" WHERE email = ${TEST_EMAIL_DUPE}`;
+  assert.equal(usersAfter.length, 1, 'second signup must not create a user');
+
+  // Audit row for the second attempt should be reason=already_registered.
+  const auditRows = await privilegedSql<
+    {
+      decision: string;
+      reason: string;
+      resulting_tenant_id: string | null;
+      resulting_user_id: string | null;
+    }[]
+  >`
+    SELECT decision, reason, resulting_tenant_id, resulting_user_id
+      FROM signup_decision
+     WHERE email = ${TEST_EMAIL_DUPE}
+     ORDER BY decided_at ASC
+  `;
+  assert.equal(auditRows.length, 2, 'two audit rows: first approve, then already_registered');
+  assert.equal(auditRows[0]?.reason, 'claude_approve');
+  assert.equal(auditRows[1]?.reason, 'already_registered');
+  // Resulting IDs on the duplicate audit row MUST be null — no tenant was created.
+  assert.equal(auditRows[1]?.resulting_tenant_id, null);
+  assert.equal(auditRows[1]?.resulting_user_id, null);
 });
 
 // ---------------------------------------------------------------------------

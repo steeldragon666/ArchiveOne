@@ -61,11 +61,14 @@ export interface AbrLookupOptions {
  * before parsing.
  */
 function stripJsonpWrap(text: string): string {
-  const trimmed = text.trim();
-  if (trimmed.startsWith('callback(') && trimmed.endsWith(')')) {
-    return trimmed.slice('callback('.length, -1);
-  }
-  return trimmed;
+  // The ABR endpoint historically returns either bare JSON or JSONP wrapped as
+  // `callback(<json>);` with an OPTIONAL trailing semicolon. The previous
+  // implementation only matched the no-semicolon form, so on the (still-common)
+  // semicolon variant the strip silently fell through and JSON.parse failed
+  // with a confusing message. Use a regex that tolerates trailing whitespace
+  // and an optional semicolon.
+  const match = text.match(/^\s*callback\(([\s\S]*?)\)\s*;?\s*$/);
+  return match?.[1] ?? text;
 }
 
 function parseMatches(raw: unknown): AbrMatch[] {
@@ -121,7 +124,12 @@ export async function lookupAbrMatchingNames(
   const maxResults = options.maxResults ?? DEFAULT_MAX_RESULTS;
   const fetchImpl = options.fetchImpl ?? fetch;
 
-  const url = `${ABR_ENDPOINT}?name=${encodeURIComponent(firmName)}&maxResults=${maxResults}&guid=${encodeURIComponent(guid)}`;
+  // The ABR JSON endpoint defaults to JSONP and only returns bare JSON when
+  // explicitly requested via &callback=... — but since their server treats the
+  // callback name as opaque, passing `callback=callback` lets us reliably
+  // parse the prefix with `stripJsonpWrap`. Without this query param the
+  // strip is dead code; with it, the strip runs on every successful response.
+  const url = `${ABR_ENDPOINT}?name=${encodeURIComponent(firmName)}&maxResults=${maxResults}&guid=${encodeURIComponent(guid)}&callback=callback`;
 
   // AbortController so the call always returns inside the latency budget.
   const ctl = new AbortController();

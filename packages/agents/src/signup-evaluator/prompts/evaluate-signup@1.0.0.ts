@@ -18,7 +18,11 @@ import { registerPrompt } from '../../runtime/prompt-registry.js';
 export const evaluateSignupToolSchema = z.object({
   decision: z.enum(['approve', 'deny', 'review']),
   confidence: z.number().min(0).max(1),
-  rationale: z.string().max(400),
+  // Trim + min(1) so the model can't return a single whitespace character or
+  // empty string and slip past the schema. The audit row's `rationale` column
+  // is non-null when claude_decision is non-null; an empty string there
+  // defeats the post-hoc forensic review.
+  rationale: z.string().trim().min(1).max(400),
   red_flags: z.array(z.string().max(120)).max(5),
 });
 
