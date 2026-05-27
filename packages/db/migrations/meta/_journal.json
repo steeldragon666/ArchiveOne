@@ -411,8 +411,22 @@
     {
       "idx": 58,
       "version": "7",
-      "when": 1779087600000,
-      "tag": "0088_engagement_reminder_timestamps",
+      "when": 1779260400000,
+      "tag": "0088_signup_decision",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1779433200000,
+      "tag": "0089_signup_pipeline_hardening",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1779519600000,
+      "tag": "0090_engagement_reminder_timestamps",
       "breakpoints": true
     }
   ]
