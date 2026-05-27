@@ -1,0 +1,1022 @@
+{
+  "seed_name": "stress-test-480m",
+  "started_at": "2026-05-23T04:43:04.237Z",
+  "finished_at": "2026-05-23T04:43:05.216Z",
+  "agents_classifier_impl": "stub",
+  "agents_expenditure_classifier_impl": "stub",
+  "agents_classifier_model": null,
+  "agents_expenditure_classifier_model": null,
+  "aggregate": {
+    "total_claims": 40,
+    "total_expenditure": 511215408.28000003,
+    "total_ineligible_expenditure": 34386826.580000006,
+    "total_notes": 8000,
+    "total_contaminated_notes": 1855,
+    "note_rd_recall_pct": 100,
+    "note_contamination_caught_pct": 100,
+    "exp_rd_recall_pct": 99.83692388001832,
+    "exp_contamination_caught_pct": 100
+  },
+  "per_claim": [
+    {
+      "claim_idx": 0,
+      "tenant_id": "00000000-0000-4000-8000-c0a301010000",
+      "claim_id": "00000000-0000-4000-8000-c0a301050000",
+      "claimant": "Vantage Industries Pty Ltd (S1)",
+      "firm": "Pemberton & Cole (stress-1)",
+      "domain_slug": "pemberton-cole",
+      "exp": {
+        "total_n": 1000,
+        "total_amount": 12195252.449999996,
+        "rd_amount_total": 11324150.589999994,
+        "rd_amount_kept": 11324150.589999994,
+        "non_rd_amount_total": 871101.8600000002,
+        "non_rd_amount_caught": 871101.8600000002,
+        "classified_n": 1000
+      },
+      "notes": {
+        "total": 200,
+        "rd_relevant": 156,
+        "non_rd_contam": 44,
+        "classified": 200,
+        "contamination_caught": 44,
+        "rd_kept": 156
+      }
+    },
+    {
+      "claim_idx": 1,
+      "tenant_id": "00000000-0000-4000-8000-c0a302010000",
+      "claim_id": "00000000-0000-4000-8000-c0a302050000",
+      "claimant": "Lyra Compute Pty Ltd (S1)",
+      "firm": "TechGrowth Advisory (stress-1)",
+      "domain_slug": "techgrowth",
+      "exp": {
+        "total_n": 1000,
+        "total_amount": 13116937.700000001,
+        "rd_amount_total": 12296607.3,
+        "rd_amount_kept": 12296607.3,
+        "non_rd_amount_total": 820330.3999999993,
+        "non_rd_amount_caught": 820330.3999999993,
+        "classified_n": 1000
+      },
+      "notes": {
+        "total": 200,
+        "rd_relevant": 157,
+        "non_rd_contam": 43,
+        "classified": 200,
+        "contamination_caught": 43,
+        "rd_kept": 157
+      }
+    },
+    {
+      "claim_idx": 2,
+      "tenant_id": "00000000-0000-4000-8000-c0a303010000",
+      "claim_id": "00000000-0000-4000-8000-c0a303050000",
+      "claimant": "Borealis Bio Pty Ltd (S1)",
+      "firm": "Northern Insights (stress-1)",
+      "domain_slug": "northern-insights",
+      "exp": {
+        "total_n": 1000,
+        "total_amount": 13169240.34999999,
+        "rd_amount_total": 12242947.679999994,
+        "rd_amount_kept": 12242947.679999994,
+        "non_rd_amount_total": 926292.6700000004,
+        "non_rd_amount_caught": 926292.6700000004,
+        "classified_n": 1000
+      },
+      "notes": {
+        "total": 200,
+        "rd_relevant": 149,
+        "non_rd_contam": 51,
+        "classified": 200,
+        "contamination_caught": 51,
+        "rd_kept": 149
+      }
+    },
+    {
+      "claim_idx": 3,
+      "tenant_id": "00000000-0000-4000-8000-c0a304010000",
+      "claim_id": "00000000-0000-4000-8000-c0a304050000",
+      "claimant": "GQHC Materials Pty Ltd (S1)",
+      "firm": "Sage R&DTI (stress-1)",
+      "domain_slug": "sage-rdti",
+      "exp": {
+        "total_n": 1000,
+        "total_amount": 11915796.960000014,
+        "rd_amount_total": 10890171.450000014,
+        "rd_amount_kept": 10890171.450000014,
+        "non_rd_amount_total": 1025625.5099999997,
+        "non_rd_amount_caught": 1025625.5099999997,
+        "classified_n": 1000
+      },
+      "notes": {
+        "total": 200,
+        "rd_relevant": 155,
+        "non_rd_contam": 45,
+        "classified": 200,
+        "contamination_caught": 45,
+        "rd_kept": 155
+      }
+    },
+    {
+      "claim_idx": 4,
+      "tenant_id": "00000000-0000-4000-8000-c0a305010000",
+      "claim_id": "00000000-0000-4000-8000-c0a305050000",
+      "claimant": "Oren Robotics Pty Ltd (S1)",
+      "firm": "Apex Tax (stress-1)",
+      "domain_slug": "apex-tax",
+      "exp": {
+        "total_n": 1000,
+        "total_amount": 12800951.700000018,
+        "rd_amount_total": 11997337.350000003,
+        "rd_amount_kept": 11997337.350000003,
+        "non_rd_amount_total": 803614.3500000003,
+        "non_rd_amount_caught": 803614.3500000003,
+        "classified_n": 1000
+      },
+      "notes": {
+        "total": 200,
+        "rd_relevant": 148,
+        "non_rd_contam": 52,
+        "classified": 200,
+        "contamination_caught": 52,
+        "rd_kept": 148
+      }
+    },
+    {
+      "claim_idx": 5,
+      "tenant_id": "00000000-0000-4000-8000-c0a306010000",
+      "claim_id": "00000000-0000-4000-8000-c0a306050000",
+      "claimant": "Proceptual Games Pty Ltd (S1)",
+      "firm": "Tasman Innovation Group (stress-1)",
+      "domain_slug": "tasman-innovation",
+      "exp": {
+        "total_n": 1000,
+        "total_amount": 12532454.360000003,
+        "rd_amount_total": 11767152.570000006,
+        "rd_amount_kept": 11559871.620000003,
+        "non_rd_amount_total": 765301.7900000003,
+        "non_rd_amount_caught": 765301.7900000003,
+        "classified_n": 1000
+      },
+      "notes": {
+        "total": 200,
+        "rd_relevant": 148,
+        "non_rd_contam": 52,
+        "classified": 200,
+        "contamination_caught": 52,
+        "rd_kept": 148
+      }
+    },
+    {
+      "claim_idx": 6,
+      "tenant_id": "00000000-0000-4000-8000-c0a307010000",
+      "claim_id": "00000000-0000-4000-8000-c0a307050000",
+      "claimant": "Solstice Energy Pty Ltd (S1)",
+      "firm": "Coastal R&D Partners (stress-1)",
+      "domain_slug": "coastal-rd",
+      "exp": {
+        "total_n": 1000,
+        "total_amount": 12715969.080000002,
+        "rd_amount_total": 11750499.909999989,
+        "rd_amount_kept": 11750499.909999989,
+        "non_rd_amount_total": 965469.1700000002,
+        "non_rd_amount_caught": 965469.1700000002,
+        "classified_n": 1000
+      },
+      "notes": {
+        "total": 200,
+        "rd_relevant": 143,
+        "non_rd_contam": 57,
+        "classified": 200,
+        "contamination_caught": 57,
+        "rd_kept": 143
+      }
+    },
+    {
+      "claim_idx": 7,
+      "tenant_id": "00000000-0000-4000-8000-c0a308010000",
+      "claim_id": "00000000-0000-4000-8000-c0a308050000",
+      "claimant": "Quartzcore Mining Pty Ltd (S1)",
+      "firm": "Outback Tax Co (stress-1)",
+      "domain_slug": "outback-tax",
+      "exp": {
+        "total_n": 1000,
+        "total_amount": 13181057.769999996,
+        "rd_amount_total": 12438028.589999994,
+        "rd_amount_kept": 12438028.589999994,
+        "non_rd_amount_total": 743029.1799999999,
+        "non_rd_amount_caught": 743029.1799999999,
+        "classified_n": 1000
+      },
+      "notes": {
+        "total": 200,
+        "rd_relevant": 160,
+        "non_rd_contam": 40,
+        "classified": 200,
+        "contamination_caught": 40,
+        "rd_kept": 160
+      }
+    },
+    {
+      "claim_idx": 8,
+      "tenant_id": "00000000-0000-4000-8000-c0a309010000",
+      "claim_id": "00000000-0000-4000-8000-c0a309050000",
+      "claimant": "MedSense Devices Pty Ltd (S1)",
+      "firm": "Bayside Advisory (stress-1)",
+      "domain_slug": "bayside-advisory",
+      "exp": {
+        "total_n": 1000,
+        "total_amount": 11747396.31000001,
+        "rd_amount_total": 10801100.43,
+        "rd_amount_kept": 10801100.43,
+        "non_rd_amount_total": 946295.88,
+        "non_rd_amount_caught": 946295.88,
+        "classified_n": 1000
+      },
+      "notes": {
+        "total": 200,
+        "rd_relevant": 154,
+        "non_rd_contam": 46,
+        "classified": 200,
+        "contamination_caught": 46,
+        "rd_kept": 154
+      }
+    },
+    {
+      "claim_idx": 9,
+      "tenant_id": "00000000-0000-4000-8000-c0a310010000",
+      "claim_id": "00000000-0000-4000-8000-c0a310050000",
+      "claimant": "Pangaea Air Pty Ltd (S1)",
+      "firm": "Karri Forest Consulting (stress-1)",
+      "domain_slug": "karri-forest",
+      "exp": {
+        "total_n": 1000,
+        "total_amount": 12846575.239999996,
+        "rd_amount_total": 11999025.399999995,
+        "rd_amount_kept": 11999025.399999995,
+        "non_rd_amount_total": 847549.8399999994,
+        "non_rd_amount_caught": 847549.8399999994,
+        "classified_n": 1000
+      },
+      "notes": {
+        "total": 200,
+        "rd_relevant": 152,
+        "non_rd_contam": 48,
+        "classified": 200,
+        "contamination_caught": 48,
+        "rd_kept": 152
+      }
+    },
+    {
+      "claim_idx": 10,
+      "tenant_id": "00000000-0000-4000-8000-c0a311010000",
+      "claim_id": "00000000-0000-4000-8000-c0a311050000",
+      "claimant": "Vantage Industries Pty Ltd (S2)",
+      "firm": "Pemberton & Cole (stress-2)",
+      "domain_slug": "pemberton-cole",
+      "exp": {
+        "total_n": 1000,
+        "total_amount": 13449786.519999987,
+        "rd_amount_total": 12530944.439999994,
+        "rd_amount_kept": 12530944.439999994,
+        "non_rd_amount_total": 918842.0800000003,
+        "non_rd_amount_caught": 918842.0800000003,
+        "classified_n": 1000
+      },
+      "notes": {
+        "total": 200,
+        "rd_relevant": 148,
+        "non_rd_contam": 52,
+        "classified": 200,
+        "contamination_caught": 52,
+        "rd_kept": 148
+      }
+    },
+    {
+      "claim_idx": 11,
+      "tenant_id": "00000000-0000-4000-8000-c0a312010000",
+      "claim_id": "00000000-0000-4000-8000-c0a312050000",
+      "claimant": "Lyra Compute Pty Ltd (S2)",
+      "firm": "TechGrowth Advisory (stress-2)",
+      "domain_slug": "techgrowth",
+      "exp": {
+        "total_n": 1000,
+        "total_amount": 12490189.070000006,
+        "rd_amount_total": 11539900.760000002,
+        "rd_amount_kept": 11539900.760000002,
+        "non_rd_amount_total": 950288.3099999998,
+        "non_rd_amount_caught": 950288.3099999998,
+        "classified_n": 1000
+      },
+      "notes": {
+        "total": 200,
+        "rd_relevant": 152,
+        "non_rd_contam": 48,
+        "classified": 200,
+        "contamination_caught": 48,
+        "rd_kept": 152
+      }
+    },
+    {
+      "claim_idx": 12,
+      "tenant_id": "00000000-0000-4000-8000-c0a313010000",
+      "claim_id": "00000000-0000-4000-8000-c0a313050000",
+      "claimant": "Borealis Bio Pty Ltd (S2)",
+      "firm": "Northern Insights (stress-2)",
+      "domain_slug": "northern-insights",
+      "exp": {
+        "total_n": 1000,
+        "total_amount": 12845606.090000018,
+        "rd_amount_total": 11974676.920000015,
+        "rd_amount_kept": 11974676.920000015,
+        "non_rd_amount_total": 870929.1700000002,
+        "non_rd_amount_caught": 870929.1700000002,
+        "classified_n": 1000
+      },
+      "notes": {
+        "total": 200,
+        "rd_relevant": 164,
+        "non_rd_contam": 36,
+        "classified": 200,
+        "contamination_caught": 36,
+        "rd_kept": 164
+      }
+    },
+    {
+      "claim_idx": 13,
+      "tenant_id": "00000000-0000-4000-8000-c0a314010000",
+      "claim_id": "00000000-0000-4000-8000-c0a314050000",
+      "claimant": "GQHC Materials Pty Ltd (S2)",
+      "firm": "Sage R&DTI (stress-2)",
+      "domain_slug": "sage-rdti",
+      "exp": {
+        "total_n": 1000,
+        "total_amount": 13425729.440000014,
+        "rd_amount_total": 12616761.630000006,
+        "rd_amount_kept": 12616761.630000006,
+        "non_rd_amount_total": 808967.8099999999,
+        "non_rd_amount_caught": 808967.8099999999,
+        "classified_n": 1000
+      },
+      "notes": {
+        "total": 200,
+        "rd_relevant": 159,
+        "non_rd_contam": 41,
+        "classified": 200,
+        "contamination_caught": 41,
+        "rd_kept": 159
+      }
+    },
+    {
+      "claim_idx": 14,
+      "tenant_id": "00000000-0000-4000-8000-c0a315010000",
+      "claim_id": "00000000-0000-4000-8000-c0a315050000",
+      "claimant": "Oren Robotics Pty Ltd (S2)",
+      "firm": "Apex Tax (stress-2)",
+      "domain_slug": "apex-tax",
+      "exp": {
+        "total_n": 1000,
+        "total_amount": 12379220.57,
+        "rd_amount_total": 11511927.070000002,
+        "rd_amount_kept": 11511927.070000002,
+        "non_rd_amount_total": 867293.4999999999,
+        "non_rd_amount_caught": 867293.4999999999,
+        "classified_n": 1000
+      },
+      "notes": {
+        "total": 200,
+        "rd_relevant": 158,
+        "non_rd_contam": 42,
+        "classified": 200,
+        "contamination_caught": 42,
+        "rd_kept": 158
+      }
+    },
+    {
+      "claim_idx": 15,
+      "tenant_id": "00000000-0000-4000-8000-c0a316010000",
+      "claim_id": "00000000-0000-4000-8000-c0a316050000",
+      "claimant": "Proceptual Games Pty Ltd (S2)",
+      "firm": "Tasman Innovation Group (stress-2)",
+      "domain_slug": "tasman-innovation",
+      "exp": {
+        "total_n": 1000,
+        "total_amount": 12555141.349999988,
+        "rd_amount_total": 11764226.709999993,
+        "rd_amount_kept": 11572270.809999999,
+        "non_rd_amount_total": 790914.6400000006,
+        "non_rd_amount_caught": 790914.6400000006,
+        "classified_n": 1000
+      },
+      "notes": {
+        "total": 200,
+        "rd_relevant": 155,
+        "non_rd_contam": 45,
+        "classified": 200,
+        "contamination_caught": 45,
+        "rd_kept": 155
+      }
+    },
+    {
+      "claim_idx": 16,
+      "tenant_id": "00000000-0000-4000-8000-c0a317010000",
+      "claim_id": "00000000-0000-4000-8000-c0a317050000",
+      "claimant": "Solstice Energy Pty Ltd (S2)",
+      "firm": "Coastal R&D Partners (stress-2)",
+      "domain_slug": "coastal-rd",
+      "exp": {
+        "total_n": 1000,
+        "total_amount": 12226288.699999996,
+        "rd_amount_total": 11461507.970000003,
+        "rd_amount_kept": 11461507.970000003,
+        "non_rd_amount_total": 764780.7300000002,
+        "non_rd_amount_caught": 764780.7300000002,
+        "classified_n": 1000
+      },
+      "notes": {
+        "total": 200,
+        "rd_relevant": 166,
+        "non_rd_contam": 34,
+        "classified": 200,
+        "contamination_caught": 34,
+        "rd_kept": 166
+      }
+    },
+    {
+      "claim_idx": 17,
+      "tenant_id": "00000000-0000-4000-8000-c0a318010000",
+      "claim_id": "00000000-0000-4000-8000-c0a318050000",
+      "claimant": "Quartzcore Mining Pty Ltd (S2)",
+      "firm": "Outback Tax Co (stress-2)",
+      "domain_slug": "outback-tax",
+      "exp": {
+        "total_n": 1000,
+        "total_amount": 13367187.129999997,
+        "rd_amount_total": 12621436.630000006,
+        "rd_amount_kept": 12621436.630000006,
+        "non_rd_amount_total": 745750.5,
+        "non_rd_amount_caught": 745750.5,
+        "classified_n": 1000
+      },
+      "notes": {
+        "total": 200,
+        "rd_relevant": 153,
+        "non_rd_contam": 47,
+        "classified": 200,
+        "contamination_caught": 47,
+        "rd_kept": 153
+      }
+    },
+    {
+      "claim_idx": 18,
+      "tenant_id": "00000000-0000-4000-8000-c0a319010000",
+      "claim_id": "00000000-0000-4000-8000-c0a319050000",
+      "claimant": "MedSense Devices Pty Ltd (S2)",
+      "firm": "Bayside Advisory (stress-2)",
+      "domain_slug": "bayside-advisory",
+      "exp": {
+        "total_n": 1000,
+        "total_amount": 11367037.980000002,
+        "rd_amount_total": 10449139.65,
+        "rd_amount_kept": 10449139.65,
+        "non_rd_amount_total": 917898.3299999998,
+        "non_rd_amount_caught": 917898.3299999998,
+        "classified_n": 1000
+      },
+      "notes": {
+        "total": 200,
+        "rd_relevant": 149,
+        "non_rd_contam": 51,
+        "classified": 200,
+        "contamination_caught": 51,
+        "rd_kept": 149
+      }
+    },
+    {
+      "claim_idx": 19,
+      "tenant_id": "00000000-0000-4000-8000-c0a320010000",
+      "claim_id": "00000000-0000-4000-8000-c0a320050000",
+      "claimant": "Pangaea Air Pty Ltd (S2)",
+      "firm": "Karri Forest Consulting (stress-2)",
+      "domain_slug": "karri-forest",
+      "exp": {
+        "total_n": 1000,
+        "total_amount": 13629424.389999997,
+        "rd_amount_total": 12865685.87,
+        "rd_amount_kept": 12865685.87,
+        "non_rd_amount_total": 763738.52,
+        "non_rd_amount_caught": 763738.52,
+        "classified_n": 1000
+      },
+      "notes": {
+        "total": 200,
+        "rd_relevant": 143,
+        "non_rd_contam": 57,
+        "classified": 200,
+        "contamination_caught": 57,
+        "rd_kept": 143
+      }
+    },
+    {
+      "claim_idx": 20,
+      "tenant_id": "00000000-0000-4000-8000-c0a321010000",
+      "claim_id": "00000000-0000-4000-8000-c0a321050000",
+      "claimant": "Vantage Industries Pty Ltd (S3)",
+      "firm": "Pemberton & Cole (stress-3)",
+      "domain_slug": "pemberton-cole",
+      "exp": {
+        "total_n": 1000,
+        "total_amount": 12948766.059999999,
+        "rd_amount_total": 11994972.959999995,
+        "rd_amount_kept": 11994972.959999995,
+        "non_rd_amount_total": 953793.1000000001,
+        "non_rd_amount_caught": 953793.1000000001,
+        "classified_n": 1000
+      },
+      "notes": {
+        "total": 200,
+        "rd_relevant": 162,
+        "non_rd_contam": 38,
+        "classified": 200,
+        "contamination_caught": 38,
+        "rd_kept": 162
+      }
+    },
+    {
+      "claim_idx": 21,
+      "tenant_id": "00000000-0000-4000-8000-c0a322010000",
+      "claim_id": "00000000-0000-4000-8000-c0a322050000",
+      "claimant": "Lyra Compute Pty Ltd (S3)",
+      "firm": "TechGrowth Advisory (stress-3)",
+      "domain_slug": "techgrowth",
+      "exp": {
+        "total_n": 1000,
+        "total_amount": 11881808.88,
+        "rd_amount_total": 11055975.640000004,
+        "rd_amount_kept": 11055975.640000004,
+        "non_rd_amount_total": 825833.2399999999,
+        "non_rd_amount_caught": 825833.2399999999,
+        "classified_n": 1000
+      },
+      "notes": {
+        "total": 200,
+        "rd_relevant": 160,
+        "non_rd_contam": 40,
+        "classified": 200,
+        "contamination_caught": 40,
+        "rd_kept": 160
+      }
+    },
+    {
+      "claim_idx": 22,
+      "tenant_id": "00000000-0000-4000-8000-c0a323010000",
+      "claim_id": "00000000-0000-4000-8000-c0a323050000",
+      "claimant": "Borealis Bio Pty Ltd (S3)",
+      "firm": "Northern Insights (stress-3)",
+      "domain_slug": "northern-insights",
+      "exp": {
+        "total_n": 1000,
+        "total_amount": 13031493.310000006,
+        "rd_amount_total": 12142549.300000004,
+        "rd_amount_kept": 12142549.300000004,
+        "non_rd_amount_total": 888944.0100000004,
+        "non_rd_amount_caught": 888944.0100000004,
+        "classified_n": 1000
+      },
+      "notes": {
+        "total": 200,
+        "rd_relevant": 155,
+        "non_rd_contam": 45,
+        "classified": 200,
+        "contamination_caught": 45,
+        "rd_kept": 155
+      }
+    },
+    {
+      "claim_idx": 23,
+      "tenant_id": "00000000-0000-4000-8000-c0a324010000",
+      "claim_id": "00000000-0000-4000-8000-c0a324050000",
+      "claimant": "GQHC Materials Pty Ltd (S3)",
+      "firm": "Sage R&DTI (stress-3)",
+      "domain_slug": "sage-rdti",
+      "exp": {
+        "total_n": 1000,
+        "total_amount": 12969022.749999996,
+        "rd_amount_total": 12126612.180000003,
+        "rd_amount_kept": 12126612.180000003,
+        "non_rd_amount_total": 842410.5699999997,
+        "non_rd_amount_caught": 842410.5699999997,
+        "classified_n": 1000
+      },
+      "notes": {
+        "total": 200,
+        "rd_relevant": 144,
+        "non_rd_contam": 56,
+        "classified": 200,
+        "contamination_caught": 56,
+        "rd_kept": 144
+      }
+    },
+    {
+      "claim_idx": 24,
+      "tenant_id": "00000000-0000-4000-8000-c0a325010000",
+      "claim_id": "00000000-0000-4000-8000-c0a325050000",
+      "claimant": "Oren Robotics Pty Ltd (S3)",
+      "firm": "Apex Tax (stress-3)",
+      "domain_slug": "apex-tax",
+      "exp": {
+        "total_n": 1000,
+        "total_amount": 12777902.699999996,
+        "rd_amount_total": 11822643.179999992,
+        "rd_amount_kept": 11822643.179999992,
+        "non_rd_amount_total": 955259.5199999991,
+        "non_rd_amount_caught": 955259.5199999991,
+        "classified_n": 1000
+      },
+      "notes": {
+        "total": 200,
+        "rd_relevant": 152,
+        "non_rd_contam": 48,
+        "classified": 200,
+        "contamination_caught": 48,
+        "rd_kept": 152
+      }
+    },
+    {
+      "claim_idx": 25,
+      "tenant_id": "00000000-0000-4000-8000-c0a326010000",
+      "claim_id": "00000000-0000-4000-8000-c0a326050000",
+      "claimant": "Proceptual Games Pty Ltd (S3)",
+      "firm": "Tasman Innovation Group (stress-3)",
+      "domain_slug": "tasman-innovation",
+      "exp": {
+        "total_n": 1000,
+        "total_amount": 13912371.789999997,
+        "rd_amount_total": 13098693.599999992,
+        "rd_amount_kept": 12907537.819999991,
+        "non_rd_amount_total": 813678.1899999996,
+        "non_rd_amount_caught": 813678.1899999996,
+        "classified_n": 1000
+      },
+      "notes": {
+        "total": 200,
+        "rd_relevant": 154,
+        "non_rd_contam": 46,
+        "classified": 200,
+        "contamination_caught": 46,
+        "rd_kept": 154
+      }
+    },
+    {
+      "claim_idx": 26,
+      "tenant_id": "00000000-0000-4000-8000-c0a327010000",
+      "claim_id": "00000000-0000-4000-8000-c0a327050000",
+      "claimant": "Solstice Energy Pty Ltd (S3)",
+      "firm": "Coastal R&D Partners (stress-3)",
+      "domain_slug": "coastal-rd",
+      "exp": {
+        "total_n": 1000,
+        "total_amount": 12440542.569999974,
+        "rd_amount_total": 11598064.049999986,
+        "rd_amount_kept": 11598064.049999986,
+        "non_rd_amount_total": 842478.52,
+        "non_rd_amount_caught": 842478.52,
+        "classified_n": 1000
+      },
+      "notes": {
+        "total": 200,
+        "rd_relevant": 142,
+        "non_rd_contam": 58,
+        "classified": 200,
+        "contamination_caught": 58,
+        "rd_kept": 142
+      }
+    },
+    {
+      "claim_idx": 27,
+      "tenant_id": "00000000-0000-4000-8000-c0a328010000",
+      "claim_id": "00000000-0000-4000-8000-c0a328050000",
+      "claimant": "Quartzcore Mining Pty Ltd (S3)",
+      "firm": "Outback Tax Co (stress-3)",
+      "domain_slug": "outback-tax",
+      "exp": {
+        "total_n": 1000,
+        "total_amount": 12721728.440000007,
+        "rd_amount_total": 11829031.879999999,
+        "rd_amount_kept": 11829031.879999999,
+        "non_rd_amount_total": 892696.5600000005,
+        "non_rd_amount_caught": 892696.5600000005,
+        "classified_n": 1000
+      },
+      "notes": {
+        "total": 200,
+        "rd_relevant": 152,
+        "non_rd_contam": 48,
+        "classified": 200,
+        "contamination_caught": 48,
+        "rd_kept": 152
+      }
+    },
+    {
+      "claim_idx": 28,
+      "tenant_id": "00000000-0000-4000-8000-c0a329010000",
+      "claim_id": "00000000-0000-4000-8000-c0a329050000",
+      "claimant": "MedSense Devices Pty Ltd (S3)",
+      "firm": "Bayside Advisory (stress-3)",
+      "domain_slug": "bayside-advisory",
+      "exp": {
+        "total_n": 1000,
+        "total_amount": 13023424.550000003,
+        "rd_amount_total": 12013360.480000008,
+        "rd_amount_kept": 12013360.480000008,
+        "non_rd_amount_total": 1010064.0700000001,
+        "non_rd_amount_caught": 1010064.0700000001,
+        "classified_n": 1000
+      },
+      "notes": {
+        "total": 200,
+        "rd_relevant": 136,
+        "non_rd_contam": 64,
+        "classified": 200,
+        "contamination_caught": 64,
+        "rd_kept": 136
+      }
+    },
+    {
+      "claim_idx": 29,
+      "tenant_id": "00000000-0000-4000-8000-c0a330010000",
+      "claim_id": "00000000-0000-4000-8000-c0a330050000",
+      "claimant": "Pangaea Air Pty Ltd (S3)",
+      "firm": "Karri Forest Consulting (stress-3)",
+      "domain_slug": "karri-forest",
+      "exp": {
+        "total_n": 1000,
+        "total_amount": 13389050.739999978,
+        "rd_amount_total": 12600688.739999983,
+        "rd_amount_kept": 12600688.739999983,
+        "non_rd_amount_total": 788361.9999999998,
+        "non_rd_amount_caught": 788361.9999999998,
+        "classified_n": 1000
+      },
+      "notes": {
+        "total": 200,
+        "rd_relevant": 150,
+        "non_rd_contam": 50,
+        "classified": 200,
+        "contamination_caught": 50,
+        "rd_kept": 150
+      }
+    },
+    {
+      "claim_idx": 30,
+      "tenant_id": "00000000-0000-4000-8000-c0a331010000",
+      "claim_id": "00000000-0000-4000-8000-c0a331050000",
+      "claimant": "Vantage Industries Pty Ltd (S4)",
+      "firm": "Pemberton & Cole (stress-4)",
+      "domain_slug": "pemberton-cole",
+      "exp": {
+        "total_n": 1000,
+        "total_amount": 11601850.429999994,
+        "rd_amount_total": 10836728.569999998,
+        "rd_amount_kept": 10836728.569999998,
+        "non_rd_amount_total": 765121.8599999999,
+        "non_rd_amount_caught": 765121.8599999999,
+        "classified_n": 1000
+      },
+      "notes": {
+        "total": 200,
+        "rd_relevant": 151,
+        "non_rd_contam": 49,
+        "classified": 200,
+        "contamination_caught": 49,
+        "rd_kept": 151
+      }
+    },
+    {
+      "claim_idx": 31,
+      "tenant_id": "00000000-0000-4000-8000-c0a332010000",
+      "claim_id": "00000000-0000-4000-8000-c0a332050000",
+      "claimant": "Lyra Compute Pty Ltd (S4)",
+      "firm": "TechGrowth Advisory (stress-4)",
+      "domain_slug": "techgrowth",
+      "exp": {
+        "total_n": 1000,
+        "total_amount": 13003527.249999985,
+        "rd_amount_total": 12095595.389999988,
+        "rd_amount_kept": 12095595.389999988,
+        "non_rd_amount_total": 907931.8599999999,
+        "non_rd_amount_caught": 907931.8599999999,
+        "classified_n": 1000
+      },
+      "notes": {
+        "total": 200,
+        "rd_relevant": 157,
+        "non_rd_contam": 43,
+        "classified": 200,
+        "contamination_caught": 43,
+        "rd_kept": 157
+      }
+    },
+    {
+      "claim_idx": 32,
+      "tenant_id": "00000000-0000-4000-8000-c0a333010000",
+      "claim_id": "00000000-0000-4000-8000-c0a333050000",
+      "claimant": "Borealis Bio Pty Ltd (S4)",
+      "firm": "Northern Insights (stress-4)",
+      "domain_slug": "northern-insights",
+      "exp": {
+        "total_n": 1000,
+        "total_amount": 12410737.889999999,
+        "rd_amount_total": 11654525.709999999,
+        "rd_amount_kept": 11654525.709999999,
+        "non_rd_amount_total": 756212.1799999999,
+        "non_rd_amount_caught": 756212.1799999999,
+        "classified_n": 1000
+      },
+      "notes": {
+        "total": 200,
+        "rd_relevant": 154,
+        "non_rd_contam": 46,
+        "classified": 200,
+        "contamination_caught": 46,
+        "rd_kept": 154
+      }
+    },
+    {
+      "claim_idx": 33,
+      "tenant_id": "00000000-0000-4000-8000-c0a334010000",
+      "claim_id": "00000000-0000-4000-8000-c0a334050000",
+      "claimant": "GQHC Materials Pty Ltd (S4)",
+      "firm": "Sage R&DTI (stress-4)",
+      "domain_slug": "sage-rdti",
+      "exp": {
+        "total_n": 1000,
+        "total_amount": 12804806.76000001,
+        "rd_amount_total": 11893074.420000017,
+        "rd_amount_kept": 11893074.420000017,
+        "non_rd_amount_total": 911732.3399999997,
+        "non_rd_amount_caught": 911732.3399999997,
+        "classified_n": 1000
+      },
+      "notes": {
+        "total": 200,
+        "rd_relevant": 149,
+        "non_rd_contam": 51,
+        "classified": 200,
+        "contamination_caught": 51,
+        "rd_kept": 149
+      }
+    },
+    {
+      "claim_idx": 34,
+      "tenant_id": "00000000-0000-4000-8000-c0a335010000",
+      "claim_id": "00000000-0000-4000-8000-c0a335050000",
+      "claimant": "Oren Robotics Pty Ltd (S4)",
+      "firm": "Apex Tax (stress-4)",
+      "domain_slug": "apex-tax",
+      "exp": {
+        "total_n": 1000,
+        "total_amount": 12627498.240000002,
+        "rd_amount_total": 11787573.67,
+        "rd_amount_kept": 11787573.67,
+        "non_rd_amount_total": 839924.5699999996,
+        "non_rd_amount_caught": 839924.5699999996,
+        "classified_n": 1000
+      },
+      "notes": {
+        "total": 200,
+        "rd_relevant": 156,
+        "non_rd_contam": 44,
+        "classified": 200,
+        "contamination_caught": 44,
+        "rd_kept": 156
+      }
+    },
+    {
+      "claim_idx": 35,
+      "tenant_id": "00000000-0000-4000-8000-c0a336010000",
+      "claim_id": "00000000-0000-4000-8000-c0a336050000",
+      "claimant": "Proceptual Games Pty Ltd (S4)",
+      "firm": "Tasman Innovation Group (stress-4)",
+      "domain_slug": "tasman-innovation",
+      "exp": {
+        "total_n": 1000,
+        "total_amount": 13685993.94,
+        "rd_amount_total": 12780890.049999993,
+        "rd_amount_kept": 12593689.129999992,
+        "non_rd_amount_total": 905103.8900000001,
+        "non_rd_amount_caught": 905103.8900000001,
+        "classified_n": 1000
+      },
+      "notes": {
+        "total": 200,
+        "rd_relevant": 156,
+        "non_rd_contam": 44,
+        "classified": 200,
+        "contamination_caught": 44,
+        "rd_kept": 156
+      }
+    },
+    {
+      "claim_idx": 36,
+      "tenant_id": "00000000-0000-4000-8000-c0a337010000",
+      "claim_id": "00000000-0000-4000-8000-c0a337050000",
+      "claimant": "Solstice Energy Pty Ltd (S4)",
+      "firm": "Coastal R&D Partners (stress-4)",
+      "domain_slug": "coastal-rd",
+      "exp": {
+        "total_n": 1000,
+        "total_amount": 12854038.679999996,
+        "rd_amount_total": 12013603.340000005,
+        "rd_amount_kept": 12013603.340000005,
+        "non_rd_amount_total": 840435.3400000001,
+        "non_rd_amount_caught": 840435.3400000001,
+        "classified_n": 1000
+      },
+      "notes": {
+        "total": 200,
+        "rd_relevant": 161,
+        "non_rd_contam": 39,
+        "classified": 200,
+        "contamination_caught": 39,
+        "rd_kept": 161
+      }
+    },
+    {
+      "claim_idx": 37,
+      "tenant_id": "00000000-0000-4000-8000-c0a338010000",
+      "claim_id": "00000000-0000-4000-8000-c0a338050000",
+      "claimant": "Quartzcore Mining Pty Ltd (S4)",
+      "firm": "Outback Tax Co (stress-4)",
+      "domain_slug": "outback-tax",
+      "exp": {
+        "total_n": 1000,
+        "total_amount": 13218408.840000013,
+        "rd_amount_total": 12534441.940000016,
+        "rd_amount_kept": 12534441.940000016,
+        "non_rd_amount_total": 683966.9000000005,
+        "non_rd_amount_caught": 683966.9000000005,
+        "classified_n": 1000
+      },
+      "notes": {
+        "total": 200,
+        "rd_relevant": 156,
+        "non_rd_contam": 44,
+        "classified": 200,
+        "contamination_caught": 44,
+        "rd_kept": 156
+      }
+    },
+    {
+      "claim_idx": 38,
+      "tenant_id": "00000000-0000-4000-8000-c0a339010000",
+      "claim_id": "00000000-0000-4000-8000-c0a339050000",
+      "claimant": "MedSense Devices Pty Ltd (S4)",
+      "firm": "Bayside Advisory (stress-4)",
+      "domain_slug": "bayside-advisory",
+      "exp": {
+        "total_n": 1000,
+        "total_amount": 12424249.62,
+        "rd_amount_total": 11485968.030000003,
+        "rd_amount_kept": 11485968.030000003,
+        "non_rd_amount_total": 938281.59,
+        "non_rd_amount_caught": 938281.59,
+        "classified_n": 1000
+      },
+      "notes": {
+        "total": 200,
+        "rd_relevant": 161,
+        "non_rd_contam": 39,
+        "classified": 200,
+        "contamination_caught": 39,
+        "rd_kept": 161
+      }
+    },
+    {
+      "claim_idx": 39,
+      "tenant_id": "00000000-0000-4000-8000-c0a340010000",
+      "claim_id": "00000000-0000-4000-8000-c0a340050000",
+      "claimant": "Pangaea Air Pty Ltd (S4)",
+      "firm": "Karri Forest Consulting (stress-4)",
+      "domain_slug": "karri-forest",
+      "exp": {
+        "total_n": 1000,
+        "total_amount": 13530941.680000007,
+        "rd_amount_total": 12620359.650000004,
+        "rd_amount_kept": 12620359.650000004,
+        "non_rd_amount_total": 910582.0299999999,
+        "non_rd_amount_caught": 910582.0299999999,
+        "classified_n": 1000
+      },
+      "notes": {
+        "total": 200,
+        "rd_relevant": 168,
+        "non_rd_contam": 32,
+        "classified": 200,
+        "contamination_caught": 32,
+        "rd_kept": 168
+      }
+    }
+  ]
+}

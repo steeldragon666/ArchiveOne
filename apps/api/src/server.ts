@@ -25,6 +25,7 @@ import { registerClaimActivityProposalJob } from './jobs/claim-activity-proposal
 import { registerClaimEvidenceBindingJob } from './jobs/claim-evidence-binding.js';
 import { registerDocumentExtractJob } from './jobs/document-extract.js';
 import { registerGenerateApplicationJob } from './jobs/generate-application.js';
+import { registerEngagementLetterRenderPdfJob } from './jobs/engagement-letter-render-pdf.js';
 import { registerEngagementReminderTickJob } from './jobs/engagement-reminder-tick.js';
 import { registerIpSearchReportRenderPdfJob } from './jobs/ip-search-report-render-pdf.js';
 import { getPublicBaseUrl, publicUrl } from './lib/public-base-url.js';
@@ -120,6 +121,8 @@ if (process.env['NODE_ENV'] !== 'test') {
     app.log.info('document-extract job registered');
     await registerGenerateApplicationJob(boss);
     app.log.info('generate-application job registered');
+    await registerEngagementLetterRenderPdfJob(boss);
+    app.log.info('engagement-letter-render-pdf job registered');
     // Wizard Step 1 Task 04 — daily engagement-letter reminder + auto-expire
     // tick. Lazy-imports the @cpa/email transport so the dependency only
     // resolves in the boot path (test harness uses NODE_ENV=test which
