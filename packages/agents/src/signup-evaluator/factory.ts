@@ -15,7 +15,13 @@ import type { SignupEvaluator } from './types.js';
  */
 export function makeSignupEvaluator(): SignupEvaluator {
   const explicit = process.env.SIGNUP_EVALUATOR_IMPL;
-  const impl = explicit ?? (process.env.CI ? 'stub' : 'opus');
+  // process.env.CI is a STRING (or undefined). Truthy checks like
+  // `process.env.CI ? 'stub' : 'opus'` evaluate the literal string 'false' as
+  // truthy — surprising. Normalise to a strict boolean accepting '1' or 'true'
+  // (case-insensitive) so deployments that explicitly set CI=false don't
+  // silently land on the stub evaluator.
+  const isCi = /^(1|true)$/i.test(process.env.CI ?? '');
+  const impl = explicit ?? (isCi ? 'stub' : 'opus');
   switch (impl) {
     case 'stub':
       return new StubSignupEvaluator();

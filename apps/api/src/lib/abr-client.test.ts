@@ -68,6 +68,37 @@ test('lookupAbrMatchingNames: strips JSONP wrapper if present', async () => {
   assert.equal(out.matches[0]?.matched_name, 'Wrapped Pty Ltd');
 });
 
+test('lookupAbrMatchingNames: strips JSONP wrapper with trailing semicolon', async () => {
+  // Real ABR deployments return either `callback(<json>)` or `callback(<json>);`.
+  // The original regex matched only the no-semicolon form; this test guards the
+  // fix that tolerates both.
+  const body = `callback(${JSON.stringify({ Names: [{ Name: 'Trailing Pty Ltd' }] })});`;
+  const out = await lookupAbrMatchingNames('Trailing', {
+    guid: 'test-guid',
+    fetchImpl: fakeFetch(() => new Response(body, { status: 200 })),
+  });
+  assert.equal(out.error, null);
+  assert.equal(out.matches.length, 1);
+  assert.equal(out.matches[0]?.matched_name, 'Trailing Pty Ltd');
+});
+
+test('lookupAbrMatchingNames: URL includes callback=callback so JSONP-strip is exercised', async () => {
+  let capturedUrl = '';
+  await lookupAbrMatchingNames('Acme', {
+    guid: 'test-guid',
+    fetchImpl: fakeFetch((url) => {
+      capturedUrl = url;
+      return new Response(JSON.stringify({ Names: [] }), { status: 200 });
+    }),
+  });
+  // ABR returns JSONP whenever callback=<name> is set, so we send `callback`
+  // explicitly to make the parse path stable.
+  assert.ok(
+    capturedUrl.includes('callback=callback'),
+    `URL should request JSONP wrap; got ${capturedUrl}`,
+  );
+});
+
 test('lookupAbrMatchingNames: returns error on non-200 status (matches empty)', async () => {
   const out = await lookupAbrMatchingNames('Acme', {
     guid: 'test-guid',

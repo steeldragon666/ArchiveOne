@@ -19,8 +19,22 @@ import type { EvaluateSignupToolInput } from './prompts/evaluate-signup@1.0.0.js
  * name describes "lives in the Opus-style production lane" — the env
  * var, not the class, controls which model fires.
  */
-const MODEL = process.env.SIGNUP_EVALUATOR_MODEL ?? 'claude-haiku-4-5';
+// process.env.SIGNUP_EVALUATOR_MODEL is a STRING (or undefined). Using ?? here
+// would propagate empty strings ('') through to the Anthropic SDK and produce a
+// confusing 400 "model required" deep in the request. Trim + coalesce on a
+// falsy result so any whitespace-only override falls back to the default.
+const MODEL = process.env.SIGNUP_EVALUATOR_MODEL?.trim() || 'claude-haiku-4-5';
 const PROMPT_KEY = 'evaluate-signup@1.0.0';
+
+/**
+ * Maximum wall-clock for a single signup evaluator call. The signup pipeline's
+ * latency budget is ~2s (the browser tab is blocked behind the response). The
+ * shared Anthropic client defaults to 30s — way too long for this path. We
+ * AbortSignal-timeout aggressively so a slow Anthropic landing collapses to
+ * the pipeline's `infra_failure_permissive` fallback within the budget, rather
+ * than leaving the user staring at a spinner.
+ */
+const SIGNUP_EVAL_TIMEOUT_MS = 2000;
 
 export class OpusSignupEvaluator implements SignupEvaluator {
   async evaluate(input: SignupEvaluatorInput): Promise<SignupEvaluatorOutput> {
@@ -52,6 +66,7 @@ ${abrSection}`;
       user: userMessage,
       tool: prompt.tool,
       max_tokens: 512,
+      signal: AbortSignal.timeout(SIGNUP_EVAL_TIMEOUT_MS),
     });
 
     return {

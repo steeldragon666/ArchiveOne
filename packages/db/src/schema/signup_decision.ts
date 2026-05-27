@@ -78,6 +78,12 @@ export type SignupDecisionInsert = typeof signupDecision.$inferInsert;
 /**
  * Canonical reason values. Kept as a const-tuple so a stray typo at a call
  * site fails TypeScript narrowing instead of surfacing as a runtime audit gap.
+ *
+ * Three-way parity: MUST match the CHECK constraint
+ * `signup_decision_reason_valid` (migration 0089) and the union in
+ * `apps/api/src/lib/signup-pipeline.ts`. The first seven are pipeline-emitted;
+ * `already_registered` is route-emitted when tenant creation discovers a
+ * duplicate user post-approval.
  */
 export const SIGNUP_DECISION_REASONS = [
   'admin_override',
@@ -87,5 +93,17 @@ export const SIGNUP_DECISION_REASONS = [
   'claude_deny',
   'permissive_fallback',
   'infra_failure_permissive',
+  'already_registered',
 ] as const;
 export type SignupDecisionReason = (typeof SIGNUP_DECISION_REASONS)[number];
+
+/**
+ * `claude_decision` is nullable in the DB (NULL when the LLM was never invoked,
+ * e.g. admin_override / rate_limit / email_shape / infra failure). When set,
+ * it's the LLM's raw verdict BEFORE the pipeline applied its confidence floor.
+ *
+ * Three-way parity: matches the CHECK constraint `signup_decision_claude_decision_valid`
+ * (migration 0089) and the union in `packages/agents/src/signup-evaluator/types.ts`.
+ */
+export const SIGNUP_CLAUDE_DECISIONS = ['approve', 'deny', 'review'] as const;
+export type SignupClaudeDecision = (typeof SIGNUP_CLAUDE_DECISIONS)[number];

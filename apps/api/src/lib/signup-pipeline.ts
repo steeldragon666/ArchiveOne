@@ -82,6 +82,27 @@ const EMAIL_TLD_REGEX = /^[^\s@]+@[^\s@]+\.[A-Za-z]{2,24}$/;
 // Public types
 // ---------------------------------------------------------------------------
 
+/**
+ * Closed set of values that may appear in `signup_decision.reason`.
+ *
+ * Three-way parity (per CLAUDE.md): this list MUST match the CHECK constraint
+ * `signup_decision_reason_valid` in migration 0089 and the Zod enum used in
+ * the audit-row shape. The pipeline emits the first seven; the signup route
+ * emits `already_registered` as a route-level terminal reason after the
+ * pipeline approves but tenant creation discovers a duplicate user.
+ */
+export const SIGNUP_DECISION_REASONS = [
+  'admin_override',
+  'rate_limit',
+  'email_shape',
+  'claude_approve',
+  'claude_deny',
+  'permissive_fallback',
+  'infra_failure_permissive',
+  'already_registered',
+] as const;
+export type SignupDecisionReason = (typeof SIGNUP_DECISION_REASONS)[number];
+
 export type SignupPipelineDecision =
   | {
       decision: 'approve';
@@ -94,6 +115,13 @@ export type SignupPipelineDecision =
   | {
       decision: 'deny';
       reason: 'rate_limit' | 'email_shape' | 'claude_deny';
+    }
+  | {
+      // Route-side terminal — pipeline approved, but tenant creation found
+      // an existing user with an active tenant. Emitted only by the route
+      // handler, never by `runSignupPipeline` itself.
+      decision: 'deny';
+      reason: 'already_registered';
     };
 
 export type SignupPipelineResult = {
