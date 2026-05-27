@@ -91,6 +91,7 @@ import { registerEvidenceRoutes } from './routes/evidence.js';
 import { registerConsultantChain } from './routes/consultant/chain.js';
 import { registerConsultantKpis } from './routes/consultant/kpis.js';
 import { registerConsultantSignals } from './routes/consultant/signals.js';
+import { registerEngagementRoutes } from './routes/engagement/index.js';
 import { publicUrl } from './lib/public-base-url.js';
 import { readSecretEnv } from './lib/production-secrets.js';
 
@@ -433,6 +434,11 @@ export function buildApp(options: BuildAppOptions = {}): App {
   // Consultant dashboard KPI strip (GET /v1/consultant/kpis) — D4.
   app.register((instance, _opts, done) => {
     registerConsultantKpis(instance);
+    done();
+  });
+  // Engagement letter endpoints — Wizard Step 1 (Task 02).
+  app.register((instance, _opts, done) => {
+    registerEngagementRoutes(instance);
     done();
   });
   // Prompt-suggestions routes require explicit deps (esp. `runContractTest`,
