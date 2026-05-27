@@ -1,93 +1,46 @@
-'use client';
-
 import Link from 'next/link';
-import { useState } from 'react';
 
 // ---------------------------------------------------------------------------
-// VIDEO URL PLACEHOLDERS — single-line swap when the actual videos are hosted.
-//
-// Local default: /marketing/videos/<id>.mp4 resolves to
-//   apps/web/public/marketing/videos/<id>.mp4
-//
-// If files grow beyond ~80 MB total, swap these to absolute URLs (Cloudflare
-// R2, S3, YouTube iframe embeds, etc.) — the <video> tag is URL-agnostic.
-//
-// See apps/web/public/marketing/videos/README.md for the drop-point spec.
+// Explainers — 4 animated HTML files exported from the Claude design project.
+// Each is a self-contained React-on-Babel-standalone scene sequence; we
+// embed them via <iframe> so we don't have to port ~1500 lines of JSX
+// into the Next.js component tree. Files live under
+//   apps/web/public/marketing/explainers/
 // ---------------------------------------------------------------------------
 
-const HERO_VIDEO_URL = '/marketing/videos/index-explainer.mp4'; // TODO: upload + swap URL
-const HERO_VIDEO_POSTER = '/marketing/videos/index-explainer-poster.jpg'; // TODO: upload + swap URL
-
-type DemoAspect = '16:9' | '9:16';
-type DemoVideo = {
-  id: string;
-  url: string;
-  poster: string;
-  caption: string;
-  aspect: DemoAspect;
-};
-
-const DEMO_VIDEOS: readonly DemoVideo[] = [
-  {
-    id: 'signup',
-    url: '/marketing/videos/signup-demo.mp4',
-    poster: '/marketing/videos/signup-poster.jpg',
-    caption: 'Signup → workspace provisioned',
-    aspect: '16:9',
-  },
-  {
-    id: 'evidence-mobile',
-    url: '/marketing/videos/evidence-mobile.mp4',
-    poster: '/marketing/videos/evidence-mobile-poster.jpg',
-    caption: 'Evidence capture — claimant mobile app',
-    aspect: '9:16',
-  },
-  {
-    id: 'evidence-desktop',
-    url: '/marketing/videos/evidence-desktop.mp4',
-    poster: '/marketing/videos/evidence-desktop-poster.jpg',
-    caption: 'Evidence intake — consultant workspace',
-    aspect: '16:9',
-  },
-  {
-    id: 'activity-register',
-    url: '/marketing/videos/activity-register.mp4',
-    poster: '/marketing/videos/activity-register-poster.jpg',
-    caption: 'Activity register synthesis',
-    aspect: '16:9',
-  },
-  {
-    id: 'narrative',
-    url: '/marketing/videos/narrative-drafting.mp4',
-    poster: '/marketing/videos/narrative-drafting-poster.jpg',
-    caption: 'Narrative drafting with citations',
-    aspect: '16:9',
-  },
-  {
-    id: 'export',
-    url: '/marketing/videos/claim-pack-export.mp4',
-    poster: '/marketing/videos/claim-pack-export-poster.jpg',
-    caption: 'Claim pack export → ATO-ready',
-    aspect: '16:9',
-  },
-] as const;
+const HERO_EXPLAINER = '/marketing/explainers/archiveone-explainer.html';
+const WIZARD_EXPLAINER = '/marketing/explainers/wizard-explainer.html';
+const CLAIMANT_MOBILE = '/marketing/explainers/claimant-mobile.html';
 
 // ---------------------------------------------------------------------------
-// Content data
+// Content
 // ---------------------------------------------------------------------------
 
-const platformPillars: ReadonlyArray<{ title: string; body: string }> = [
+const primitives: ReadonlyArray<{ title: string; body: string }> = [
   {
     title: 'Evidence chain',
-    body: 'Every R&D artefact lands in a forensic chain. Voice notes from the lab, Xero invoices, lab notebook PDFs, calculations, photos — each one hash-stamped at capture and forwarded into the chain ledger. AusIndustry reviewers see provenance, not interpretation.',
+    body: 'Every R&D artefact — voice notes from the lab, Xero invoices, lab notebook PDFs, calculations, photos — lands in a forensic chain ledger, hash-stamped (SHA-256) at the moment of capture. AusIndustry reviewers see provenance, not interpretation.',
   },
   {
     title: 'Activity register',
-    body: 'The platform clusters captured evidence into core-activity and supporting-activity proposals, mapped to Division 355 of the ITAA 1997. Consultants review and approve; the system handles the §355-25(1)(a) experimentation-vocabulary work.',
+    body: 'The platform clusters captured evidence into core and supporting activity proposals mapped to Division 355 of the ITAA 1997. Consultants review and approve; the system handles the §355-25(1)(a) experimentation-vocabulary work.',
   },
   {
     title: 'Narrative drafting',
     body: 'Multi-cycle narrative generation with citation-only summaries. Prior-year content is referenced by content_hash + segment_indices — never re-paraphrased — so a five-year claim history reads as one coherent program of research.',
+  },
+];
+
+const surfaces: ReadonlyArray<{ title: string; body: string; tag?: string }> = [
+  {
+    title: 'Engagement letters',
+    tag: 'Wizard step 01',
+    body: 'Send, sign, countersign, and auto-expire the engagement letter inside the wizard. Mobile-first signing for the claimant; tokenised public links so a claimant who never logs in can still complete the letter; reminder + auto-expire daemon runs daily.',
+  },
+  {
+    title: 'IP search',
+    tag: 'Wizard step 02',
+    body: 'Per-hypothesis prior-art search against patent, journal, and trade-press corpora. The agent emits verdicts (novel / overlapping / known) with citations; the wizard renders a PDF report that anchors the technical-uncertainty argument.',
   },
   {
     title: 'Expenditure mapping',
@@ -117,13 +70,6 @@ const workflow: ReadonlyArray<readonly [string, string, string]> = [
   ],
 ];
 
-const proof: ReadonlyArray<readonly [string, string]> = [
-  ['13/9', 'Core and supporting activity portal fields'],
-  ['SHA-256', 'Claimant evidence chain primitive'],
-  ['Xero', 'Accounting source ingestion path'],
-  ['ATO / ART', 'Regulatory intelligence coverage'],
-];
-
 const pilotSteps: ReadonlyArray<string> = [
   'Submit firm details — automatic eligibility screen',
   'Workspace and 30-day trial provisioned immediately',
@@ -132,7 +78,7 @@ const pilotSteps: ReadonlyArray<string> = [
 ];
 
 // ---------------------------------------------------------------------------
-// Components
+// Atoms
 // ---------------------------------------------------------------------------
 
 function Mark({ className = '' }: { className?: string }) {
@@ -153,68 +99,28 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-function PlayGlyph() {
+function ExplainerFrame({
+  src,
+  title,
+  className,
+}: {
+  src: string;
+  title: string;
+  className: string;
+}) {
   return (
-    <span
-      aria-hidden="true"
-      className="pointer-events-none absolute inset-0 flex items-center justify-center"
-    >
-      <span className="flex h-16 w-16 items-center justify-center rounded-full bg-[#d8b15f] shadow-[0_8px_32px_rgba(0,0,0,0.45)] transition-transform group-hover:scale-110">
-        <span className="ml-1 block h-0 w-0 border-y-[10px] border-l-[16px] border-y-transparent border-l-white" />
-      </span>
-    </span>
-  );
-}
-
-function DemoTile({ demo }: { demo: DemoVideo }) {
-  const [playing, setPlaying] = useState(false);
-  const aspectClass = demo.aspect === '9:16' ? 'aspect-[9/16]' : 'aspect-video';
-
-  return (
-    <figure className="flex flex-col gap-3">
-      <div
-        className={`group relative overflow-hidden border border-[#f7f1e4]/14 bg-[#0d100c] ${aspectClass}`}
-      >
-        {playing ? (
-          <video
-            className="h-full w-full object-cover"
-            src={demo.url}
-            poster={demo.poster}
-            controls
-            autoPlay
-            playsInline
-          >
-            <track kind="captions" />
-          </video>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setPlaying(true)}
-            aria-label={`Play: ${demo.caption}`}
-            className="absolute inset-0 h-full w-full"
-          >
-            {/* Poster image. If the file is missing the browser shows the
-                background colour beneath — graceful degradation.
-                Using a plain <img> rather than next/image because the
-                images may not exist at build time (placeholder slots). */}
-            <img
-              src={demo.poster}
-              alt=""
-              className="h-full w-full object-cover opacity-90 transition-opacity group-hover:opacity-100"
-              onError={(e) => {
-                // Hide the broken image icon if the poster doesn't exist yet.
-                e.currentTarget.style.visibility = 'hidden';
-              }}
-            />
-            <span className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(216,177,95,0.10),transparent_70%)]" />
-            <PlayGlyph />
-          </button>
-        )}
-      </div>
-      <figcaption className="font-mono text-xs uppercase tracking-[0.16em] text-[#8d8476]">
-        {demo.caption}
-      </figcaption>
-    </figure>
+    <div className={`overflow-hidden border border-[#f7f1e4]/14 bg-[#0a0a0a] ${className}`}>
+      <iframe
+        src={src}
+        title={title}
+        loading="lazy"
+        // sandbox without allow-same-origin keeps the iframe content
+        // boxed off from the host page; allow-scripts is required for
+        // the React-on-Babel-standalone bootstrap.
+        sandbox="allow-scripts"
+        className="block h-full w-full border-0"
+      />
+    </div>
   );
 }
 
@@ -225,208 +131,186 @@ function DemoTile({ demo }: { demo: DemoVideo }) {
 export default function MarketingHomePage() {
   return (
     <main className="min-h-screen bg-[#10130f] text-[#f7f1e4]">
-      <section className="relative isolate overflow-hidden border-b border-[#f7f1e4]/10">
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(247,241,228,0.055)_1px,transparent_1px),linear-gradient(to_bottom,rgba(247,241,228,0.055)_1px,transparent_1px)] bg-[size:72px_72px] [mask-image:linear-gradient(to_bottom,#000_10%,transparent_92%)]" />
-        <div className="absolute inset-x-0 top-0 h-[38rem] bg-[radial-gradient(ellipse_70%_50%_at_50%_0%,rgba(216,177,95,0.18),transparent_68%)]" />
-
-        <nav className="relative z-10 mx-auto flex max-w-[1420px] items-center justify-between px-5 py-5 sm:px-8 lg:px-12">
-          <Link href="/" className="flex items-center gap-3">
+      {/* HERO — full-screen animated explainer. The iframe occupies 100vh;
+          a thin top-bar overlays the brand + a single primary CTA so visitors
+          can act without scrolling. The animation auto-plays in the iframe. */}
+      <section className="relative h-screen w-full">
+        <iframe
+          src={HERO_EXPLAINER}
+          title="ArchiveOne — Animated Explainer"
+          sandbox="allow-scripts"
+          className="absolute inset-0 h-full w-full border-0"
+        />
+        <nav className="pointer-events-none absolute inset-x-0 top-0 z-10 mx-auto flex max-w-[1420px] items-center justify-between px-5 py-5 sm:px-8 lg:px-12">
+          <Link
+            href="/"
+            className="pointer-events-auto flex items-center gap-3 rounded-sm bg-[#0a0a0a]/55 px-3 py-2 backdrop-blur-sm"
+          >
             <Mark className="shadow-[0_0_22px_rgba(216,177,95,0.55)]" />
             <span className="font-display text-2xl font-semibold tracking-tight">ArchiveOne</span>
           </Link>
-          <div className="hidden items-center gap-8 font-body text-sm text-[#cfc5b3] md:flex">
-            <Link href="#platform" className="hover:text-[#f7f1e4]">
-              Platform
+          <div className="pointer-events-auto flex items-center gap-3">
+            <Link
+              href="/login"
+              className="hidden border border-[#f7f1e4]/30 bg-[#0a0a0a]/55 px-4 py-3 font-mono text-[11px] font-bold uppercase tracking-[0.16em] text-[#f7f1e4] backdrop-blur-sm transition hover:border-[#d8b15f] hover:text-[#d8b15f] sm:inline-flex"
+            >
+              Sign in
             </Link>
-            <Link href="#see-it-work" className="hover:text-[#f7f1e4]">
-              See it work
-            </Link>
-            <Link href="#workflow" className="hover:text-[#f7f1e4]">
-              Workflow
-            </Link>
-            <Link href="/blog" className="hover:text-[#f7f1e4]">
-              Blog
-            </Link>
-            <Link href="#pilot" className="hover:text-[#f7f1e4]">
-              Pilot
+            <Link
+              href="/signup"
+              className="bg-[#d8b15f] px-4 py-3 font-mono text-[11px] font-bold uppercase tracking-[0.16em] text-[#10130f] transition hover:bg-[#f0c96f]"
+            >
+              Start your trial
             </Link>
           </div>
-          <Link
-            href="/signup"
-            className="bg-[#d8b15f] px-4 py-3 font-mono text-[11px] font-bold uppercase tracking-[0.16em] text-[#10130f] transition hover:bg-[#f0c96f]"
-          >
-            Request access
-          </Link>
         </nav>
+        <div className="pointer-events-none absolute inset-x-0 bottom-6 z-10 flex flex-col items-center gap-2 text-[#cfc5b3]">
+          <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-[#8d8476]">
+            Scroll for the platform
+          </span>
+          <span className="h-4 w-px bg-[#d8b15f]" />
+        </div>
+      </section>
 
-        {/* Hero — explainer video above the H1, headline + CTA below the
-            video so the meaning still lands quickly for text-led readers. */}
-        <div className="relative z-10 mx-auto max-w-[1420px] px-5 pb-10 pt-12 sm:px-8 lg:px-12 lg:pt-8">
-          <SectionLabel>Evidence infrastructure for Australian R&D claims</SectionLabel>
-
-          <figure className="mt-8 overflow-hidden border border-[#f7f1e4]/14 bg-[#0d100c] shadow-[0_32px_120px_rgba(0,0,0,0.45)]">
-            <div className="relative aspect-video">
-              <video
-                className="h-full w-full object-cover"
-                src={HERO_VIDEO_URL}
-                poster={HERO_VIDEO_POSTER}
-                autoPlay
-                muted
-                loop
-                playsInline
-                preload="metadata"
-                aria-hidden="true"
-              >
-                <track kind="captions" />
-              </video>
-              <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_bottom,transparent_55%,rgba(16,19,15,0.7)_100%)]" />
+      {/* PRIMITIVES — the three foundations the platform is built on. */}
+      <section
+        id="primitives"
+        className="border-y border-[#f7f1e4]/10 bg-[#f3ebdd] text-[#181a16]"
+      >
+        <div className="mx-auto max-w-[1420px] px-5 py-24 sm:px-8 lg:px-12">
+          <div className="grid gap-12 lg:grid-cols-[0.8fr_1.2fr] lg:items-start">
+            <div>
+              <SectionLabel>Three primitives</SectionLabel>
+              <h2 className="mt-6 max-w-xl font-display text-5xl font-light leading-tight tracking-tight md:text-6xl">
+                Evidence first, narrative second, claim pack last.
+              </h2>
+              <p className="mt-8 max-w-md font-body text-base leading-7 text-[#5f5a50]">
+                Three foundations that make every claim defensible by construction. Add evidence
+                contemporaneously; the rest of the platform composes on top.
+              </p>
             </div>
-          </figure>
+            <div className="grid gap-4 md:grid-cols-1">
+              {primitives.map(({ title, body }) => (
+                <article key={title} className="border border-[#181a16]/15 bg-white p-6">
+                  <Mark />
+                  <h3 className="mt-6 font-display text-3xl font-light">{title}</h3>
+                  <p className="mt-4 font-body text-sm leading-7 text-[#5f5a50]">{body}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
 
-          <div className="mt-12 grid gap-12 lg:grid-cols-[1.05fr_0.95fr] lg:items-start">
-            <section>
-              <h1 className="max-w-5xl font-display text-[3.75rem] font-light leading-[0.92] tracking-tight sm:text-[5rem] lg:text-[6.5rem]">
-                Make every claim traceable before review day.
-              </h1>
-              <p className="mt-8 max-w-2xl font-body text-lg leading-8 text-[#cfc5b3] sm:text-xl sm:leading-9">
-                ArchiveOne gives R&DTI consultants a single chain of record for evidence capture,
-                technical narratives, accounting source data, and defensible claim packs.
+      {/* VIDEO 02 — wizard explainer. Sized to a comfortable 16:9 viewport
+          within the page; iframe plays a multi-scene animation of the
+          consultant wizard. */}
+      <section className="border-b border-[#f7f1e4]/10 bg-[#10130f]">
+        <div className="mx-auto max-w-[1420px] px-5 py-24 sm:px-8 lg:px-12">
+          <div className="grid gap-8 lg:grid-cols-[0.85fr_1.15fr] lg:items-end">
+            <div>
+              <SectionLabel>Inside the wizard</SectionLabel>
+              <h2 className="mt-6 font-display text-5xl font-light leading-tight tracking-tight md:text-6xl">
+                Six steps from engagement letter to AusIndustry submission.
+              </h2>
+            </div>
+            <p className="max-w-2xl font-body text-base leading-8 text-[#cfc5b3] md:text-lg md:leading-9">
+              The consultant workspace walks each claim through the same six gates — engagement,
+              hypotheses, activities, apportionment, evidence, review. Every gate writes to the
+              evidence chain; nothing skips review.
+            </p>
+          </div>
+          <ExplainerFrame
+            src={WIZARD_EXPLAINER}
+            title="ArchiveOne — Claim Wizard & Workflow Explainer"
+            className="mt-12 aspect-video w-full shadow-[0_32px_120px_rgba(0,0,0,0.45)]"
+          />
+        </div>
+      </section>
+
+      {/* SURFACES — the shipped surfaces. Two of these (Engagement letters,
+          IP search) were finalised this week — flagged with a "Wizard step"
+          tag so the just-merged work shows. */}
+      <section id="surfaces" className="border-b border-[#f7f1e4]/10 bg-[#161a14]">
+        <div className="mx-auto max-w-[1420px] px-5 py-24 sm:px-8 lg:px-12">
+          <div className="grid gap-12 lg:grid-cols-[0.8fr_1.2fr] lg:items-start">
+            <div>
+              <SectionLabel>What ships in the box</SectionLabel>
+              <h2 className="mt-6 max-w-xl font-display text-5xl font-light leading-tight tracking-tight md:text-6xl">
+                Surfaces consultants already use.
+              </h2>
+              <p className="mt-8 max-w-md font-body text-base leading-7 text-[#cfc5b3]">
+                Built for the work consulting firms already do. The platform shapes raw lab activity
+                into an AusIndustry-ready submission without asking the consultant to change how
+                they advise their clients.
+              </p>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              {surfaces.map(({ title, body, tag }) => (
+                <article
+                  key={title}
+                  className="flex flex-col border border-[#f7f1e4]/14 bg-[#0d100c] p-6"
+                >
+                  <div className="flex items-center justify-between">
+                    <Mark />
+                    {tag && (
+                      <span className="border border-[#d8b15f]/40 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em] text-[#d8b15f]">
+                        {tag}
+                      </span>
+                    )}
+                  </div>
+                  <h3 className="mt-6 font-display text-3xl font-light text-[#f7f1e4]">{title}</h3>
+                  <p className="mt-4 font-body text-sm leading-7 text-[#bcb2a0]">{body}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* VIDEO 03 — claimant mobile. The 9:16 framing matches the actual
+          phone form factor of the capture app. */}
+      <section className="border-b border-[#f7f1e4]/10 bg-[#10130f]">
+        <div className="mx-auto max-w-[1420px] px-5 py-24 sm:px-8 lg:px-12">
+          <div className="grid gap-12 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
+            <div>
+              <SectionLabel>Claimant capture, in the field</SectionLabel>
+              <h2 className="mt-6 font-display text-5xl font-light leading-tight tracking-tight md:text-6xl">
+                Evidence enters the chain at the moment of capture.
+              </h2>
+              <p className="mt-8 max-w-2xl font-body text-base leading-8 text-[#cfc5b3] md:text-lg md:leading-9">
+                The claimant mobile app is the field side of the chain. Voice notes, photos,
+                timestamps, GPS context — captured on a phone, hashed locally, forwarded into the
+                consultant workspace where the activity register and narrative drafter take over.
+                Engagement letters can be signed first-launch, before any evidence is captured.
               </p>
               <div className="mt-10 flex flex-wrap gap-3">
                 <Link
                   href="/signup"
                   className="bg-[#d8b15f] px-5 py-4 font-mono text-[11px] font-bold uppercase tracking-[0.16em] text-[#10130f] transition hover:bg-[#f0c96f]"
                 >
-                  Start pilot intake
+                  Start your trial
                 </Link>
                 <Link
-                  href="#see-it-work"
+                  href="#pilot"
                   className="border border-[#f7f1e4]/20 px-5 py-4 font-mono text-[11px] font-bold uppercase tracking-[0.16em] text-[#f7f1e4] transition hover:border-[#d8b15f] hover:text-[#d8b15f]"
                 >
-                  See it work
+                  Pilot details ↓
                 </Link>
               </div>
-            </section>
-
-            <section className="relative border border-[#f7f1e4]/14 bg-[#161a14]/90 p-5 shadow-[0_32px_120px_rgba(0,0,0,0.45)]">
-              <div className="border border-[#f7f1e4]/12 bg-[#0d100c] p-5">
-                <div className="flex items-center justify-between border-b border-[#f7f1e4]/10 pb-4">
-                  <div>
-                    <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#8d8476]">
-                      Active claim chain
-                    </p>
-                    <h2 className="mt-2 font-display text-3xl font-light">FY25 evidence vault</h2>
-                  </div>
-                  <span className="border border-[#6fa484]/45 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-[#9bc9aa]">
-                    Verified
-                  </span>
-                </div>
-
-                <div className="mt-5 grid gap-3">
-                  {workflow.map(([step, title, body]) => (
-                    <article
-                      key={step}
-                      className="grid grid-cols-[58px_1fr] gap-4 border border-[#f7f1e4]/10 bg-[#161a14] p-4"
-                    >
-                      <span className="font-mono text-xl text-[#d8b15f]">{step}</span>
-                      <div>
-                        <h3 className="font-body text-sm font-semibold uppercase tracking-[0.12em] text-[#f7f1e4]">
-                          {title}
-                        </h3>
-                        <p className="mt-2 font-body text-sm leading-6 text-[#bcb2a0]">{body}</p>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-
-                <div className="mt-5 grid grid-cols-2 gap-px border border-[#f7f1e4]/10 bg-[#f7f1e4]/10">
-                  {proof.map(([value, label]) => (
-                    <div key={label} className="bg-[#0d100c] p-4">
-                      <div className="font-mono text-xl text-[#d8b15f]">{value}</div>
-                      <p className="mt-2 font-body text-xs leading-5 text-[#8d8476]">{label}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </section>
-          </div>
-        </div>
-      </section>
-
-      {/* Platform — expanded copy with concrete capability descriptions. */}
-      <section id="platform" className="border-b border-[#f7f1e4]/10 bg-[#f3ebdd] text-[#181a16]">
-        <div className="mx-auto grid max-w-[1420px] gap-10 px-5 py-20 sm:px-8 lg:grid-cols-[0.8fr_1.2fr] lg:px-12">
-          <div>
-            <SectionLabel>Platform</SectionLabel>
-            <h2 className="mt-6 max-w-xl font-display text-5xl font-light leading-tight tracking-tight md:text-7xl">
-              Built for the work consultants already do.
-            </h2>
-            <p className="mt-8 max-w-md font-body text-base leading-7 text-[#5f5a50]">
-              Five surfaces, one chain of record. The platform shapes raw lab activity into an
-              AusIndustry-ready submission without asking consultants to change how they advise
-              their clients.
-            </p>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            {platformPillars.map(({ title, body }) => (
-              <article key={title} className="border border-[#181a16]/15 bg-white p-6">
-                <Mark />
-                <h3 className="mt-8 font-display text-3xl font-light">{title}</h3>
-                <p className="mt-4 font-body text-sm leading-7 text-[#5f5a50]">{body}</p>
-              </article>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Who it's for — short positioning strip. */}
-      <section className="border-b border-[#f7f1e4]/10 bg-[#10130f]">
-        <div className="mx-auto max-w-[1420px] px-5 py-12 sm:px-8 lg:px-12">
-          <div className="flex flex-col items-start justify-between gap-6 md:flex-row md:items-center">
-            <div>
-              <SectionLabel>Who it&rsquo;s for</SectionLabel>
-              <p className="mt-4 max-w-3xl font-display text-2xl font-light leading-snug text-[#f7f1e4] md:text-3xl">
-                ArchiveOne is built for Australian R&amp;DTI consulting firms managing 5&ndash;500
-                claimants. Big-4 audit-grade documentation, sole-practitioner pricing.
-              </p>
             </div>
-            <Link
-              href="/signup"
-              className="w-fit border border-[#f7f1e4]/25 px-5 py-4 font-mono text-[11px] font-bold uppercase tracking-[0.16em] text-[#f7f1e4] transition hover:border-[#d8b15f] hover:text-[#d8b15f]"
-            >
-              Request access
-            </Link>
+            <ExplainerFrame
+              src={CLAIMANT_MOBILE}
+              title="ArchiveOne — Claimant mobile app"
+              className="mx-auto aspect-[9/16] w-full max-w-[420px] shadow-[0_32px_120px_rgba(0,0,0,0.45)]"
+            />
           </div>
         </div>
       </section>
 
-      {/* See it work — demo video tiles. */}
-      <section id="see-it-work" className="border-b border-[#f7f1e4]/10 bg-[#10130f]">
-        <div className="mx-auto max-w-[1420px] px-5 py-20 sm:px-8 lg:px-12">
-          <SectionLabel>See it in motion</SectionLabel>
-          <div className="mt-6 grid gap-10 lg:grid-cols-[0.85fr_1.15fr]">
-            <div>
-              <h2 className="font-display text-5xl font-light leading-tight tracking-tight md:text-6xl">
-                Two minutes from intake to defensible claim pack.
-              </h2>
-            </div>
-            <p className="max-w-2xl font-body text-base leading-8 text-[#cfc5b3] md:text-lg md:leading-9">
-              Real workflow against the working product — consultants capturing evidence on desktop,
-              claimants capturing it on mobile, the AI classifying activities, the narrative drafter
-              producing AusIndustry-ready text. Click a tile to play.
-            </p>
-          </div>
-
-          <div className="mt-12 grid gap-8 sm:grid-cols-2">
-            {DEMO_VIDEOS.map((demo) => (
-              <DemoTile key={demo.id} demo={demo} />
-            ))}
-          </div>
-        </div>
-      </section>
-
+      {/* WORKFLOW — the same 3-line story we tell elsewhere. */}
       <section id="workflow" className="border-b border-[#f7f1e4]/10">
-        <div className="mx-auto max-w-[1420px] px-5 py-20 sm:px-8 lg:px-12">
+        <div className="mx-auto max-w-[1420px] px-5 py-24 sm:px-8 lg:px-12">
           <div className="flex flex-col justify-between gap-8 md:flex-row md:items-end">
             <div>
               <SectionLabel>Workflow</SectionLabel>
@@ -441,7 +325,6 @@ export default function MarketingHomePage() {
               Apply for access
             </Link>
           </div>
-
           <div className="mt-12 divide-y divide-[#f7f1e4]/10 border-y border-[#f7f1e4]/10">
             {workflow.map(([step, title, body]) => (
               <article
@@ -457,47 +340,9 @@ export default function MarketingHomePage() {
         </div>
       </section>
 
-      <section className="border-b border-[#f7f1e4]/10 bg-[#f3ebdd] text-[#181a16]">
-        <div className="mx-auto grid max-w-[1420px] gap-10 px-5 py-20 sm:px-8 lg:grid-cols-[0.8fr_1.2fr] lg:px-12">
-          <div>
-            <SectionLabel>Field notes</SectionLabel>
-            <h2 className="mt-6 max-w-xl font-display text-5xl font-light leading-tight tracking-tight md:text-7xl">
-              Evidence, workflow, and review readiness.
-            </h2>
-            <Link
-              href="/blog"
-              className="mt-8 inline-flex border border-[#181a16]/20 px-5 py-4 font-mono text-[11px] font-bold uppercase tracking-[0.16em] text-[#181a16] transition hover:border-[#d8b15f] hover:text-[#8a6728]"
-            >
-              Read the blog
-            </Link>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            {[
-              {
-                title: 'What contemporaneous documentation looks like in 2026',
-                body: 'A practical guide for evidence that can be inspected, traced, and understood.',
-                href: '/blog/contemporaneous-documentation-2026',
-              },
-              {
-                title: 'Hypothesis articulation for software R&D',
-                body: 'A working frame for uncertainty, experiment, and technical learning.',
-                href: '/blog/hypothesis-articulation-software-rd',
-              },
-            ].map(({ title, body, href }) => (
-              <Link key={title} href={href} className="border border-[#181a16]/15 bg-white p-6">
-                <Mark />
-                <h3 className="mt-8 font-display text-3xl font-light">{title}</h3>
-                <p className="mt-4 font-body text-sm leading-7 text-[#5f5a50]">{body}</p>
-              </Link>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Pilot intake — customer-facing copy (carry-forward of
-          fix/landing-pilot-intake-copy @ 9031367). */}
+      {/* PILOT — same intake copy + CTA as before. */}
       <section id="pilot" className="bg-[#161a14]">
-        <div className="mx-auto grid max-w-[1420px] gap-10 px-5 py-20 sm:px-8 lg:grid-cols-[1fr_0.85fr] lg:px-12">
+        <div className="mx-auto grid max-w-[1420px] gap-10 px-5 py-24 sm:px-8 lg:grid-cols-[1fr_0.85fr] lg:px-12">
           <div>
             <SectionLabel>Pilot intake</SectionLabel>
             <h2 className="mt-6 max-w-4xl font-display text-5xl font-light leading-tight tracking-tight md:text-7xl">
