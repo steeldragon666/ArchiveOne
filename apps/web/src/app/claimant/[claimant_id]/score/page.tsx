@@ -54,9 +54,9 @@ export default async function ClaimantScorePage({ params }: Props) {
   const deltaSign = score.delta_7d > 0 ? '+' : score.delta_7d < 0 ? '' : '±';
 
   return (
-    <main className="min-h-screen bg-slate-50">
+    <main className="min-h-screen bg-background">
       <header
-        className="border-b bg-white px-4 py-4"
+        className="border-b border-border bg-card px-4 py-4"
         style={{ borderTopColor: status.brand.primary_color, borderTopWidth: 4 }}
       >
         <div className="mx-auto flex max-w-4xl items-center gap-3">
@@ -71,8 +71,8 @@ export default async function ClaimantScorePage({ params }: Props) {
             </div>
           )}
           <div>
-            <h1 className="text-lg font-semibold text-slate-900">{status.brand.display_name}</h1>
-            <p className="text-xs text-slate-500">{status.subject_tenant.name}</p>
+            <h1 className="text-lg font-semibold text-foreground">{status.brand.display_name}</h1>
+            <p className="text-xs text-muted-foreground">{status.subject_tenant.name}</p>
           </div>
         </div>
       </header>
@@ -80,7 +80,7 @@ export default async function ClaimantScorePage({ params }: Props) {
       <div className="mx-auto max-w-4xl space-y-6 px-4 py-6">
         <Link
           href={`/claimant/${claimant_id}/status`}
-          className="inline-block text-sm font-medium text-blue-600 hover:underline"
+          className="inline-block text-sm font-medium text-primary hover:underline"
         >
           ← Back to overview
         </Link>
@@ -96,7 +96,7 @@ export default async function ClaimantScorePage({ params }: Props) {
                 maxPts={score.max_pts}
                 primaryColor={status.brand.primary_color}
               />
-              <p className="mt-3 text-center text-xs text-slate-500">
+              <p className="mt-3 text-center text-xs text-muted-foreground">
                 Placeholder data — real scoring lands with the audit engine
               </p>
             </CardContent>
@@ -111,19 +111,19 @@ export default async function ClaimantScorePage({ params }: Props) {
                 <span
                   className={
                     score.delta_7d > 0
-                      ? 'text-3xl font-bold text-emerald-600'
+                      ? 'text-3xl font-bold text-sage'
                       : score.delta_7d < 0
-                        ? 'text-3xl font-bold text-red-600'
-                        : 'text-3xl font-bold text-slate-600'
+                        ? 'text-3xl font-bold text-rust'
+                        : 'text-3xl font-bold text-muted-foreground'
                   }
                 >
                   {deltaSign}
                   {Math.abs(score.delta_7d)}
                 </span>
-                <span className="text-sm text-slate-500">pts</span>
+                <span className="text-sm text-muted-foreground">pts</span>
               </div>
-              <p className="mt-1 text-xs text-slate-500">Compared to last week</p>
-              <p className="mt-3 text-xs text-slate-400">
+              <p className="mt-1 text-xs text-muted-foreground">Compared to last week</p>
+              <p className="mt-3 text-xs text-muted-foreground">
                 Computed{' '}
                 {new Date(score.computed_at).toLocaleString(undefined, {
                   dateStyle: 'medium',

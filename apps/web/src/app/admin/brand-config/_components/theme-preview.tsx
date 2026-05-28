@@ -11,14 +11,14 @@
  */
 export function ThemePreview({ primary, accent }: { primary: string; accent: string }) {
   return (
-    <div className="rounded-md border overflow-hidden">
+    <div className="rounded-md border border-border overflow-hidden">
       <div
         className="px-4 py-3 text-white text-sm font-medium"
         style={{ backgroundColor: primary }}
       >
         Your firm header
       </div>
-      <div className="bg-white px-4 py-4 space-y-2">
+      <div className="bg-background text-foreground px-4 py-4 space-y-2">
         <p className="text-sm">
           Read more about our <span style={{ color: accent }}>R&amp;D Tax Incentive</span> process.
         </p>

@@ -51,7 +51,7 @@ export function WizardStepper({
                   ? 'border-[hsl(var(--brand-green))] bg-[hsl(var(--brand-green))] text-white'
                   : isCurrent
                     ? 'border-[hsl(var(--brand-ink))] bg-[hsl(var(--brand-paper))]'
-                    : 'border-[hsl(var(--brand-line))] bg-white text-[hsl(var(--brand-ink-subtle))]',
+                    : 'border-[hsl(var(--brand-line))] bg-card text-[hsl(var(--brand-ink-subtle))]',
                 // W2: when a step is BOTH agreed AND current, the isCurrent
                 // styling is otherwise swallowed by the agreed styling — add
                 // a focus ring so sighted users still see the "you are here"

@@ -70,10 +70,10 @@ const KIND_LABELS: Record<string, string> = {
 };
 
 const SEVERITY_BADGE: Record<string, string> = {
-  high: 'bg-red-100 text-red-800',
-  medium: 'bg-amber-100 text-amber-800',
-  low: 'bg-blue-100 text-blue-800',
-  informational: 'bg-gray-100 text-gray-600',
+  high: 'bg-red-950/50 text-red-300',
+  medium: 'bg-amber-950/50 text-amber-300',
+  low: 'bg-blue-950/50 text-blue-300',
+  informational: 'bg-muted text-muted-foreground',
 };
 
 const PAGE_SIZE = 25;
@@ -184,7 +184,7 @@ export function IntelligenceEventList() {
                         <span
                           className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
                             SEVERITY_BADGE[evt.classification_severity] ??
-                            'bg-gray-100 text-gray-600'
+                            'bg-muted text-muted-foreground'
                           }`}
                         >
                           {SEVERITY_LABELS[evt.classification_severity] ??

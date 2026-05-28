@@ -123,7 +123,7 @@ function BoundEventRow({
 
   return (
     <li
-      className="flex flex-wrap items-start gap-2 rounded border border-[hsl(var(--brand-line))] bg-white px-3 py-2"
+      className="flex flex-wrap items-start gap-2 rounded border border-[hsl(var(--brand-line))] bg-card px-3 py-2"
       data-testid={`bound-event-${artefact.artefact_id}`}
     >
       <div className="min-w-0 flex-1 space-y-1">
@@ -254,7 +254,7 @@ export function ActivityAttributionPanel({
           {artefactsQuery.error instanceof Error ? artefactsQuery.error.message : 'Unknown error'}
         </p>
       ) : eventArtefacts.length === 0 ? (
-        <div className="rounded border border-dashed border-[hsl(var(--brand-line))] bg-white/40 px-3 py-3 text-center">
+        <div className="rounded border border-dashed border-[hsl(var(--brand-line))] bg-muted/40 px-3 py-3 text-center">
           <p className="text-xs text-muted-foreground">
             No evidence bound yet. Click <span className="font-medium">Add evidence</span> above to
             attach events from this claim.
