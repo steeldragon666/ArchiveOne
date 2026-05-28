@@ -33,6 +33,14 @@ before(async () => {
   process.env['DOCUSIGN_CLIENT_SECRET'] = 'test-docusign-client-secret';
   process.env['DOCUSIGN_REDIRECT_URI'] = 'http://localhost:3000/v1/integrations/docusign/callback';
   process.env['DOCUSIGN_AUTH_BASE_URL'] = 'https://account-d.docusign.com';
+  process.env['XERO_CLIENT_ID'] = 'test-xero-client-id';
+  process.env['XERO_CLIENT_SECRET'] = 'test-xero-client-secret';
+  process.env['XERO_REDIRECT_URI'] =
+    'http://localhost:3000/v1/integrations/xero_accounting/callback';
+  process.env['MYOB_CLIENT_ID'] = 'test-myob-client-id';
+  process.env['MYOB_CLIENT_SECRET'] = 'test-myob-client-secret';
+  process.env['MYOB_REDIRECT_URI'] =
+    'http://localhost:3000/v1/integrations/myob_accounting/callback';
 
   await sql`INSERT INTO tenant (id, name, slug, primary_idp)
             VALUES (${TENANT_A}, 'Firm A', 'firm-a-b3', 'mixed'),
@@ -156,6 +164,48 @@ test('POST /v1/integrations/:provider/connect: returns redirect URL with state +
   const setCookie = res.headers['set-cookie'];
   const cookies = Array.isArray(setCookie) ? setCookie : [setCookie ?? ''];
   assert.ok(cookies.some((c) => typeof c === 'string' && c.startsWith('cpa_oauth_docusign=')));
+  await app.close();
+});
+
+test('POST /v1/integrations/xero_accounting/connect: returns Xero authorize URL', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'POST',
+    url: '/v1/integrations/xero_accounting/connect',
+    cookies: { cpa_session: await consultantJwt() },
+  });
+  assert.equal(res.statusCode, 200);
+  const body = res.json<{ redirect_url: string }>();
+  const url = new URL(body.redirect_url);
+  assert.equal(url.origin + url.pathname, 'https://login.xero.com/identity/connect/authorize');
+  assert.equal(url.searchParams.get('client_id'), 'test-xero-client-id');
+  const scope = url.searchParams.get('scope') ?? '';
+  assert.ok(scope.includes('accounting.transactions'), 'requests accounting scope');
+  assert.ok(scope.includes('offline_access'), 'requests offline_access for refresh');
+  assert.ok(url.searchParams.get('state'));
+  assert.equal(url.searchParams.get('code_challenge_method'), 'S256');
+  const setCookie = res.headers['set-cookie'];
+  const cookies = Array.isArray(setCookie) ? setCookie : [setCookie ?? ''];
+  assert.ok(
+    cookies.some((c) => typeof c === 'string' && c.startsWith('cpa_oauth_xero_accounting=')),
+  );
+  await app.close();
+});
+
+test('POST /v1/integrations/myob_accounting/connect: returns MYOB authorize URL', async () => {
+  const app = buildApp();
+  const res = await app.inject({
+    method: 'POST',
+    url: '/v1/integrations/myob_accounting/connect',
+    cookies: { cpa_session: await consultantJwt() },
+  });
+  assert.equal(res.statusCode, 200);
+  const body = res.json<{ redirect_url: string }>();
+  const url = new URL(body.redirect_url);
+  assert.equal(url.origin + url.pathname, 'https://secure.myob.com/oauth2/account/authorize');
+  assert.equal(url.searchParams.get('client_id'), 'test-myob-client-id');
+  assert.equal(url.searchParams.get('scope'), 'CompanyFile');
+  assert.ok(url.searchParams.get('state'));
   await app.close();
 });
 

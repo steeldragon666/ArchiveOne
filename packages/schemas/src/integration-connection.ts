@@ -5,15 +5,18 @@ import { Iso8601, Uuid } from './primitives.js';
  * Integration provider enum (T-B3).
  *
  * Mirrors `INTEGRATION_PROVIDERS` in @cpa/db/schema/integration_connection.ts.
- * The DB CHECK constraint is the source of truth; this enum is the API
- * contract. Adding a provider must touch both.
+ * Both are TS-level enums over the plain-text `provider` column (no DB CHECK
+ * constraint), so adding a provider must touch BOTH lists to keep the API
+ * contract (this file) and the table typing (db) in sync.
  */
 export const INTEGRATION_PROVIDERS = [
   'docusign',
   'employment_hero',
   'keypay',
   'deputy',
+  'xero_accounting',
   'xero_payroll',
+  'myob_accounting',
 ] as const;
 export const integrationProvider = z.enum(INTEGRATION_PROVIDERS);
 export type IntegrationProvider = z.infer<typeof integrationProvider>;
