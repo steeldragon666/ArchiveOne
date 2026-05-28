@@ -608,7 +608,7 @@ function PortalFieldsEditor({
                 min={descriptor.min}
                 value={Number.isFinite(num) ? num : 0}
                 onChange={(e) => onChange(Number(e.target.value))}
-                className="w-full rounded-md border border-[hsl(var(--brand-line))] bg-white px-3 py-2 text-sm"
+                className="w-full rounded-md border border-[hsl(var(--brand-line))] bg-background text-foreground px-3 py-2 text-sm"
                 data-testid={`portal-field-edit-${key}`}
               />
             </div>
@@ -644,7 +644,7 @@ function PortalFieldsEditor({
                 id={`pf-${key}`}
                 value={selected}
                 onChange={(e) => onChange(e.target.value)}
-                className="w-full rounded-md border border-[hsl(var(--brand-line))] bg-white px-3 py-2 text-sm"
+                className="w-full rounded-md border border-[hsl(var(--brand-line))] bg-background text-foreground px-3 py-2 text-sm"
                 data-testid={`portal-field-edit-${key}`}
               >
                 {descriptor.options.map((opt) => (
@@ -707,7 +707,7 @@ function PortalFieldsEditor({
                   type="date"
                   value={start}
                   onChange={(e) => updatePair('start', e.target.value)}
-                  className="rounded-md border border-[hsl(var(--brand-line))] bg-white px-2 py-1 text-sm"
+                  className="rounded-md border border-[hsl(var(--brand-line))] bg-background text-foreground px-2 py-1 text-sm"
                   data-testid={`portal-field-edit-${key}-start`}
                 />
                 <span className="self-center text-sm text-[hsl(var(--brand-ink-subtle))]">to</span>
@@ -715,7 +715,7 @@ function PortalFieldsEditor({
                   type="date"
                   value={end}
                   onChange={(e) => updatePair('end', e.target.value)}
-                  className="rounded-md border border-[hsl(var(--brand-line))] bg-white px-2 py-1 text-sm"
+                  className="rounded-md border border-[hsl(var(--brand-line))] bg-background text-foreground px-2 py-1 text-sm"
                   data-testid={`portal-field-edit-${key}-end`}
                 />
               </div>

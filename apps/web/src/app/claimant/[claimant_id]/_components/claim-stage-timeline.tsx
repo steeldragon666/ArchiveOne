@@ -49,9 +49,9 @@ export function ClaimStageTimeline({ currentStage }: Props) {
               className={cn(
                 'flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 text-xs font-semibold',
                 reached
-                  ? 'border-blue-600 bg-blue-600 text-white'
-                  : 'border-slate-300 bg-white text-slate-400',
-                isCurrent && 'ring-4 ring-blue-200',
+                  ? 'border-primary bg-primary text-primary-foreground'
+                  : 'border-border bg-card text-muted-foreground',
+                isCurrent && 'ring-4 ring-primary/30',
               )}
               aria-current={isCurrent ? 'step' : undefined}
             >
@@ -60,7 +60,7 @@ export function ClaimStageTimeline({ currentStage }: Props) {
             <div
               className={cn(
                 'text-sm md:text-center',
-                reached ? 'font-medium text-slate-900' : 'text-slate-500',
+                reached ? 'font-medium text-foreground' : 'text-muted-foreground',
               )}
             >
               {stage.label}
@@ -69,7 +69,7 @@ export function ClaimStageTimeline({ currentStage }: Props) {
               <div
                 className={cn(
                   'hidden md:block md:h-0.5 md:flex-1',
-                  idx < currentIndex ? 'bg-blue-600' : 'bg-slate-200',
+                  idx < currentIndex ? 'bg-primary' : 'bg-border',
                 )}
                 aria-hidden="true"
               />

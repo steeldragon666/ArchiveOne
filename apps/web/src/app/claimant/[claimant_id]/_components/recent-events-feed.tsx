@@ -72,33 +72,35 @@ const KIND_LABEL: Record<string, string> = {
 export function RecentEventsFeed({ events }: Props) {
   if (events.length === 0) {
     return (
-      <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500">
+      <div className="rounded-md border border-dashed border-border bg-muted p-6 text-center text-sm text-muted-foreground">
         No evidence captured yet. Your team can start capturing on the mobile app at any time.
       </div>
     );
   }
 
   return (
-    <ul className="divide-y divide-slate-200 rounded-md border border-slate-200 bg-white">
+    <ul className="divide-y divide-border rounded-md border border-border bg-card">
       {events.map((ev) => (
         <li key={ev.id} className="flex items-start gap-3 px-4 py-3">
           <span
             className={
               ev.kind === 'INELIGIBLE'
-                ? 'inline-flex shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800'
+                ? 'inline-flex shrink-0 rounded-full bg-red-950/50 px-2 py-0.5 text-xs font-medium text-red-300'
                 : ev.kind === 'OVERRIDE'
-                  ? 'inline-flex shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800'
-                  : 'inline-flex shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700'
+                  ? 'inline-flex shrink-0 rounded-full bg-amber-950/50 px-2 py-0.5 text-xs font-medium text-amber-300'
+                  : 'inline-flex shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground'
             }
           >
             {KIND_LABEL[ev.kind] ?? ev.kind}
           </span>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm text-slate-900">
-              {ev.snippet || <em className="text-slate-400">no preview</em>}
+            <p className="truncate text-sm text-foreground">
+              {ev.snippet || <em className="text-muted-foreground">no preview</em>}
             </p>
           </div>
-          <span className="shrink-0 text-xs text-slate-500">{relativeTime(ev.captured_at)}</span>
+          <span className="shrink-0 text-xs text-muted-foreground">
+            {relativeTime(ev.captured_at)}
+          </span>
         </li>
       ))}
     </ul>

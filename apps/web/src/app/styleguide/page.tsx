@@ -265,7 +265,7 @@ function SubsectionLabel({ children }: { children: React.ReactNode }) {
 
 function Swatch({ token, hex, usage }: { token: string; hex: string; usage: string }) {
   return (
-    <div className="flex items-center gap-3 rounded-md border border-[hsl(var(--brand-hairline))] bg-white p-3">
+    <div className="flex items-center gap-3 rounded-md border border-[hsl(var(--brand-hairline))] bg-card p-3">
       <div
         className="h-12 w-12 flex-shrink-0 rounded-sm border border-[hsl(var(--brand-hairline))]"
         style={{ background: hex }}

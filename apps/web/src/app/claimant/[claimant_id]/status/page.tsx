@@ -55,9 +55,9 @@ export default async function ClaimantStatusPage({ params }: Props) {
       : null;
 
   return (
-    <main className="min-h-screen bg-slate-50">
+    <main className="min-h-screen bg-background">
       <header
-        className="border-b bg-white px-4 py-4"
+        className="border-b border-border bg-card px-4 py-4"
         // Inline style so the firm's primary_color tints the header
         // without a tailwind config rebuild. The body chrome stays
         // neutral so brand color reads as accent, not flood.
@@ -75,8 +75,8 @@ export default async function ClaimantStatusPage({ params }: Props) {
             </div>
           )}
           <div>
-            <h1 className="text-lg font-semibold text-slate-900">{data.brand.display_name}</h1>
-            <p className="text-xs text-slate-500">{data.subject_tenant.name}</p>
+            <h1 className="text-lg font-semibold text-foreground">{data.brand.display_name}</h1>
+            <p className="text-xs text-muted-foreground">{data.subject_tenant.name}</p>
           </div>
         </div>
       </header>
@@ -98,15 +98,15 @@ export default async function ClaimantStatusPage({ params }: Props) {
             </CardHeader>
             <CardContent>
               <div className="flex items-baseline gap-2">
-                <span className="text-4xl font-bold text-slate-900">78</span>
-                <span className="text-sm text-slate-500">/ 100</span>
+                <span className="text-4xl font-bold text-foreground">78</span>
+                <span className="text-sm text-muted-foreground">/ 100</span>
               </div>
-              <p className="mt-1 text-xs text-slate-500">
+              <p className="mt-1 text-xs text-muted-foreground">
                 Placeholder score — full breakdown coming with the scoring engine
               </p>
               <Link
                 href={`/claimant/${claimant_id}/score`}
-                className="mt-3 inline-block text-sm font-medium text-blue-600 hover:underline"
+                className="mt-3 inline-block text-sm font-medium text-primary hover:underline"
               >
                 See full breakdown →
               </Link>
@@ -119,7 +119,7 @@ export default async function ClaimantStatusPage({ params }: Props) {
             </CardHeader>
             <CardContent>
               {data.pending_rfis.length === 0 ? (
-                <p className="text-sm text-slate-500">
+                <p className="text-sm text-muted-foreground">
                   No requests from your consultant right now. You&apos;ll see any document or
                   evidence asks here.
                 </p>
@@ -128,7 +128,7 @@ export default async function ClaimantStatusPage({ params }: Props) {
                   {data.pending_rfis.map((rfi) => (
                     <li key={rfi.id} className="flex justify-between">
                       <span>{rfi.document_kind}</span>
-                      <span className="text-slate-500">
+                      <span className="text-muted-foreground">
                         {new Date(rfi.requested_at).toLocaleDateString()}
                       </span>
                     </li>

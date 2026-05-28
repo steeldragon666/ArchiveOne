@@ -77,16 +77,16 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
           </div>
         </header>
 
-        <div className="bg-[#f3ebdd] text-[#181a16]">
+        <div className="bg-[#10130f] text-[#f7f1e4]">
           <div className="mx-auto grid max-w-[1120px] gap-12 px-5 py-16 sm:px-8 lg:grid-cols-[220px_1fr]">
             <aside className="hidden lg:block">
-              <div className="sticky top-8 border-l border-[#181a16]/15 pl-5">
+              <div className="sticky top-8 border-l border-[#f7f1e4]/14 pl-5">
                 <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8d8476]">
                   In this article
                 </p>
                 <div className="mt-5 space-y-3">
                   {post.sections.map((section) => (
-                    <p key={section.heading} className="font-body text-sm leading-6 text-[#5f5a50]">
+                    <p key={section.heading} className="font-body text-sm leading-6 text-[#cfc5b3]">
                       {section.heading}
                     </p>
                   ))}
@@ -102,7 +102,7 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
                   </h2>
                   <div className="mt-5 space-y-5">
                     {section.paragraphs.map((paragraph) => (
-                      <p key={paragraph} className="font-body text-base leading-8 text-[#4d4941]">
+                      <p key={paragraph} className="font-body text-base leading-8 text-[#cfc5b3]">
                         {paragraph}
                       </p>
                     ))}
@@ -110,11 +110,11 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
                 </section>
               ))}
 
-              <div className="border border-[#181a16]/15 bg-white p-6">
+              <div className="border border-[#f7f1e4]/14 bg-[#161a14]/90 p-6">
                 <p className="font-display text-3xl font-light">
                   Build the file while work happens.
                 </p>
-                <p className="mt-4 font-body text-sm leading-7 text-[#5f5a50]">
+                <p className="mt-4 font-body text-sm leading-7 text-[#cfc5b3]">
                   ArchiveOne is opening pilot access for RDTI practices that want traceable evidence
                   capture, structured review, and cleaner claim pack assembly.
                 </p>

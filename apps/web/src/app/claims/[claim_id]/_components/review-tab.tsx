@@ -43,22 +43,22 @@ import {
 // ---------------------------------------------------------------------------
 
 const KIND_COLORS: Record<string, string> = {
-  HYPOTHESIS: 'bg-violet-100 text-violet-800',
-  DESIGN: 'bg-blue-100 text-blue-800',
-  EXPERIMENT: 'bg-cyan-100 text-cyan-800',
-  OBSERVATION: 'bg-teal-100 text-teal-800',
-  ITERATION: 'bg-green-100 text-green-800',
-  NEW_KNOWLEDGE: 'bg-emerald-100 text-emerald-800',
-  UNCERTAINTY: 'bg-yellow-100 text-yellow-800',
-  TIME_LOG: 'bg-orange-100 text-orange-800',
-  ASSOCIATE_FLAG: 'bg-rose-100 text-rose-800',
-  EXPENDITURE_NOTE: 'bg-amber-100 text-amber-800',
-  SUPPORTING: 'bg-slate-100 text-slate-700',
-  INELIGIBLE: 'bg-red-100 text-red-700',
+  HYPOTHESIS: 'bg-violet-950/50 text-violet-300',
+  DESIGN: 'bg-blue-950/50 text-blue-300',
+  EXPERIMENT: 'bg-cyan-950/50 text-cyan-300',
+  OBSERVATION: 'bg-teal-950/50 text-teal-300',
+  ITERATION: 'bg-green-950/50 text-green-300',
+  NEW_KNOWLEDGE: 'bg-emerald-950/50 text-emerald-300',
+  UNCERTAINTY: 'bg-yellow-950/50 text-yellow-300',
+  TIME_LOG: 'bg-orange-950/50 text-orange-300',
+  ASSOCIATE_FLAG: 'bg-rose-950/50 text-rose-300',
+  EXPENDITURE_NOTE: 'bg-amber-950/50 text-amber-300',
+  SUPPORTING: 'bg-muted text-muted-foreground',
+  INELIGIBLE: 'bg-red-950/50 text-red-300',
 };
 
 function KindChip({ kind }: { kind: string }) {
-  const cls = KIND_COLORS[kind] ?? 'bg-gray-100 text-gray-700';
+  const cls = KIND_COLORS[kind] ?? 'bg-muted text-muted-foreground';
   return (
     <span
       className={cn(
@@ -76,7 +76,7 @@ function KindChip({ kind }: { kind: string }) {
 // ---------------------------------------------------------------------------
 
 function StatusIcon({ status }: { status: string | null }) {
-  if (status === 'confirmed') return <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />;
+  if (status === 'confirmed') return <CheckCircle2 className="h-4 w-4 text-green-400 shrink-0" />;
   if (status === 'rejected') return <XCircle className="h-4 w-4 text-red-500 shrink-0" />;
   if (status === 'edited') return <Edit3 className="h-4 w-4 text-blue-500 shrink-0" />;
   return (
@@ -261,7 +261,7 @@ function EventRow({
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-7 gap-1.5 text-xs text-green-700 border-green-300 hover:bg-green-50"
+                  className="h-7 gap-1.5 text-xs text-green-400 border-green-800 hover:bg-green-950/40"
                   disabled={isMutating}
                   onClick={() => confirmMutation.mutate()}
                   type="button"
@@ -277,7 +277,7 @@ function EventRow({
               <Button
                 size="sm"
                 variant="outline"
-                className="h-7 gap-1.5 text-xs text-red-600 border-red-300 hover:bg-red-50"
+                className="h-7 gap-1.5 text-xs text-red-400 border-red-800 hover:bg-red-950/40"
                 disabled={isMutating}
                 onClick={() => setRejectOpen(true)}
                 type="button"

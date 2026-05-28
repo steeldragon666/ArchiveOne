@@ -75,15 +75,15 @@ export function TrialBanner({
       className={cn(
         'w-full px-4 py-2 text-sm font-body flex items-center justify-center gap-3',
         isUrgent
-          ? 'bg-amber-50 border-b border-amber-200 text-amber-900'
-          : 'bg-[#FAF8F3] border-b border-[#e8e3da] text-[#1A1814]',
+          ? 'bg-amber-950/40 border-b border-amber-700/50 text-amber-200'
+          : 'bg-card border-b border-border text-foreground',
         className,
       )}
     >
       <span>{label}.</span>
       <a
         href={href}
-        className="font-semibold underline underline-offset-2 text-[#5C7A6B] hover:text-[#4a6858] transition-colors"
+        className="font-semibold underline underline-offset-2 text-primary hover:text-brand-accent-strong transition-colors"
       >
         Upgrade now
       </a>

@@ -83,14 +83,14 @@ export default function BlogIndexPage() {
         </div>
       </section>
 
-      <section className="bg-[#f3ebdd] text-[#181a16]">
+      <section className="bg-[#10130f] text-[#f7f1e4]">
         <div className="mx-auto max-w-[1420px] px-5 py-20 sm:px-8 lg:px-12">
           <div className="grid gap-4 md:grid-cols-3">
             {posts.map((post) => (
               <Link
                 key={post.slug}
                 href={`/blog/${post.slug}`}
-                className="group border border-[#181a16]/15 bg-white p-6 transition hover:border-[#181a16]/40"
+                className="group border border-[#f7f1e4]/14 bg-[#161a14]/90 p-6 transition hover:border-[#d8b15f]/70"
               >
                 <Mark />
                 <p className="mt-8 font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8d8476]">
@@ -99,10 +99,10 @@ export default function BlogIndexPage() {
                 <h2 className="mt-4 font-display text-3xl font-light leading-tight">
                   {post.title}
                 </h2>
-                <p className="mt-5 font-body text-sm leading-7 text-[#5f5a50]">
+                <p className="mt-5 font-body text-sm leading-7 text-[#cfc5b3]">
                   {post.description}
                 </p>
-                <p className="mt-8 font-mono text-[11px] font-bold uppercase tracking-[0.16em] text-[#181a16]">
+                <p className="mt-8 font-mono text-[11px] font-bold uppercase tracking-[0.16em] text-[#d8b15f]">
                   Read article
                 </p>
               </Link>
