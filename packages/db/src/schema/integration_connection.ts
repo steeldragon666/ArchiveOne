@@ -31,6 +31,7 @@ export const INTEGRATION_PROVIDERS = [
   'deputy',
   'xero_accounting',
   'xero_payroll',
+  'myob_accounting',
 ] as const;
 export type IntegrationProvider = (typeof INTEGRATION_PROVIDERS)[number];
 

@@ -17,6 +17,16 @@ import {
   getTokenEncryptionKey,
   pkceChallengeFromVerifier,
 } from '@cpa/integrations/runtime';
+import {
+  XERO_OAUTH_AUTHORIZE_URL,
+  XERO_OAUTH_TOKEN_URL,
+  XERO_ACCOUNTING_SCOPES,
+} from '@cpa/integrations/xero-accounting';
+import {
+  MYOB_OAUTH_AUTHORIZE_URL,
+  MYOB_OAUTH_TOKEN_URL,
+  MYOB_ACCOUNTING_SCOPES,
+} from '@cpa/integrations/myob-accounting';
 
 /**
  * OAuth state cookie name. We persist `state + pkce_verifier + provider`
@@ -60,14 +70,16 @@ const toApi = (r: RawIntegrationConnectionRow): IntegrationConnection => ({
 });
 
 /**
- * Per-provider OAuth metadata. URLs come from env vars (sandbox vs prod
- * is env-driven). For B3 we wire docusign only — additional providers
- * land in B8-B20.
+ * Per-provider OAuth metadata. Provider endpoints + scopes come from the
+ * connector packages (single source of truth); client credentials +
+ * redirect URI come from env vars (per-provider, so sandbox vs prod is
+ * env-driven). A provider returns `null` — and therefore 412
+ * provider_not_configured — until its `*_CLIENT_ID` + `*_REDIRECT_URI`
+ * env vars are present (e.g. the firm must register a Xero/MYOB OAuth app
+ * first).
  *
- * The `scopes` array encodes the minimal grant we need for v1:
- *   - docusign: 'signature impersonation' (JWT-Grant flow uses
- *     'signature impersonation' to allow the platform to send envelopes
- *     on behalf of the firm).
+ * Wired: docusign, xero_accounting, myob_accounting. (xero_payroll +
+ * employment_hero/keypay/deputy remain on the payroll swimlane backlog.)
  */
 type ProviderOAuthConfig = {
   authorize_url: string;
@@ -96,7 +108,37 @@ function getProviderOAuthConfig(provider: IntegrationProvider): ProviderOAuthCon
       if (clientSecret !== undefined) cfg.client_secret = clientSecret;
       return cfg;
     }
-    // employment_hero / keypay / deputy / xero_payroll: B8-B20.
+    case 'xero_accounting': {
+      const clientId = process.env['XERO_CLIENT_ID'];
+      const clientSecret = process.env['XERO_CLIENT_SECRET'];
+      const redirectUri = process.env['XERO_REDIRECT_URI'];
+      if (!clientId || !redirectUri) return null;
+      const cfg: ProviderOAuthConfig = {
+        authorize_url: XERO_OAUTH_AUTHORIZE_URL,
+        token_url: XERO_OAUTH_TOKEN_URL,
+        client_id: clientId,
+        redirect_uri: redirectUri,
+        scopes: [...XERO_ACCOUNTING_SCOPES],
+      };
+      if (clientSecret !== undefined) cfg.client_secret = clientSecret;
+      return cfg;
+    }
+    case 'myob_accounting': {
+      const clientId = process.env['MYOB_CLIENT_ID'];
+      const clientSecret = process.env['MYOB_CLIENT_SECRET'];
+      const redirectUri = process.env['MYOB_REDIRECT_URI'];
+      if (!clientId || !redirectUri) return null;
+      const cfg: ProviderOAuthConfig = {
+        authorize_url: MYOB_OAUTH_AUTHORIZE_URL,
+        token_url: MYOB_OAUTH_TOKEN_URL,
+        client_id: clientId,
+        redirect_uri: redirectUri,
+        scopes: [...MYOB_ACCOUNTING_SCOPES],
+      };
+      if (clientSecret !== undefined) cfg.client_secret = clientSecret;
+      return cfg;
+    }
+    // employment_hero / keypay / deputy / xero_payroll: payroll swimlane backlog.
     default:
       return null;
   }

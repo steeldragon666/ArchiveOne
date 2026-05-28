@@ -6,13 +6,16 @@
  * Lists current integration connections (GET /v1/integrations) and offers
  * a connect button per provider (POST /v1/integrations/:provider/connect).
  *
- * Provider mapping (see onboarding-api.ts for the full note): the
- * integration_connection enum has no bare `xero` / `myob`. Xero maps to
- * `xero_payroll` (the only Xero-family provider in the enum). MYOB has no
- * enum value at all, so its connect call returns 400 invalid_provider —
- * surfaced as "Not yet available". Even for valid providers, OAuth client
- * IDs aren't configured in prod, so connect returns 412
- * provider_not_configured; we show the server's message and never crash.
+ * Provider mapping: the integration_connection enum uses scoped provider
+ * keys, not bare `xero` / `myob`. The accounting step connects
+ * `xero_accounting` and `myob_accounting` (both have real connectors +
+ * OAuth wiring). A firm that previously connected Xero *payroll* still
+ * shows as connected here (matches includes `xero_payroll`).
+ *
+ * Connect returns a real provider authorize URL once the server has the
+ * provider's OAuth app credentials (XERO_CLIENT_ID / MYOB_CLIENT_ID +
+ * redirect URI). Until then it returns 412 provider_not_configured, which
+ * we surface as "isn't configured on this server yet" and never crash.
  */
 
 import { useCallback, useEffect, useState } from 'react';
@@ -33,9 +36,14 @@ interface ProviderDef {
 }
 
 const PROVIDERS: ProviderDef[] = [
-  { key: 'xero_payroll', label: 'Xero', icon: () => <XeroIcon />, matches: ['xero_payroll'] },
-  // MYOB has no provider enum value yet — connect will 400; handled below.
-  { key: 'myob', label: 'MYOB', icon: () => <MyobIcon />, matches: ['myob'] },
+  {
+    key: 'xero_accounting',
+    label: 'Xero',
+    icon: () => <XeroIcon />,
+    // A prior Xero *payroll* connection also counts as "connected" here.
+    matches: ['xero_accounting', 'xero_payroll'],
+  },
+  { key: 'myob_accounting', label: 'MYOB', icon: () => <MyobIcon />, matches: ['myob_accounting'] },
 ];
 
 export function AccountingSection() {
@@ -45,9 +53,9 @@ export function AccountingSection() {
 
   // Per-provider connect feedback.
   const [connecting, setConnecting] = useState<string | null>(null);
-  const [feedback, setFeedback] = useState<Record<string, { tone: 'error' | 'ok' | 'muted'; msg: string }>>(
-    {},
-  );
+  const [feedback, setFeedback] = useState<
+    Record<string, { tone: 'error' | 'ok' | 'muted'; msg: string }>
+  >({});
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -107,7 +115,9 @@ export function AccountingSection() {
   return (
     <Panel>
       <SectionHeading kicker="Step 3 · Accounting" title="Connect accounting" />
-      <p style={{ fontFamily: fSans, fontSize: 13, color: bone3, marginBottom: 18, lineHeight: 1.5 }}>
+      <p
+        style={{ fontFamily: fSans, fontSize: 13, color: bone3, marginBottom: 18, lineHeight: 1.5 }}
+      >
         Link the client&apos;s accounting system to pull ledger data into the claim automatically.
       </p>
 
@@ -173,7 +183,11 @@ export function AccountingSection() {
                     opacity: connecting === def.key ? 0.6 : 1,
                   }}
                 >
-                  {connecting === def.key ? 'Connecting…' : connected ? 'Reconnect' : `Connect ${def.label}`}
+                  {connecting === def.key
+                    ? 'Connecting…'
+                    : connected
+                      ? 'Reconnect'
+                      : `Connect ${def.label}`}
                 </button>
               </div>
             );
