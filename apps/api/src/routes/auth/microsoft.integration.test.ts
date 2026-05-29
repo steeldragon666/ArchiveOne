@@ -4,6 +4,9 @@
 // At import time of `../../app.js` Fastify itself is loaded, but the
 // gating happens inside buildApp() so this ordering is enough — what
 // matters is that the env is set before any test calls buildApp().
+// Public login routes are gated off by default (approved-signup only); the
+// OIDC integration suite opts in so buildApp() registers the provider routes.
+process.env['PUBLIC_LOGIN_ROUTES_ENABLED'] = 'true';
 process.env['MICROSOFT_OIDC_TENANT'] = 'common';
 process.env['MICROSOFT_OIDC_CLIENT_ID'] = 'test-ms-client-id';
 process.env['MICROSOFT_OIDC_CLIENT_SECRET'] = 'test-ms-client-secret';

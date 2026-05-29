@@ -544,9 +544,13 @@ export function buildApp(options: BuildAppOptions = {}): App {
   const cookieSecure = process.env['NODE_ENV'] === 'production';
   const ttlSeconds = Number(process.env['SESSION_TTL_SECONDS'] ?? DEFAULT_SESSION_TTL_SECONDS);
 
-  // External login providers are disabled while ArchiveOne uses approved
-  // signup as the only public account path.
-  const publicLoginRoutesEnabled = false;
+  // External login providers are disabled by default while ArchiveOne uses
+  // approved signup as the only public account path. Prod leaves
+  // PUBLIC_LOGIN_ROUTES_ENABLED unset → routes stay off (and each provider is
+  // additionally gated on its client credentials below). Integration tests
+  // (and any future opt-in deployment) set it to 'true' to exercise the
+  // OIDC / dev-login implementation.
+  const publicLoginRoutesEnabled = process.env['PUBLIC_LOGIN_ROUTES_ENABLED'] === 'true';
 
   const msClientId = process.env['MICROSOFT_OIDC_CLIENT_ID'];
   const msClientSecret = process.env['MICROSOFT_OIDC_CLIENT_SECRET'];

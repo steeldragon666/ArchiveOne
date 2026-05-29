@@ -241,7 +241,11 @@ test('POST /v1/claimant-auth/redeem: 401 on token for deactivated employee', asy
 
 test('cookie carries Secure attribute when NODE_ENV=production', async () => {
   const prevNodeEnv = process.env['NODE_ENV'];
+  // In production the session secret must NOT be the dev fallback, or buildApp
+  // refuses to start. Provide a non-fallback secret for this test.
+  const prevSecret = process.env['SESSION_JWT_SECRET'];
   process.env['NODE_ENV'] = 'production';
+  process.env['SESSION_JWT_SECRET'] = 'prod-only-32-bytes-of-entropy-pad!';
   try {
     const expires = new Date(Date.now() + 10 * 60 * 1000);
     const { rawToken } = await insertToken(EMPLOYEE_VALID, expires);
@@ -259,5 +263,7 @@ test('cookie carries Secure attribute when NODE_ENV=production', async () => {
   } finally {
     if (prevNodeEnv === undefined) delete process.env['NODE_ENV'];
     else process.env['NODE_ENV'] = prevNodeEnv;
+    if (prevSecret === undefined) delete process.env['SESSION_JWT_SECRET'];
+    else process.env['SESSION_JWT_SECRET'] = prevSecret;
   }
 });
