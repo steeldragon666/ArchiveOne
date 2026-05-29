@@ -4,6 +4,9 @@
 // this file so that buildApp() in this test file does not also register
 // the Microsoft route (each .test.ts file is its own tsx process so
 // process.env mutations don't bleed across files).
+// Public login routes are gated off by default (approved-signup only); the
+// OIDC integration suite opts in so buildApp() registers the provider routes.
+process.env['PUBLIC_LOGIN_ROUTES_ENABLED'] = 'true';
 process.env['GOOGLE_OIDC_CLIENT_ID'] = 'test-g-client-id';
 process.env['GOOGLE_OIDC_CLIENT_SECRET'] = 'test-g-client-secret';
 process.env['GOOGLE_OIDC_REDIRECT_URI'] = 'http://localhost:3000/v1/auth/google/callback';
