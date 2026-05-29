@@ -22,8 +22,11 @@ The framework consists of:
 - `<agent>/run.ts` — per-agent driver that composes the framework with the
   agent factory (`makeExpenditureClassifier`, `makeRegisterSynthesizer`,
   `streamNarrativeDraft`).
-- `<agent>/golden.ndjson` — hand-written placeholder cases (Task 7.1).
-  **Production datasets are deferred to Task 7.2** (see below).
+- `<agent>/golden.ndjson` — golden cases. **`expenditure-classifier/golden.ndjson`
+  is a real-data-grounded dataset** (16 cases anchored on the FY2024-25 expense
+  profile of a live carbon-capture R&DTI claimant; see the file header). The
+  register-synthesizer and narrative-drafter files remain Task-7.1 placeholders
+  pending Task 7.2 (see below).
 
 ## Running an eval
 
@@ -91,7 +94,7 @@ fixtures:
 
 | Agent                  | Model                         | Cases | Est. cost per full run |
 | ---------------------- | ----------------------------- | ----- | ---------------------- |
-| expenditure-classifier | claude-haiku-4-5              | 5     | ~$0.10                 |
+| expenditure-classifier | claude-haiku-4-5              | 16    | ~$0.30                 |
 | register-synthesizer   | claude-sonnet-4-5             | 2     | ~$0.30                 |
 | narrative-drafter      | claude-sonnet-4-5 (streaming) | 2     | ~$0.50                 |
 
@@ -102,16 +105,25 @@ multiplied by correction-retry attempts).
 
 ## Gap to Task 7.2 — production-quality datasets
 
-The `golden.ndjson` files in this commit are PLACEHOLDERS, NOT a production
-dataset. They exist to make the framework end-to-end testable; the criteria
-they enforce are minimal (single decision branch per case, vacuous
-clustering for synthesizer, single-activity narrative).
+The register-synthesizer and narrative-drafter `golden.ndjson` files are still
+PLACEHOLDERS, NOT production datasets. They exist to make the framework
+end-to-end testable; the criteria they enforce are minimal (vacuous clustering
+for synthesizer, single-activity narrative).
 
-**Task 7.2** will replace these with hand-curated production datasets:
+The expenditure-classifier dataset is now **real-data-grounded** (16 cases,
+4 ineligible / 5 core §355-25 / 3 supporting §355-30 / 4 needs_review), anchored
+on the actual FY2024-25 Xero expense profile of a live carbon-capture claimant.
+Labels are correct-by-construction: each `description` is written at a controlled
+level of R&D-context richness so the (decision, statutory_anchor) provably
+follows the Division 355 tree, with thin/dual-use lines resolving to
+`needs_review`. This partially closes Task 7.2 for Agent A; broadening to the
+full ≥10-per-cell target remains future work.
 
-- 50 expenditure-classifier cases (the cell-pattern of the IRS Division 355
-  enum is small; we want at least 10 cases per `(decision, statutory_anchor)`
-  pair plus boundary cases).
+**Task 7.2** will replace the remaining placeholders with hand-curated
+production datasets:
+
+- broaden expenditure-classifier toward ≥10 cases per `(decision,
+statutory_anchor)` pair plus boundary cases.
 - 10 register-synthesizer cases covering small/medium/large project shapes,
   events_truncated edge case, and multi-cluster splits.
 - 20 narrative-drafter cases covering happy-path drafts, regenerate-section
