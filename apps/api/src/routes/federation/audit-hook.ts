@@ -40,28 +40,39 @@ export function registerFederationAuditHook(app: FastifyInstance): void {
     const resourceType = ctx.federationResourceType;
     const resourceId = ctx.federationResourceId;
 
+    // We're in an onResponse hook running AFTER the route's tx ended, so
+    // app.current_tenant_id is unset on whatever pooled connection we get.
+    // Both federation_audit's WITH CHECK and federation_share's USING look the
+    // share up via tenant GUC; without it the policy subqueries return empty
+    // and the audit INSERT fails RLS. Re-establish the reader's tenant scope
+    // for the duration of these two queries.
+    const readerTenantId = req.user.tenantId;
     try {
-      // 1. INSERT into federation_audit
-      if (resourceId) {
-        await sql`
-          INSERT INTO federation_audit (
-            federation_share_id, accessed_by_user_id, resource_type, resource_id, action
-          )
-          VALUES (
-            ${shareId}, ${req.user.id}, ${resourceType}, ${resourceId}, 'read'
-          )
+      // 1. INSERT into federation_audit  +  2. look up the share — both gated
+      //    by RLS that depends on app.current_tenant_id.
+      const share = await sql.begin<
+        { source_tenant_id: string; subject_tenant_id: string } | undefined
+      >(async (tx) => {
+        await tx`SELECT set_config('app.current_tenant_id', ${readerTenantId}, true)`;
+        if (resourceId) {
+          await tx`
+            INSERT INTO federation_audit (
+              federation_share_id, accessed_by_user_id, resource_type, resource_id, action
+            )
+            VALUES (
+              ${shareId}, ${req.user!.id}, ${resourceType}, ${resourceId}, 'read'
+            )
+          `;
+        }
+        const rows = await tx<{ source_tenant_id: string; subject_tenant_id: string }[]>`
+          SELECT source_tenant_id, subject_tenant_id
+          FROM federation_share
+          WHERE id = ${shareId}
         `;
-      }
+        return rows[0];
+      });
 
-      // 2. Look up the share for event chain emission
-      const shares = await sql<{ source_tenant_id: string; subject_tenant_id: string }[]>`
-        SELECT source_tenant_id, subject_tenant_id
-        FROM federation_share
-        WHERE id = ${shareId}
-      `;
-
-      if (shares.length === 0) return;
-      const share = shares[0]!;
+      if (!share) return;
 
       // 3. Emit FEDERATION_READ event to the event chain
       await insertEventWithChain({

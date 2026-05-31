@@ -48,8 +48,14 @@ before(async () => {
     return;
   }
 
-  // Clean up leftover fixtures (reverse dependency order)
+  // Clean up leftover fixtures (reverse dependency order).
+  // event FK-references subject_tenant (FEDERATION_READ is emitted by the
+  // audit-hook on the GET-claim handlers), so it must go before
+  // subject_tenant — otherwise event_subject_tenant_id_subject_tenant_id_fk
+  // blocks the subject_tenant delete and crashes the suite's before().
+  await privilegedSql`DELETE FROM federation_audit WHERE federation_share_id = ${SHARE_ID}`;
   await privilegedSql`DELETE FROM federation_share WHERE id = ${SHARE_ID}`;
+  await privilegedSql`DELETE FROM event WHERE subject_tenant_id = ${SUBJECT_TENANT}`;
   await privilegedSql`DELETE FROM activity WHERE claim_id = ${CLAIM_ID}`;
   await privilegedSql`DELETE FROM claim WHERE id = ${CLAIM_ID}`;
   await privilegedSql`DELETE FROM project WHERE id = ${PROJECT_ID}`;
@@ -102,7 +108,10 @@ before(async () => {
 after(async () => {
   if (!dbAvailable) return;
   try {
+    await privilegedSql`DELETE FROM federation_audit WHERE federation_share_id = ${SHARE_ID}`;
     await privilegedSql`DELETE FROM federation_share WHERE id = ${SHARE_ID}`;
+    await privilegedSql`DELETE FROM event WHERE subject_tenant_id = ${SUBJECT_TENANT}`;
+    await privilegedSql`DELETE FROM audit_score_snapshot WHERE subject_tenant_id = ${SUBJECT_TENANT}`;
     await privilegedSql`DELETE FROM activity WHERE claim_id = ${CLAIM_ID}`;
     await privilegedSql`DELETE FROM claim WHERE id = ${CLAIM_ID}`;
     await privilegedSql`DELETE FROM project WHERE id = ${PROJECT_ID}`;
