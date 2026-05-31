@@ -17,9 +17,19 @@
  *   5xx  → retried; if all attempts fail → network_error
  */
 
-/** Identifies the bot and supplies a contact URL for webmaster blocks. */
-export const RIF_USER_AGENT =
-  'Claimsure RIF/1.0 (https://claimsure.com.au/contact; bot@claimsure.com.au)';
+/**
+ * Identifies the bot and supplies a contact URL for webmaster blocks.
+ *
+ * NOTE on bot-block reality (2026-05-31): even with a clean UA, the ATO Legal
+ * Database and AustLII feeds currently return 403 to the production VPS IP
+ * (Binary Lane); ISA times out at the TLS/HTTP/2 layer. The block is
+ * IP-fingerprint based, not UA based, so this string is brand-consistency
+ * housekeeping rather than a connectivity fix. Restoring those sources needs
+ * either a residential-IP proxy, a paid regulatory aggregator, or marking
+ * those `regulatory_source` rows `enabled=false` to stop the dashboard from
+ * surfacing them as live failures.
+ */
+export const RIF_USER_AGENT = 'ArchiveOne-RIF/1.0 (+https://archiveone.com.au)';
 
 /** Accept header suitable for both RSS/Atom feeds and HTML pages. */
 const ACCEPT_HEADER =
