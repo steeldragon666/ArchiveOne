@@ -16,21 +16,25 @@ export function registerFederationShares(app: FastifyInstance): void {
   // GET /v1/federation/shares — list active shares for current tenant (as target)
   // ---------------------------------------------------------------
   app.get('/v1/federation/shares', { preHandler: requireSession }, async (req, reply) => {
-    const tenantId = req.user!.tenantId;
+    const tenantId = req.user!.tenantId!;
 
-    // RLS ensures we only see shares where we're source or target.
-    // Filter to active shares where we're the target (financier view).
-    const shares = await sql<
-      {
-        id: string;
-        subject_tenant_id: string;
-        source_tenant_id: string;
-        granted_at: Date;
-        expires_at: Date | null;
-        subject_tenant_name: string;
-        source_tenant_name: string;
-      }[]
-    >`
+    // All three reads here cross RLS policies that filter on
+    // app.current_tenant_id (federation_share USING source-or-target,
+    // subject_tenant tenant-isolation, tenant). Without the GUC the
+    // policies return empty regardless of the explicit WHERE filters, so
+    // the shape "no shares ever" emerges. Bind it inside the tx.
+    type ShareRow = {
+      id: string;
+      subject_tenant_id: string;
+      source_tenant_id: string;
+      granted_at: Date;
+      expires_at: Date | null;
+      subject_tenant_name: string;
+      source_tenant_name: string;
+    };
+    const shares = await sql.begin<ShareRow[]>(async (tx) => {
+      await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+      return await tx<ShareRow[]>`
         SELECT
           fs.id,
           fs.subject_tenant_id,
@@ -47,6 +51,7 @@ export function registerFederationShares(app: FastifyInstance): void {
           AND (fs.expires_at IS NULL OR fs.expires_at > now())
         ORDER BY fs.granted_at DESC
       `;
+    });
 
     return reply.send({ shares });
   });
@@ -64,48 +69,51 @@ export function registerFederationShares(app: FastifyInstance): void {
     },
     async (req, reply) => {
       const { id } = req.params as { id: string };
-      const tenantId = req.user!.tenantId;
+      const tenantId = req.user!.tenantId!;
 
-      // Verify the share exists and is active for us as target
-      const shareCheck = await sql<{ subject_tenant_id: string }[]>`
-        SELECT subject_tenant_id FROM federation_share
-        WHERE id = ${id}
-          AND target_tenant_id = ${tenantId}
-          AND revoked_at IS NULL
-          AND (expires_at IS NULL OR expires_at > now())
-      `;
+      type ClaimRow = {
+        id: string;
+        fiscal_year: number;
+        stage: string;
+        created_at: Date;
+        updated_at: Date;
+      };
+      type Result = { kind: 'not_found' } | { kind: 'ok'; claims: ClaimRow[] };
+      // Pin app.current_tenant_id for the whole flow — both federation_share
+      // (USING source-or-target) and claim (extended-RLS via federation_share)
+      // depend on it.
+      const result = await sql.begin<Result>(async (tx) => {
+        await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+        const shareCheck = await tx<{ subject_tenant_id: string }[]>`
+          SELECT subject_tenant_id FROM federation_share
+          WHERE id = ${id}
+            AND target_tenant_id = ${tenantId}
+            AND revoked_at IS NULL
+            AND (expires_at IS NULL OR expires_at > now())
+        `;
+        if (shareCheck.length === 0) return { kind: 'not_found' as const };
+        const subjectTenantId = shareCheck[0]!.subject_tenant_id;
+        const claims = await tx<ClaimRow[]>`
+          SELECT id, fiscal_year, stage, created_at, updated_at
+          FROM claim
+          WHERE subject_tenant_id = ${subjectTenantId}
+          ORDER BY fiscal_year DESC
+        `;
+        return { kind: 'ok' as const, claims };
+      });
 
-      if (shareCheck.length === 0) {
+      if (result.kind === 'not_found') {
         return reply.code(404).send({
           error: 'NotFound',
           message: 'Share not found or inactive',
         });
       }
 
-      const subjectTenantId = shareCheck[0]!.subject_tenant_id;
-
-      // The extended RLS on `claim` handles scoping — claims for this
-      // subject_tenant are visible because we have an active share.
-      const claims = await sql<
-        {
-          id: string;
-          fiscal_year: number;
-          stage: string;
-          created_at: Date;
-          updated_at: Date;
-        }[]
-      >`
-        SELECT id, fiscal_year, stage, created_at, updated_at
-        FROM claim
-        WHERE subject_tenant_id = ${subjectTenantId}
-        ORDER BY fiscal_year DESC
-      `;
-
       // Store share context on request for audit hook
       (req as unknown as Record<string, unknown>)['federationShareId'] = id;
       (req as unknown as Record<string, unknown>)['federationResourceType'] = 'claim';
 
-      return reply.send({ claims });
+      return reply.send({ claims: result.claims });
     },
   );
 
@@ -125,85 +133,89 @@ export function registerFederationShares(app: FastifyInstance): void {
     },
     async (req, reply) => {
       const { id, claimId } = req.params as { id: string; claimId: string };
-      const tenantId = req.user!.tenantId;
+      const tenantId = req.user!.tenantId!;
 
-      // Verify the share exists and is active for us as target
-      const shareCheck = await sql<{ subject_tenant_id: string }[]>`
-        SELECT subject_tenant_id FROM federation_share
-        WHERE id = ${id}
-          AND target_tenant_id = ${tenantId}
-          AND revoked_at IS NULL
-          AND (expires_at IS NULL OR expires_at > now())
-      `;
+      type ClaimRow = {
+        id: string;
+        fiscal_year: number;
+        stage: string;
+        subject_tenant_id: string;
+        created_at: Date;
+        updated_at: Date;
+      };
+      type ActivityRow = {
+        id: string;
+        code: string;
+        kind: string;
+        title: string;
+        description: string | null;
+      };
+      type NarrativeRow = {
+        activity_id: string;
+        section_kind: string;
+        status: string;
+        content_hash: string;
+        current_version: number;
+        updated_at: Date;
+      };
+      type Result =
+        | { kind: 'share_not_found' }
+        | { kind: 'claim_not_found' }
+        | { kind: 'ok'; claim: ClaimRow; activities: ActivityRow[]; narratives: NarrativeRow[] };
 
-      if (shareCheck.length === 0) {
+      // Pin app.current_tenant_id for the whole flow — federation_share
+      // (USING source-or-target) and claim/activity/narrative_draft
+      // (extended RLS via federation_share) all depend on it.
+      const result = await sql.begin<Result>(async (tx) => {
+        await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+        const shareCheck = await tx<{ subject_tenant_id: string }[]>`
+          SELECT subject_tenant_id FROM federation_share
+          WHERE id = ${id}
+            AND target_tenant_id = ${tenantId}
+            AND revoked_at IS NULL
+            AND (expires_at IS NULL OR expires_at > now())
+        `;
+        if (shareCheck.length === 0) return { kind: 'share_not_found' as const };
+
+        const claims = await tx<ClaimRow[]>`
+          SELECT id, fiscal_year, stage, subject_tenant_id, created_at, updated_at
+          FROM claim
+          WHERE id = ${claimId}
+        `;
+        if (claims.length === 0) return { kind: 'claim_not_found' as const };
+        const claim = claims[0]!;
+
+        const activities = await tx<ActivityRow[]>`
+          SELECT id, code, kind, title, description
+          FROM activity
+          WHERE claim_id = ${claimId}
+          ORDER BY code
+        `;
+        const activityIds = activities.map((a) => a.id);
+        const narratives =
+          activityIds.length > 0
+            ? await tx<NarrativeRow[]>`
+                SELECT activity_id, section_kind, status, content_hash, current_version, updated_at
+                FROM narrative_draft
+                WHERE activity_id = ANY(${activityIds})
+                ORDER BY activity_id, section_kind
+              `
+            : [];
+        return { kind: 'ok' as const, claim, activities, narratives };
+      });
+
+      if (result.kind === 'share_not_found') {
         return reply.code(404).send({
           error: 'NotFound',
           message: 'Share not found or inactive',
         });
       }
-
-      // Fetch the claim (RLS grants access via federation_share)
-      const claims = await sql<
-        {
-          id: string;
-          fiscal_year: number;
-          stage: string;
-          subject_tenant_id: string;
-          created_at: Date;
-          updated_at: Date;
-        }[]
-      >`
-        SELECT id, fiscal_year, stage, subject_tenant_id, created_at, updated_at
-        FROM claim
-        WHERE id = ${claimId}
-      `;
-
-      if (claims.length === 0) {
+      if (result.kind === 'claim_not_found') {
         return reply.code(404).send({
           error: 'NotFound',
           message: 'Claim not found or not accessible via this share',
         });
       }
-
-      const claim = claims[0]!;
-
-      // Fetch activities for this claim (RLS extended in 0071)
-      const activities = await sql<
-        {
-          id: string;
-          code: string;
-          kind: string;
-          title: string;
-          description: string | null;
-        }[]
-      >`
-        SELECT id, code, kind, title, description
-        FROM activity
-        WHERE claim_id = ${claimId}
-        ORDER BY code
-      `;
-
-      // Fetch narrative drafts for the activities (RLS extended in 0071)
-      const activityIds = activities.map((a) => a.id);
-      const narratives =
-        activityIds.length > 0
-          ? await sql<
-              {
-                activity_id: string;
-                section_kind: string;
-                status: string;
-                content_hash: string;
-                current_version: number;
-                updated_at: Date;
-              }[]
-            >`
-              SELECT activity_id, section_kind, status, content_hash, current_version, updated_at
-              FROM narrative_draft
-              WHERE activity_id = ANY(${activityIds})
-              ORDER BY activity_id, section_kind
-            `
-          : [];
 
       // Store share context on request for audit hook
       (req as unknown as Record<string, unknown>)['federationShareId'] = id;
@@ -211,9 +223,9 @@ export function registerFederationShares(app: FastifyInstance): void {
       (req as unknown as Record<string, unknown>)['federationResourceId'] = claimId;
 
       return reply.send({
-        claim,
-        activities,
-        narratives,
+        claim: result.claim,
+        activities: result.activities,
+        narratives: result.narratives,
       });
     },
   );
