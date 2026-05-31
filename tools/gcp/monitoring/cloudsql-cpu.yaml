@@ -1,4 +1,4 @@
-displayName: "CPA Platform — Cloud SQL CPU utilisation > 80%"
+displayName: 'CPA Platform — Cloud SQL CPU utilisation > 80%'
 documentation:
   content: |
     ## Alert: Cloud SQL CPU Utilisation
@@ -33,7 +33,7 @@ alertStrategy:
   autoClose: 1800s
 combiner: OR
 conditions:
-  - displayName: "Cloud SQL CPU > 80% for 5 min"
+  - displayName: 'Cloud SQL CPU > 80% for 5 min'
     conditionThreshold:
       filter: |
         resource.type = "cloudsql_database"
@@ -47,5 +47,5 @@ conditions:
       duration: 300s
       trigger:
         count: 1
-notificationChannels: []  # populated by monitoring-setup.sh with email channel ID
+notificationChannels: [] # populated by monitoring-setup.sh with email channel ID
 severity: WARNING

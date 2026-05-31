@@ -405,15 +405,7 @@ function ClaimStatusBadge({ claim }: { claim: Claim }) {
 
 /* ───────────────────────────── Shared ──────────────────────────────── */
 
-function Header({
-  kicker,
-  title,
-  subtitle,
-}: {
-  kicker: string;
-  title: string;
-  subtitle: string;
-}) {
+function Header({ kicker, title, subtitle }: { kicker: string; title: string; subtitle: string }) {
   return (
     <div style={{ marginBottom: 24 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>

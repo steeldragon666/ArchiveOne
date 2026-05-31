@@ -1,4 +1,4 @@
-displayName: "CPA Platform — Cloud Run 5xx error rate > 5%/min"
+displayName: 'CPA Platform — Cloud Run 5xx error rate > 5%/min'
 documentation:
   content: |
     ## Alert: Cloud Run 5xx Error Rate
@@ -18,10 +18,10 @@ documentation:
     **Runbook:** docs/monitoring/alert-runbook.md
   mimeType: text/markdown
 alertStrategy:
-  autoClose: 1800s  # auto-resolve after 30 min if metric drops
+  autoClose: 1800s # auto-resolve after 30 min if metric drops
 combiner: OR
 conditions:
-  - displayName: "5xx response rate > 5% (cpa-api or cpa-web)"
+  - displayName: '5xx response rate > 5% (cpa-api or cpa-web)'
     conditionThreshold:
       filter: |
         resource.type = "cloud_run_revision"
@@ -42,5 +42,5 @@ conditions:
       duration: 60s
       trigger:
         count: 1
-notificationChannels: []  # populated by monitoring-setup.sh with PagerDuty channel ID
+notificationChannels: [] # populated by monitoring-setup.sh with PagerDuty channel ID
 severity: CRITICAL

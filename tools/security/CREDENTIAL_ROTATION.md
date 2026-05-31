@@ -23,25 +23,25 @@ Rotation is **mandatory** on any of the following:
 
 ## 2. Credentials in scope
 
-| Credential                       | Storage location                          | Rotation impact                                | Last rotated |
-| -------------------------------- | ----------------------------------------- | ---------------------------------------------- | ------------ |
-| SSH root key — `outside-magic.bnr.la` | Operator workstations + VPS `authorized_keys` | Loss of root access until new key installed   | —            |
-| `ANTHROPIC_API_KEY`              | Railway env, `.env.production`            | Classifier/agents fail until redeployed       | —            |
-| `EVAL_ANTHROPIC_API_KEY`         | GitHub Actions secrets                    | CI eval workflow fails until updated          | —            |
-| `SESSION_JWT_SECRET`             | Railway env                               | Active sessions invalidated (forced re-login) | —            |
-| `TOKEN_ENCRYPTION_KEY`           | Railway env                               | OAuth refresh tokens must be re-encrypted     | —            |
-| `MICROSOFT_OIDC_CLIENT_SECRET`   | Railway env                               | Microsoft SSO fails until redeployed          | —            |
-| `GOOGLE_OIDC_CLIENT_SECRET`      | Railway env                               | Google SSO fails until redeployed             | —            |
-| `STRIPE_SECRET_KEY` (`sk_live_`) | Railway env                               | Payments + webhooks fail until redeployed     | —            |
-| `STRIPE_WEBHOOK_SECRET`          | Railway env + Stripe dashboard            | Webhook signature validation breaks during cutover | —        |
-| `DATABASE_URL` (app + migration) | Railway env                               | DB connections fail until redeployed          | —            |
+| Credential                            | Storage location                              | Rotation impact                                    | Last rotated |
+| ------------------------------------- | --------------------------------------------- | -------------------------------------------------- | ------------ |
+| SSH root key — `outside-magic.bnr.la` | Operator workstations + VPS `authorized_keys` | Loss of root access until new key installed        | —            |
+| `ANTHROPIC_API_KEY`                   | Railway env, `.env.production`                | Classifier/agents fail until redeployed            | —            |
+| `EVAL_ANTHROPIC_API_KEY`              | GitHub Actions secrets                        | CI eval workflow fails until updated               | —            |
+| `SESSION_JWT_SECRET`                  | Railway env                                   | Active sessions invalidated (forced re-login)      | —            |
+| `TOKEN_ENCRYPTION_KEY`                | Railway env                                   | OAuth refresh tokens must be re-encrypted          | —            |
+| `MICROSOFT_OIDC_CLIENT_SECRET`        | Railway env                                   | Microsoft SSO fails until redeployed               | —            |
+| `GOOGLE_OIDC_CLIENT_SECRET`           | Railway env                                   | Google SSO fails until redeployed                  | —            |
+| `STRIPE_SECRET_KEY` (`sk_live_`)      | Railway env                                   | Payments + webhooks fail until redeployed          | —            |
+| `STRIPE_WEBHOOK_SECRET`               | Railway env + Stripe dashboard                | Webhook signature validation breaks during cutover | —            |
+| `DATABASE_URL` (app + migration)      | Railway env                                   | DB connections fail until redeployed               | —            |
 
 ## 3. Open incidents
 
-| # | Incident                                                                                  | Discovered  | Status |
-| - | ----------------------------------------------------------------------------------------- | ----------- | ------ |
-| 1 | SSH `root@outside-magic.bnr.la` private key shared via link-shareable Google Doc          | 2026-05-27  | OPEN   |
-| 2 | `ANTHROPIC_API_KEY` (production) pasted into Claude Code chat history; key compromised on 2026-05-27 | 2026-05-27  | OPEN   |
+| #   | Incident                                                                                             | Discovered | Status |
+| --- | ---------------------------------------------------------------------------------------------------- | ---------- | ------ |
+| 1   | SSH `root@outside-magic.bnr.la` private key shared via link-shareable Google Doc                     | 2026-05-27 | OPEN   |
+| 2   | `ANTHROPIC_API_KEY` (production) pasted into Claude Code chat history; key compromised on 2026-05-27 | 2026-05-27 | OPEN   |
 
 Both incidents must be closed by completing the relevant section of §4 below
 and updating the row to `CLOSED` with the rotation date.

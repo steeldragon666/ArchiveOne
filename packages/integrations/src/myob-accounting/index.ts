@@ -5,9 +5,4 @@
  */
 export * from './types.js';
 export * from './oauth.js';
-export {
-  listCompanyFiles,
-  myobAccountingGet,
-  type MyobAccountingClientOptions,
-} from './client.js';
-
+export { listCompanyFiles, myobAccountingGet, type MyobAccountingClientOptions } from './client.js';

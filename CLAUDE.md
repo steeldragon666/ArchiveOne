@@ -27,6 +27,7 @@ System A signature decisions (preserve unless the user explicitly revises):
 - Hairlines: `rgba(240,235,226,.10)` (rule) / `.22` (rule-strong); radius 4px buttons/inputs
 
 **Canonical token locations:**
+
 - `apps/web/src/app/globals.css` — shadcn `--*` + `--brand-*` CSS variables (the runtime source)
 - `apps/web/tailwind.config.ts` — semantic utilities + named `ink`/`bone`/`sage`/`rust`/`rule` colors. The amber accent is `primary` / `brand-accent` (NOT a named `amber` utility — that would clobber Tailwind's built-in amber scale)
 - `apps/web/src/app/consultant/_components/tokens.ts` — inline hex mirror used by the consultant workspace + onboarding

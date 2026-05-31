@@ -1,11 +1,7 @@
 import { after, beforeEach, test } from 'node:test';
 import assert from 'node:assert/strict';
 import nock from 'nock';
-import {
-  listCompanyFiles,
-  myobAccountingGet,
-  type MyobAccountingClientOptions,
-} from './client.js';
+import { listCompanyFiles, myobAccountingGet, type MyobAccountingClientOptions } from './client.js';
 
 const MYOB_HOST = 'https://api.myob.com';
 const MYOB_BASE_PATH = '/accountright';
@@ -80,7 +76,7 @@ test('myobAccountingGet: forwards query string and company-file token', async ()
       company_file_password: 'secret',
     },
     '/cf-1/Purchase/Bill/Item',
-    { '$top': '100', '$skip': '200' },
+    { $top: '100', $skip: '200' },
   );
 
   assert.ok(capturedUrl);
@@ -119,14 +115,16 @@ test('myobAccountingGet: errors include provider and path', { timeout: 60_000 },
 });
 
 test('listCompanyFiles: maps MYOB company files to internal snake_case shape', async () => {
-  nock(MYOB_HOST).get(`${MYOB_BASE_PATH}/`).reply(200, [
-    {
-      Id: 'cf-1',
-      Name: 'Acme R&D Pty Ltd',
-      Uri: 'https://api.myob.com/accountright/cf-1',
-      ProductId: 'accountright',
-    },
-  ]);
+  nock(MYOB_HOST)
+    .get(`${MYOB_BASE_PATH}/`)
+    .reply(200, [
+      {
+        Id: 'cf-1',
+        Name: 'Acme R&D Pty Ltd',
+        Uri: 'https://api.myob.com/accountright/cf-1',
+        ProductId: 'accountright',
+      },
+    ]);
 
   const files = await listCompanyFiles(opts());
 
@@ -139,4 +137,3 @@ test('listCompanyFiles: maps MYOB company files to internal snake_case shape', a
     },
   ]);
 });
-

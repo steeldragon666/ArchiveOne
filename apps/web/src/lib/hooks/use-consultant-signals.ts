@@ -22,8 +22,6 @@ export function useConsultantSignals(params: { window?: string }) {
   return useQuery({
     queryKey: ['consultant-signals', params],
     queryFn: () =>
-      apiFetch<ConsultantSignalsResponse>(
-        `/v1/consultant/signals${qs ? `?${qs}` : ''}`,
-      ),
+      apiFetch<ConsultantSignalsResponse>(`/v1/consultant/signals${qs ? `?${qs}` : ''}`),
   });
 }

@@ -79,4 +79,3 @@ function companyFileHeaders(opts: MyobAccountingClientOptions): Record<string, s
     ).toString('base64'),
   };
 }
-

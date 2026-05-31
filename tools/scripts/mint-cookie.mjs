@@ -10,9 +10,7 @@ const token = await signSession(
     primaryIdp: 'microsoft',
     activeTenantId: '00000000-0000-0000-0000-000000000010',
     activeRole: 'admin',
-    availableTenants: [
-      { tenantId: '00000000-0000-0000-0000-000000000010', role: 'admin' },
-    ],
+    availableTenants: [{ tenantId: '00000000-0000-0000-0000-000000000010', role: 'admin' }],
   },
   process.env.SESSION_JWT_SECRET ?? 'dev-only-local-secret-do-not-use-in-prod-1234567890abcdef',
   { ttlSeconds: 8 * 3600 },

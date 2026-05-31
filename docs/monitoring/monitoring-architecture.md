@@ -49,10 +49,10 @@ Sentry is the primary error tracking and performance monitoring tool. It capture
 
 ### Projects
 
-| Project name | Service | DSN env var |
-|---|---|---|
-| `cpa-api` | Fastify backend on Cloud Run | `SENTRY_DSN_API` |
-| `cpa-web` | Next.js frontend on Cloud Run | `SENTRY_DSN_WEB` |
+| Project name | Service                       | DSN env var      |
+| ------------ | ----------------------------- | ---------------- |
+| `cpa-api`    | Fastify backend on Cloud Run  | `SENTRY_DSN_API` |
+| `cpa-web`    | Next.js frontend on Cloud Run | `SENTRY_DSN_WEB` |
 
 ### Error capture policy
 
@@ -63,21 +63,21 @@ Sentry is the primary error tracking and performance monitoring tool. It capture
 
 ### Performance tracing
 
-| Environment | `tracesSampleRate` | Rationale |
-|---|---|---|
-| production | 0.10 (10%) | Keeps cost predictable; enough for P95 latency trending |
-| staging | 0.50 (50%) | Higher fidelity for pre-launch validation |
-| development | 1.00 (100%) | Full visibility during local development |
+| Environment | `tracesSampleRate` | Rationale                                               |
+| ----------- | ------------------ | ------------------------------------------------------- |
+| production  | 0.10 (10%)         | Keeps cost predictable; enough for P95 latency trending |
+| staging     | 0.50 (50%)         | Higher fidelity for pre-launch validation               |
+| development | 1.00 (100%)        | Full visibility during local development                |
 
 ### Alerting rules (Sentry)
 
-| Alert | Condition | Notification |
-|---|---|---|
-| Critical exception rate | >5 unique errors in 5 min | PagerDuty page |
-| New issue — unhandled | Any first occurrence | PagerDuty email |
-| Regression — resolved issue re-opens | Any | PagerDuty email |
-| P95 endpoint latency | >2000ms over 10-min window | PagerDuty email |
-| Release spike | Error rate 2x baseline within 15 min of deploy | PagerDuty email |
+| Alert                                | Condition                                      | Notification    |
+| ------------------------------------ | ---------------------------------------------- | --------------- |
+| Critical exception rate              | >5 unique errors in 5 min                      | PagerDuty page  |
+| New issue — unhandled                | Any first occurrence                           | PagerDuty email |
+| Regression — resolved issue re-opens | Any                                            | PagerDuty email |
+| P95 endpoint latency                 | >2000ms over 10-min window                     | PagerDuty email |
+| Release spike                        | Error rate 2x baseline within 15 min of deploy | PagerDuty email |
 
 ### OpenTelemetry integration
 
@@ -87,11 +87,11 @@ The existing `packages/observability` OTLP setup sends traces to Grafana Tempo. 
 
 Cron jobs emit heartbeat check-ins. A missed heartbeat triggers a PagerDuty email (not page, unless it's the backup restore cron which is P1).
 
-| Monitor | Schedule | Grace period | Severity if missed |
-|---|---|---|---|
-| Backup restore drill | Monthly | 4 h | P1 (page) |
-| Weekly digest email | Weekly, Mon 09:00 AEST | 2 h | P3 (email) |
-| RIF classification job | Every 15 min | 5 min | P2 (email) |
+| Monitor                | Schedule               | Grace period | Severity if missed |
+| ---------------------- | ---------------------- | ------------ | ------------------ |
+| Backup restore drill   | Monthly                | 4 h          | P1 (page)          |
+| Weekly digest email    | Weekly, Mon 09:00 AEST | 2 h          | P3 (email)         |
+| RIF classification job | Every 15 min           | 5 min        | P2 (email)         |
 
 ---
 
@@ -103,35 +103,35 @@ The platform uses the existing OTLP→Grafana pipeline in `packages/observabilit
 
 ### Key dashboards
 
-| Dashboard | Panels | Alert threshold |
-|---|---|---|
-| API health | Request rate, error rate, P50/P95/P99 latency, active instances | Error rate >1% over 5 min |
-| Cloud Run infra | CPU utilisation, memory, instance count, cold-start rate | CPU >80% sustained 10 min |
-| Supabase DB | Connection pool usage, query rate, pg_stat active queries | Pool >90% for 2 min |
-| Synthetic uptime | Success rate, response time per probe | <100% over 5 min |
+| Dashboard        | Panels                                                          | Alert threshold           |
+| ---------------- | --------------------------------------------------------------- | ------------------------- |
+| API health       | Request rate, error rate, P50/P95/P99 latency, active instances | Error rate >1% over 5 min |
+| Cloud Run infra  | CPU utilisation, memory, instance count, cold-start rate        | CPU >80% sustained 10 min |
+| Supabase DB      | Connection pool usage, query rate, pg_stat active queries       | Pool >90% for 2 min       |
+| Synthetic uptime | Success rate, response time per probe                           | <100% over 5 min          |
 
 ### Synthetic uptime probes
 
 Three probes run from Grafana Synthetic Monitoring, 1-minute interval, from Sydney region (closest to AEST customers):
 
-| Probe | URL | Method | Auth | Threshold |
-|---|---|---|---|---|
-| Health check | `https://api.cpaplatform.com/healthz` | GET | None | <500ms; HTTP 200 |
-| Auth me | `https://api.cpaplatform.com/v1/auth/me` | GET | Synthetic JWT | <1000ms; HTTP 200 |
-| Audit timeline | `https://api.cpaplatform.com/v1/audit/activity/<test-id>/timeline` | GET | Synthetic JWT | <2000ms; HTTP 200 |
+| Probe          | URL                                                                | Method | Auth          | Threshold         |
+| -------------- | ------------------------------------------------------------------ | ------ | ------------- | ----------------- |
+| Health check   | `https://api.cpaplatform.com/healthz`                              | GET    | None          | <500ms; HTTP 200  |
+| Auth me        | `https://api.cpaplatform.com/v1/auth/me`                           | GET    | Synthetic JWT | <1000ms; HTTP 200 |
+| Audit timeline | `https://api.cpaplatform.com/v1/audit/activity/<test-id>/timeline` | GET    | Synthetic JWT | <2000ms; HTTP 200 |
 
 All probes alert after 2 consecutive failures. Alert sends to PagerDuty with P1 severity.
 
 ### Infrastructure alert thresholds
 
-| Signal | Warning | Critical | Action |
-|---|---|---|---|
-| CPU utilisation | 70% for 5 min | 85% for 5 min | Scale Cloud Run min instances |
-| Memory utilisation | 75% for 5 min | 90% for 5 min | Investigate memory leak; redeploy |
-| Request latency P95 | 1500ms | 3000ms | Check downstream DB; check Sentry traces |
-| Error rate (5xx) | 0.5% | 1.0% | Check Sentry; recent deploy regression likely |
-| Cloud Run instance count | >8 | >12 | Cost anomaly; possible traffic spike or loop |
-| DB connection pool | 80% | 90% | Check slow queries; add read replica if needed |
+| Signal                   | Warning       | Critical      | Action                                         |
+| ------------------------ | ------------- | ------------- | ---------------------------------------------- |
+| CPU utilisation          | 70% for 5 min | 85% for 5 min | Scale Cloud Run min instances                  |
+| Memory utilisation       | 75% for 5 min | 90% for 5 min | Investigate memory leak; redeploy              |
+| Request latency P95      | 1500ms        | 3000ms        | Check downstream DB; check Sentry traces       |
+| Error rate (5xx)         | 0.5%          | 1.0%          | Check Sentry; recent deploy regression likely  |
+| Cloud Run instance count | >8            | >12           | Cost anomaly; possible traffic spike or loop   |
+| DB connection pool       | 80%           | 90%           | Check slow queries; add read replica if needed |
 
 ---
 
@@ -140,6 +140,7 @@ All probes alert after 2 consecutive failures. Alert sends to PagerDuty with P1 
 ### Supabase dashboard
 
 The Supabase project dashboard provides:
+
 - Real-time query performance (slow query log, top queries by total time)
 - Connection pool status (pgBouncer metrics)
 - Database size and table bloat indicators
@@ -176,13 +177,13 @@ LIMIT 20;
 
 ### Database alert thresholds
 
-| Signal | Threshold | Response |
-|---|---|---|
-| Slow query | P99 > 500ms sustained 5 min | Investigate; likely missing index or N+1 |
-| Connection pool saturation | >90% for 2 min | Emergency: increase pool size or shed load |
-| Table bloat | Dead tuples >20% of live | Schedule VACUUM ANALYZE |
-| WAL lag | >5 min behind on replica | Investigate replica connectivity |
-| DB disk usage | >80% | Provision more storage; review retention policy |
+| Signal                     | Threshold                   | Response                                        |
+| -------------------------- | --------------------------- | ----------------------------------------------- |
+| Slow query                 | P99 > 500ms sustained 5 min | Investigate; likely missing index or N+1        |
+| Connection pool saturation | >90% for 2 min              | Emergency: increase pool size or shed load      |
+| Table bloat                | Dead tuples >20% of live    | Schedule VACUUM ANALYZE                         |
+| WAL lag                    | >5 min behind on replica    | Investigate replica connectivity                |
+| DB disk usage              | >80%                        | Provision more storage; review retention policy |
 
 ### Retention
 
@@ -196,12 +197,12 @@ LIMIT 20;
 
 ### Service Level Objectives
 
-| SLO | Target | Measurement window | Measurement method |
-|---|---|---|---|
-| API availability | 99.9% | Rolling 30 days | Grafana synthetic `/healthz` probe |
-| Web availability | 99.9% | Rolling 30 days | Grafana synthetic home-page probe |
-| API P95 latency | <1500ms | Rolling 7 days | Grafana API latency dashboard |
-| Successful auth rate | >99.5% | Rolling 7 days | Sentry auth-error rate |
+| SLO                  | Target  | Measurement window | Measurement method                 |
+| -------------------- | ------- | ------------------ | ---------------------------------- |
+| API availability     | 99.9%   | Rolling 30 days    | Grafana synthetic `/healthz` probe |
+| Web availability     | 99.9%   | Rolling 30 days    | Grafana synthetic home-page probe  |
+| API P95 latency      | <1500ms | Rolling 7 days     | Grafana API latency dashboard      |
+| Successful auth rate | >99.5%  | Rolling 7 days     | Sentry auth-error rate             |
 
 ### Error budget
 
@@ -222,30 +223,30 @@ A public status page at `status.cpaplatform.com` (Betterstack or equivalent) is 
 **Service name:** CPA Platform Production
 **Escalation policy:** CPA Platform On-Call
 
-| Step | Responder | Contact method | Delay |
-|---|---|---|---|
-| 1 | Aaron | PagerDuty mobile push + phone | Immediate |
-| 2 | Aaron | Email + SMS | +15 min if not acknowledged |
-| 3 | Backup contact (designate before launch) | Phone | +30 min if not acknowledged |
+| Step | Responder                                | Contact method                | Delay                       |
+| ---- | ---------------------------------------- | ----------------------------- | --------------------------- |
+| 1    | Aaron                                    | PagerDuty mobile push + phone | Immediate                   |
+| 2    | Aaron                                    | Email + SMS                   | +15 min if not acknowledged |
+| 3    | Backup contact (designate before launch) | Phone                         | +30 min if not acknowledged |
 
 ### Integration sources
 
-| Source | Event types | PagerDuty severity |
-|---|---|---|
-| Sentry | Critical exceptions, error rate spikes | P1 (page) |
-| Sentry | New issues, regressions, latency alerts | P2 (email) |
-| Grafana | Synthetic probe failure (2+ consecutive) | P1 (page) |
-| Grafana | CPU/memory/latency threshold breach | P2 (email) |
-| Sentry Cron | Backup restore drill missed | P1 (page) |
-| Sentry Cron | Other cron heartbeat missed | P3 (email) |
+| Source      | Event types                              | PagerDuty severity |
+| ----------- | ---------------------------------------- | ------------------ |
+| Sentry      | Critical exceptions, error rate spikes   | P1 (page)          |
+| Sentry      | New issues, regressions, latency alerts  | P2 (email)         |
+| Grafana     | Synthetic probe failure (2+ consecutive) | P1 (page)          |
+| Grafana     | CPU/memory/latency threshold breach      | P2 (email)         |
+| Sentry Cron | Backup restore drill missed              | P1 (page)          |
+| Sentry Cron | Other cron heartbeat missed              | P3 (email)         |
 
 ### Severity definitions
 
-| Severity | Definition | Response SLO |
-|---|---|---|
-| P1 | Site down, data loss risk, auth completely broken | Acknowledge in 5 min; war room in 15 min |
-| P2 | Degraded performance, partial feature failure, high error rate | Respond within 30 min; status page update within 15 min |
-| P3 | Non-customer-impacting warning, missed job, anomaly to investigate | Triage next business day |
+| Severity | Definition                                                         | Response SLO                                            |
+| -------- | ------------------------------------------------------------------ | ------------------------------------------------------- |
+| P1       | Site down, data loss risk, auth completely broken                  | Acknowledge in 5 min; war room in 15 min                |
+| P2       | Degraded performance, partial feature failure, high error rate     | Respond within 30 min; status page update within 15 min |
+| P3       | Non-customer-impacting warning, missed job, anomaly to investigate | Triage next business day                                |
 
 ---
 

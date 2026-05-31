@@ -1,10 +1,7 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Claim } from '@cpa/schemas';
-import {
-  createClaim,
-  listClaimsForClient,
-} from '@/app/consultant/_components/claims-api';
+import { createClaim, listClaimsForClient } from '@/app/consultant/_components/claims-api';
 
 /**
  * Lists the claims for one client (subject_tenant). One claim per period —

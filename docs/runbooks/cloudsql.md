@@ -26,18 +26,23 @@
 ### Tools
 
 - **gcloud CLI** — version 450+ recommended.
+
   ```bash
   gcloud version
   ```
+
   Install: https://cloud.google.com/sdk/docs/install
 
 - **Cloud SQL Auth Proxy** — required for local connections to Cloud SQL instances.
+
   ```bash
   cloud-sql-proxy --version
   ```
+
   Install: https://cloud.google.com/sql/docs/postgres/connect-auth-proxy
 
 - **psql** — Postgres client for running SQL verification queries.
+
   ```bash
   psql --version
   ```
@@ -47,6 +52,7 @@
   - `roles/cloudsql.client` — to connect via Cloud SQL Auth Proxy
 
   Authenticate:
+
   ```bash
   gcloud auth login
   gcloud auth application-default login
@@ -54,26 +60,26 @@
 
 ### Required permissions summary
 
-| Action | Required role |
-|---|---|
-| Create / patch Cloud SQL instances | `roles/cloudsql.admin` |
-| Create databases and users | `roles/cloudsql.admin` |
-| Connect via Cloud SQL Auth Proxy | `roles/cloudsql.client` |
-| Clone instances (restore drill) | `roles/cloudsql.admin` |
+| Action                             | Required role           |
+| ---------------------------------- | ----------------------- |
+| Create / patch Cloud SQL instances | `roles/cloudsql.admin`  |
+| Create databases and users         | `roles/cloudsql.admin`  |
+| Connect via Cloud SQL Auth Proxy   | `roles/cloudsql.client` |
+| Clone instances (restore drill)    | `roles/cloudsql.admin`  |
 
 ### Instance configuration
 
-| Parameter | Value |
-|---|---|
-| Database version | `POSTGRES_16` |
-| Tier | `db-custom-2-4096` (2 vCPU, 4 GB RAM) |
-| Availability | `REGIONAL` (high availability with standby) |
-| Primary region | `australia-southeast1` (Sydney) |
-| Fallback region | `australia-southeast2` (Melbourne) |
-| Network | Private IP only (no public IP) |
-| pgvector | Enabled via `cloudsql.enable_pgvector=on` flag |
-| Automated backups | Daily at 02:00 UTC, 7-day retention |
-| PITR | Enabled |
+| Parameter         | Value                                          |
+| ----------------- | ---------------------------------------------- |
+| Database version  | `POSTGRES_16`                                  |
+| Tier              | `db-custom-2-4096` (2 vCPU, 4 GB RAM)          |
+| Availability      | `REGIONAL` (high availability with standby)    |
+| Primary region    | `australia-southeast1` (Sydney)                |
+| Fallback region   | `australia-southeast2` (Melbourne)             |
+| Network           | Private IP only (no public IP)                 |
+| pgvector          | Enabled via `cloudsql.enable_pgvector=on` flag |
+| Automated backups | Daily at 02:00 UTC, 7-day retention            |
+| PITR              | Enabled                                        |
 
 ---
 
@@ -116,6 +122,7 @@ bash tools/gcp/cloudsql-provision.sh
 ```
 
 The script will, for each environment (prod + stg):
+
 - Create the Cloud SQL Postgres 16 instance with REGIONAL availability and private IP only (idempotent)
 - Enable the `cloudsql.enable_pgvector=on` database flag
 - Create the `cpa_app` database
@@ -389,6 +396,7 @@ bash tools/gcp/cloudsql-restore-drill.sh
 ```
 
 The script will:
+
 1. Verify the source production instance exists
 2. Clone the production instance to `cpa-prod-db-drill-YYYYMMDD`
 3. Print connection information and verification queries
@@ -451,11 +459,11 @@ gcloud sql instances delete "cpa-prod-db-drill-${DRILL_DATE}" \
 
 ### Drill frequency and record-keeping
 
-| Trigger | Action |
-|---|---|
-| Monthly (minimum) | Run standard drill |
+| Trigger                           | Action                                    |
+| --------------------------------- | ----------------------------------------- |
+| Monthly (minimum)                 | Run standard drill                        |
 | After any migration batch (0010+) | Run standard drill with manual inspection |
-| After major incident | Run standard drill + document results |
+| After major incident              | Run standard drill + document results     |
 
 Record each drill result (date, instance cloned from, migrations verified, pass/fail) in the incident log or a drill register doc.
 
@@ -492,6 +500,7 @@ cpa-platform-prod:australia-southeast2:cpa-prod-db
 ```
 
 Update the following to reflect the new connection name:
+
 - `DATABASE_URL` in Secret Manager
 - Cloud Run service environment configuration
 - Any hardcoded connection strings in CI/CD configuration
@@ -505,6 +514,7 @@ Change the `REGION` row in the [Instance configuration table](#prerequisites) to
 Check GCP Status: https://status.cloud.google.com/
 
 When Sydney capacity is restored, consider migrating back:
+
 - Provision a new instance in `australia-southeast1`
 - Use PITR or a backup clone to migrate data
 - Update connection strings
@@ -518,11 +528,11 @@ PITR allows restoring the database to any point within the transaction log reten
 
 ### When to use PITR vs. backup restore
 
-| Scenario | Recommended approach |
-|---|---|
-| Recover from last known good state (daily granularity is sufficient) | Restore from automated backup |
-| Recover to a specific timestamp (e.g., 30 minutes before an incident) | PITR |
-| Restore drill / regular verification | `cloudsql-restore-drill.sh` (uses clone from latest backup) |
+| Scenario                                                              | Recommended approach                                        |
+| --------------------------------------------------------------------- | ----------------------------------------------------------- |
+| Recover from last known good state (daily granularity is sufficient)  | Restore from automated backup                               |
+| Recover to a specific timestamp (e.g., 30 minutes before an incident) | PITR                                                        |
+| Restore drill / regular verification                                  | `cloudsql-restore-drill.sh` (uses clone from latest backup) |
 
 ### PITR prerequisites
 

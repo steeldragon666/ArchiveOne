@@ -1,4 +1,4 @@
-displayName: "CPA Platform — cpa-api instance count dropped to 0"
+displayName: 'CPA Platform — cpa-api instance count dropped to 0'
 documentation:
   content: |
     ## Alert: cpa-api Instance Count = 0
@@ -39,7 +39,7 @@ alertStrategy:
   autoClose: 1800s
 combiner: OR
 conditions:
-  - displayName: "cpa-api active instance count = 0"
+  - displayName: 'cpa-api active instance count = 0'
     conditionThreshold:
       filter: |
         resource.type = "cloud_run_revision"
@@ -55,5 +55,5 @@ conditions:
       duration: 60s
       trigger:
         count: 1
-notificationChannels: []  # populated by monitoring-setup.sh with PagerDuty channel ID
+notificationChannels: [] # populated by monitoring-setup.sh with PagerDuty channel ID
 severity: CRITICAL

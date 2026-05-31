@@ -46,7 +46,12 @@ export function useClaimWorkflow(claimId: string | null | undefined): UseClaimWo
       } catch (err) {
         // 400 not_a_wizard_claim → claim has no workflow_state yet. Treat
         // as a soft "needs preparing" state, not a hard error.
-        if (err && typeof err === 'object' && 'status' in err && (err as { status: number }).status === 400) {
+        if (
+          err &&
+          typeof err === 'object' &&
+          'status' in err &&
+          (err as { status: number }).status === 400
+        ) {
           return NOT_INITIALIZED;
         }
         throw err;

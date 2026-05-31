@@ -16,26 +16,31 @@ The campaign prioritises firms where one partner owns delivery quality, claimant
 ### 1. Prospect Research Agent
 
 Inputs:
+
 - target geography: Australia
 - target segment: boutique to mid-tier R&DTI consultants, R&D tax specialists, grant advisory firms
 - exclusion: Big-4 firms, generic bookkeeping practices with no visible R&DTI specialisation
 
 Tasks:
+
 - identify firm name, website, LinkedIn company page, senior partner or director, public R&DTI positioning, likely claimant volume, and contact channel
 - score each prospect from 1-5 on founding-partner fit
 - tag angle: `audit-defence`, `portal-narrative-time`, `mobile-evidence-capture`, `white-label-platform`, or `pricing-floor`
 
 Output:
+
 - one row per prospect with `firm_name`, `contact_name`, `role`, `email_or_linkedin`, `fit_score`, `angle`, `evidence`, `next_action`
 
 ### 2. Message Strategy Agent
 
 Inputs:
+
 - prospect row
 - marketing feature brief: `docs/marketing/2026-05-07-features-brief-marketing-input.md`
 - public signup URL
 
 Tasks:
+
 - choose one pain-point angle, not a general product pitch
 - draft a 5-touch sequence with subject lines
 - keep copy direct, founder-led, and specific to Australian R&DTI
@@ -43,6 +48,7 @@ Tasks:
 - use only source-checked compliance references; if a claim depends on a case, Budget measure, or portal change, include the source note for manual review before sending
 
 Sequence:
+
 1. cold intro: audit risk or portal narrative drag
 2. capability proof: evidence chain plus schema-exact narrative pack
 3. compliance proof: source-checked review risk and contemporaneous evidence framing
@@ -52,6 +58,7 @@ Sequence:
 ### 3. Reply Triage Agent
 
 Tasks:
+
 - classify replies as `book_demo`, `needs_info`, `not_now`, `not_fit`, `unsubscribe`, or `manual_review`
 - draft a response under 120 words
 - route `book_demo` and `manual_review` to the founder
@@ -60,6 +67,7 @@ Tasks:
 ### 4. Founder Slot Ops Agent
 
 Tasks:
+
 - maintain current count of qualified founder slots
 - record trial signups and demo status
 - flag any firm that needs procurement, security, or data-sovereignty follow-up
@@ -68,6 +76,7 @@ Tasks:
 ## Launch List Criteria
 
 Qualified prospects should meet at least three:
+
 - visible Australian R&DTI or grants consulting offer
 - boutique to mid-size advisory positioning
 - direct partner or director reachable
@@ -94,6 +103,7 @@ Aaron
 ## Metrics
 
 Weekly leading indicators:
+
 - 40 researched prospects
 - 20 first-touch messages
 - 8 replies
@@ -101,6 +111,7 @@ Weekly leading indicators:
 - 2 trial signups
 
 Conversion indicators:
+
 - founder slot reserved
 - trial tenant created
 - first claimant added
@@ -121,6 +132,7 @@ Conversion indicators:
 ## Source Check Notes
 
 Checked on 2026-05-22:
+
 - ATO publishes the GQHC Decision Impact Statement and confirms the Commissioner can assess R&D eligibility where no binding Innovation and Science Australia finding exists.
 - business.gov.au and the Department of Industry describe current R&DTI responsibilities split between Industry/IISA for activity registration and the ATO for entity and expenditure rules.
 - Public commentary confirms AusIndustry released an updated R&DTI portal application form on 2025-08-15, but outreach should not rely on exact field-count claims unless matched to the current portal schema.

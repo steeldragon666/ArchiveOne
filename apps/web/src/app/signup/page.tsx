@@ -160,7 +160,9 @@ export default function SignupPage() {
                   <Diamond className="h-3 w-3" />
                 </div>
                 <div>
-                  <h2 className="font-display text-3xl font-light">You already have a workspace.</h2>
+                  <h2 className="font-display text-3xl font-light">
+                    You already have a workspace.
+                  </h2>
                   <p className="mt-4 font-body text-sm leading-7 text-[#cdc7bd]">
                     This email already has a workspace. Use Log in instead.
                   </p>

@@ -17,16 +17,16 @@ Maintain a register of all third-party suppliers that process, store, or have ac
 
 ## 2. Supplier Register
 
-| Supplier         | Service                           | Data Shared                                | Sensitivity  | Certifications     | DPA Status       | Last Reviewed | Risk Rating |
-| ---------------- | --------------------------------- | ------------------------------------------ | ------------ | ------------------ | ---------------- | ------------- | ----------- |
-| Anthropic        | AI inference (Claude)             | Narrative content, expenditure summaries   | Confidential | SOC 2 Type II      | Terms of service | 2026-05-06    | Medium      |
-| GitHub           | Source code hosting + CI/CD       | Source code, CI logs, PR metadata          | Internal     | SOC 2 + ISO 27001  | DPA signed       | 2026-05-06    | Low         |
-| Google Cloud (GCP) | Infrastructure (Cloud Run, Cloud SQL, Secret Manager, Cloud Build, DNS, Monitoring) | All platform data (Restricted) | Restricted | ISO 27001 + SOC 2 Type II + ISO 27017/27018 | DPA accepted (Google Cloud Terms) | 2026-05-06 | Medium |
-| Sentry           | Error tracking + monitoring       | Error payloads, stack traces               | Internal     | SOC 2 Type II      | DPA signed       | 2026-05-06    | Low         |
-| PagerDuty        | Incident alerting                 | Alert metadata (no customer data)          | Internal     | SOC 2 + ISO 27001  | DPA signed       | 2026-05-06    | Low         |
-| Resend           | Transactional email               | Recipient email addresses, email content   | Confidential | SOC 2 Type II      | DPA signed       | 2026-05-06    | Medium      |
-| DocuSign         | Webhook integration               | Webhook payload metadata                   | Internal     | SOC 2 + ISO 27001  | Terms of service | 2026-05-06    | Low         |
-| Cobalt.io        | Penetration testing               | Application access, vulnerability findings | Confidential | SOC 2 Type II      | NDA + DPA signed | 2026-05-06    | Medium      |
+| Supplier           | Service                                                                             | Data Shared                                | Sensitivity  | Certifications                              | DPA Status                        | Last Reviewed | Risk Rating |
+| ------------------ | ----------------------------------------------------------------------------------- | ------------------------------------------ | ------------ | ------------------------------------------- | --------------------------------- | ------------- | ----------- |
+| Anthropic          | AI inference (Claude)                                                               | Narrative content, expenditure summaries   | Confidential | SOC 2 Type II                               | Terms of service                  | 2026-05-06    | Medium      |
+| GitHub             | Source code hosting + CI/CD                                                         | Source code, CI logs, PR metadata          | Internal     | SOC 2 + ISO 27001                           | DPA signed                        | 2026-05-06    | Low         |
+| Google Cloud (GCP) | Infrastructure (Cloud Run, Cloud SQL, Secret Manager, Cloud Build, DNS, Monitoring) | All platform data (Restricted)             | Restricted   | ISO 27001 + SOC 2 Type II + ISO 27017/27018 | DPA accepted (Google Cloud Terms) | 2026-05-06    | Medium      |
+| Sentry             | Error tracking + monitoring                                                         | Error payloads, stack traces               | Internal     | SOC 2 Type II                               | DPA signed                        | 2026-05-06    | Low         |
+| PagerDuty          | Incident alerting                                                                   | Alert metadata (no customer data)          | Internal     | SOC 2 + ISO 27001                           | DPA signed                        | 2026-05-06    | Low         |
+| Resend             | Transactional email                                                                 | Recipient email addresses, email content   | Confidential | SOC 2 Type II                               | DPA signed                        | 2026-05-06    | Medium      |
+| DocuSign           | Webhook integration                                                                 | Webhook payload metadata                   | Internal     | SOC 2 + ISO 27001                           | Terms of service                  | 2026-05-06    | Low         |
+| Cobalt.io          | Penetration testing                                                                 | Application access, vulnerability findings | Confidential | SOC 2 Type II                               | NDA + DPA signed                  | 2026-05-06    | Medium      |
 
 ## 3. Risk Rating Criteria
 
@@ -98,16 +98,16 @@ Risk ratings are assigned based on:
 
 ## 5. Annual Review Schedule
 
-| Supplier         | Next Review | Reviewer |
-| ---------------- | ----------- | -------- |
-| Anthropic        | 2026-11-06  | Aaron    |
-| GitHub           | 2026-11-06  | Aaron    |
+| Supplier           | Next Review | Reviewer |
+| ------------------ | ----------- | -------- |
+| Anthropic          | 2026-11-06  | Aaron    |
+| GitHub             | 2026-11-06  | Aaron    |
 | Google Cloud (GCP) | 2027-05-06  | Aaron    |
-| Sentry           | 2026-11-06  | Aaron    |
-| PagerDuty        | 2026-11-06  | Aaron    |
-| Resend           | 2026-11-06  | Aaron    |
-| DocuSign         | 2026-11-06  | Aaron    |
-| Cobalt.io        | 2026-11-06  | Aaron    |
+| Sentry             | 2026-11-06  | Aaron    |
+| PagerDuty          | 2026-11-06  | Aaron    |
+| Resend             | 2026-11-06  | Aaron    |
+| DocuSign           | 2026-11-06  | Aaron    |
+| Cobalt.io          | 2026-11-06  | Aaron    |
 
 ## 6. Triggered Reviews
 

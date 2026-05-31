@@ -102,6 +102,10 @@ export default tseslint.config(
       // and the instrumentation hook). See apps/web/eslint.config.mjs.
       'apps/web/sentry.client.config.ts',
       'apps/web/sentry.server.config.ts',
+      // tools/monitoring/sentry-config.ts is a standalone monitoring helper
+      // outside any workspace tsconfig; lint-staged would otherwise fail
+      // with "not found by the project service" when prettier-write touches it.
+      'tools/monitoring/sentry-config.ts',
       'apps/web/sentry.edge.config.ts',
     ],
   },

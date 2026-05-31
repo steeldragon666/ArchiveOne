@@ -105,45 +105,45 @@
     /* Legacy dark-glass tokens — retained ONLY so the not-yet-migrated
        (claimsure)/* routes don't error before their surface migration.
        Remapped onto System A (amber/ink) rather than the old indigo. */
-    --cs-surface:                   #0b0b0d; /* ink */
-    --cs-surface-dim:               #0a0a0b;
-    --cs-surface-container-lowest:  #070708;
-    --cs-surface-container-low:     #131316; /* ink2 */
-    --cs-surface-container:         #1c1c20; /* ink3 */
-    --cs-surface-container-high:    #252529; /* ink4 */
+    --cs-surface: #0b0b0d; /* ink */
+    --cs-surface-dim: #0a0a0b;
+    --cs-surface-container-lowest: #070708;
+    --cs-surface-container-low: #131316; /* ink2 */
+    --cs-surface-container: #1c1c20; /* ink3 */
+    --cs-surface-container-high: #252529; /* ink4 */
     --cs-surface-container-highest: #2d2d31;
-    --cs-surface-variant:           rgba(240,235,226,0.05);
-    --cs-on-surface:                #f0ebe2; /* bone */
-    --cs-on-surface-variant:        #8a857c; /* bone3 */
-    --cs-outline-variant:           rgba(240,235,226,0.10); /* rule */
-    --cs-outline:                   #5d594f; /* bone4 */
+    --cs-surface-variant: rgba(240, 235, 226, 0.05);
+    --cs-on-surface: #f0ebe2; /* bone */
+    --cs-on-surface-variant: #8a857c; /* bone3 */
+    --cs-outline-variant: rgba(240, 235, 226, 0.1); /* rule */
+    --cs-outline: #5d594f; /* bone4 */
 
-    --cs-primary:                   #e1a23a; /* amber */
-    --cs-primary-container:         #b88a3d; /* amberSoft */
-    --cs-primary-fixed:             #f5d9a8;
-    --cs-primary-fixed-dim:         #e1a23a;
-    --cs-on-primary:                #0b0b0d; /* ink text on amber */
+    --cs-primary: #e1a23a; /* amber */
+    --cs-primary-container: #b88a3d; /* amberSoft */
+    --cs-primary-fixed: #f5d9a8;
+    --cs-primary-fixed-dim: #e1a23a;
+    --cs-on-primary: #0b0b0d; /* ink text on amber */
 
-    --cs-secondary-fixed:           #a9c2b5;
-    --cs-secondary-fixed-dim:       #7a9685; /* sage */
+    --cs-secondary-fixed: #a9c2b5;
+    --cs-secondary-fixed-dim: #7a9685; /* sage */
 
-    --cs-tertiary-fixed:            #e0a98f;
-    --cs-tertiary-fixed-dim:        #c46a48; /* rust */
+    --cs-tertiary-fixed: #e0a98f;
+    --cs-tertiary-fixed-dim: #c46a48; /* rust */
 
-    --cs-error:                     #c46a48; /* rust */
-    --cs-warn:                      #e1a23a; /* amber */
-    --cs-success:                   #7a9685; /* sage */
+    --cs-error: #c46a48; /* rust */
+    --cs-warn: #e1a23a; /* amber */
+    --cs-success: #7a9685; /* sage */
 
-    --cs-glass-bg:                  rgba(240,235,226,0.03);
-    --cs-glass-border:              rgba(240,235,226,0.10);
-    --cs-glass-blur:                12px;
+    --cs-glass-bg: rgba(240, 235, 226, 0.03);
+    --cs-glass-border: rgba(240, 235, 226, 0.1);
+    --cs-glass-blur: 12px;
 
-    --cs-ai-grad: radial-gradient(circle at top right, rgba(225,162,58,0.20), transparent 60%);
-    --cs-ai-glow: 0 0 40px rgba(225,162,58,0.16);
-    --cs-primary-glow: 0 0 24px rgba(225,162,58,0.34);
+    --cs-ai-grad: radial-gradient(circle at top right, rgba(225, 162, 58, 0.2), transparent 60%);
+    --cs-ai-glow: 0 0 40px rgba(225, 162, 58, 0.16);
+    --cs-primary-glow: 0 0 24px rgba(225, 162, 58, 0.34);
 
-    --cs-ease-out: cubic-bezier(.16,1,.3,1);
-    --cs-ease-spring: cubic-bezier(.34,1.56,.64,1);
+    --cs-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    --cs-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   }
 }
 
@@ -191,7 +191,7 @@
   .cs-ai-glow {
     background: var(--cs-ai-grad), var(--cs-glass-bg);
     box-shadow: var(--cs-ai-glow);
-    border: 1px solid rgba(70,72,212,0.30);
+    border: 1px solid rgba(70, 72, 212, 0.3);
   }
 
   .cs-primary-glow {
@@ -199,7 +199,11 @@
   }
 
   .cs-gradient-text {
-    background: linear-gradient(115deg, var(--cs-primary-fixed-dim) 0%, var(--cs-secondary-fixed-dim) 100%);
+    background: linear-gradient(
+      115deg,
+      var(--cs-primary-fixed-dim) 0%,
+      var(--cs-secondary-fixed-dim) 100%
+    );
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
@@ -207,49 +211,87 @@
   }
 
   .cs-timeline-line {
-    background: linear-gradient(to bottom, var(--cs-primary) 0%, rgba(225,162,58,0.1) 100%);
+    background: linear-gradient(to bottom, var(--cs-primary) 0%, rgba(225, 162, 58, 0.1) 100%);
   }
 }
 
 @layer utilities {
   @keyframes cs-ai-pulse {
-    0%, 100% { transform: scale(1); opacity: 1; }
-    50%       { transform: scale(1.4); opacity: 0.4; }
+    0%,
+    100% {
+      transform: scale(1);
+      opacity: 1;
+    }
+    50% {
+      transform: scale(1.4);
+      opacity: 0.4;
+    }
   }
   .cs-ai-pulse {
     animation: cs-ai-pulse 2.6s ease-out infinite;
   }
 
   @keyframes cs-shimmer {
-    0%   { background-position: -200% 0; }
-    100% { background-position: 200% 0; }
+    0% {
+      background-position: -200% 0;
+    }
+    100% {
+      background-position: 200% 0;
+    }
   }
   .cs-shimmer {
-    background-image: linear-gradient(90deg,
-      rgba(225,162,58,0.10) 0%,
-      rgba(225,162,58,0.30) 50%,
-      rgba(225,162,58,0.10) 100%);
+    background-image: linear-gradient(
+      90deg,
+      rgba(225, 162, 58, 0.1) 0%,
+      rgba(225, 162, 58, 0.3) 50%,
+      rgba(225, 162, 58, 0.1) 100%
+    );
     background-size: 200% 100%;
     animation: cs-shimmer 2.5s linear infinite;
   }
 
   @keyframes cs-typing-dot {
-    0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
-    30% { transform: translateY(-4px); opacity: 1; }
+    0%,
+    60%,
+    100% {
+      transform: translateY(0);
+      opacity: 0.4;
+    }
+    30% {
+      transform: translateY(-4px);
+      opacity: 1;
+    }
   }
-  .cs-typing-dot { animation: cs-typing-dot 1.2s infinite; }
+  .cs-typing-dot {
+    animation: cs-typing-dot 1.2s infinite;
+  }
 
   @keyframes cs-page-in {
-    from { opacity: 0; transform: translateY(8px); }
-    to   { opacity: 1; transform: translateY(0); }
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
-  .cs-page-in { animation: cs-page-in 0.45s cubic-bezier(.16,1,.3,1) both; }
+  .cs-page-in {
+    animation: cs-page-in 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
 
   @keyframes cs-sparkle {
-    from { stroke-dashoffset: 1000; }
-    to   { stroke-dashoffset: 0; }
+    from {
+      stroke-dashoffset: 1000;
+    }
+    to {
+      stroke-dashoffset: 0;
+    }
   }
-  .cs-spark-path { stroke-dasharray: 1000; animation: cs-sparkle 2s cubic-bezier(.16,1,.3,1) forwards; }
+  .cs-spark-path {
+    stroke-dasharray: 1000;
+    animation: cs-sparkle 2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
 }
 
 /*
