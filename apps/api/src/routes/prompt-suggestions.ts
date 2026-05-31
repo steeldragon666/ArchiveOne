@@ -1,9 +1,18 @@
 import crypto from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod';
 import { requireSession } from '@cpa/auth';
 import { sql } from '@cpa/db/client';
-import { Uuid } from '@cpa/schemas';
+import {
+  Uuid,
+  PROMPT_SUGGESTION_SOURCE_KINDS as SOURCE_KINDS,
+  PROMPT_SUGGESTION_STATUSES as STATUSES,
+  PROMPT_SUGGESTION_TRIAGE_CLASSIFICATIONS as TRIAGE_CLASSIFICATIONS,
+  PROMPT_SUGGESTION_REVIEW_DISPOSITIONS as REVIEW_DISPOSITIONS,
+  flagSuggestionBody as FlagSuggestionInput,
+  listSuggestionsQuery as ListSuggestionsQuery,
+  triageSuggestionBody as TriageInput,
+  reviewSuggestionBody as ReviewInput,
+} from '@cpa/schemas';
 import {
   generatePullRequest,
   ChoreographyError,
@@ -72,65 +81,9 @@ import type { PromptSuggestionEvaluation } from '@cpa/agents';
 // Zod schemas — input contracts for the five routes.
 // ---------------------------------------------------------------------------
 
-const SOURCE_KINDS = [
-  'consultant_flag',
-  'rif_event',
-  'contract_test_failure',
-  'reviewer_disposition',
-] as const;
-
-const STATUSES = ['open', 'triaged', 'pr_drafted', 'pr_merged', 'dismissed'] as const;
-
-const TRIAGE_CLASSIFICATIONS = [
-  'prompt_change',
-  'schema_change',
-  'code_change',
-  'no_action_needed',
-] as const;
-
-const REVIEW_DISPOSITIONS = [
-  'approve_for_pr',
-  'request_more_info',
-  'dismiss',
-  'escalate_to_code_change',
-] as const;
-
-const FlagSuggestionInput = z
-  .object({
-    source_kind: z.enum(SOURCE_KINDS),
-    source_payload: z.record(z.unknown()),
-    affected_prompt_module: z.string().min(1).max(200).optional(),
-    affected_section_kind: z.string().min(1).max(100).optional(),
-    issue_summary: z.string().min(10).max(1000),
-  })
-  .strict();
-
-const ListSuggestionsQuery = z
-  .object({
-    status: z.enum(STATUSES).optional(),
-    source_kind: z.enum(SOURCE_KINDS).optional(),
-    limit: z.coerce.number().int().positive().max(100).default(50),
-    cursor: z.string().optional(),
-  })
-  .strict();
-
-const TriageInput = z
-  .object({
-    triage_classification: z.enum(TRIAGE_CLASSIFICATIONS),
-    // We can only triage to triaged (assigning a classification) or
-    // dismissed (no_action_needed shortcut). Other statuses are reached
-    // via review / generate-pr.
-    status_after: z.enum(['triaged', 'dismissed']),
-    notes: z.string().max(1000).optional(),
-  })
-  .strict();
-
-const ReviewInput = z
-  .object({
-    disposition: z.enum(REVIEW_DISPOSITIONS),
-    notes: z.string().max(1000).optional(),
-  })
-  .strict();
+// Enum arrays + input Zod schemas now live in @cpa/schemas (issue #28).
+// They are imported under the same local names at the top of the file so
+// existing references and the `_internals` re-export keep working.
 
 // ---------------------------------------------------------------------------
 // Row shapes + API mapping.
