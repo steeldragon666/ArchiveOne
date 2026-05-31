@@ -14,7 +14,15 @@ test.describe('Tenant switcher', () => {
     await cleanupByEmailPrefix('e2e-T7-');
   });
 
-  test('clicking a tenant in the dropdown changes the active firm', async ({ page, context }) => {
+  // SKIPPED 2026-05-31 — the dashboard tenant switcher (the dropdown
+  // with role=menuitem firm rows) lived on the legacy `/` admin
+  // dashboard, which has been retired. The consultant workspace at
+  // /consultant has its own sidebar/header switcher with different
+  // semantics. Tracked in task #66.
+  test.skip('clicking a tenant in the dropdown changes the active firm', async ({
+    page,
+    context,
+  }) => {
     const tenantA = await seedTenant('e2e-T7-firm-alpha', 'E2E T7 Firm Alpha');
     const tenantB = await seedTenant('e2e-T7-firm-bravo', 'E2E T7 Firm Bravo');
     const userId = await seedUser('e2e-T7-multi@example.com', 'T7 Multi-firm');
@@ -38,7 +46,9 @@ test.describe('Tenant switcher', () => {
       ],
     });
 
-    await page.goto('/');
+    // `/` is now the marketing landing (next.config.ts rewrite); the
+    // tenant switcher lives in the authenticated dashboard shell.
+    await page.goto('/dashboard');
 
     // Initial active firm: Alpha. Firm name appears twice (TenantSwitcher
     // button + "Active firm: <strong>" label); scope to <strong> for an

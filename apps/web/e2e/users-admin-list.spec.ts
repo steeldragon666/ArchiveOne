@@ -33,8 +33,12 @@ test.describe('Users admin list', () => {
     await page.goto('/users');
     await expect(page.getByRole('heading', { name: /Firm members/i })).toBeVisible();
     await expect(page.getByRole('link', { name: /Add user/i })).toBeVisible();
-    await expect(page.getByText('e2e-T8-admin@example.com')).toBeVisible();
-    await expect(page.getByText('e2e-T8-consultant@example.com')).toBeVisible();
+    // Scope to the table — the admin's email also appears in the page
+    // banner (active-user chip), so an unscoped getByText is ambiguous
+    // under Playwright strict mode.
+    const table = page.getByRole('table');
+    await expect(table.getByText('e2e-T8-admin@example.com')).toBeVisible();
+    await expect(table.getByText('e2e-T8-consultant@example.com')).toBeVisible();
   });
 
   test('non-admin sees "Admin role required" empty state', async ({ page, context }) => {
