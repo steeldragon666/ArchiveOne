@@ -1,0 +1,435 @@
+import type { FastifyInstance } from 'fastify';
+import { requireSession } from '@cpa/auth';
+import {
+  computeIdempotencyKey,
+  lookupCache,
+  makeClassifier,
+  withAgentSpan,
+  writeCache,
+  type Classifier,
+  type ClassifierOutput,
+} from '@cpa/agents';
+import { insertEventWithChain } from '@cpa/db';
+import { sql } from '@cpa/db/client';
+import { createEventBody, listEventsQuery } from '@cpa/schemas';
+import { getBoss } from '../lib/pg-boss-client.js';
+import { DOCUMENT_EXTRACT_QUEUE } from '../jobs/document-extract.js';
+import { rowToEvent, type RawEventViewRow } from './events-shared.js';
+
+// Lazy classifier singleton — first request constructs it, subsequent
+// requests reuse. Lazy (not module-init) so the test runner can set
+// CLASSIFIER_IMPL=stub between import time and first injected request, and
+// so a misconfigured ANTHROPIC_API_KEY surfaces as a per-request 503 rather
+// than a process-wide boot failure.
+let classifierInstance: Classifier | null = null;
+const getClassifier = (): Classifier => {
+  if (!classifierInstance) classifierInstance = makeClassifier();
+  return classifierInstance;
+};
+
+const isAnthropicExhausted = (e: unknown): boolean => {
+  // Anthropic SDK errors carry a .status (HTTP code). 529 = Overloaded;
+  // anything 5xx from the upstream model is "exhausted" from our POV.
+  const status = (e as { status?: number }).status;
+  return typeof status === 'number' && status >= 500;
+};
+
+interface CursorTuple {
+  captured_at: string;
+  received_at: string;
+  id: string;
+}
+
+/**
+ * Encode a cursor tuple as opaque base64 JSON. Clients shouldn't introspect
+ * — the format is internal and can change without bumping the API contract
+ * since cursors are returned by us and passed back as-is.
+ */
+function encodeCursor(t: CursorTuple): string {
+  return Buffer.from(JSON.stringify(t), 'utf8').toString('base64url');
+}
+
+/**
+ * Decode an opaque cursor. Returns null on any parse error so the route can
+ * surface a 400; never throws (untrusted input). Validates the three field
+ * shapes minimally so a corrupted cursor doesn't slip into the WHERE clause.
+ */
+function decodeCursor(s: string): CursorTuple | null {
+  try {
+    const json = Buffer.from(s, 'base64url').toString('utf8');
+    const parsed = JSON.parse(json) as Partial<CursorTuple>;
+    if (
+      typeof parsed.captured_at !== 'string' ||
+      typeof parsed.received_at !== 'string' ||
+      typeof parsed.id !== 'string'
+    ) {
+      return null;
+    }
+    return {
+      captured_at: parsed.captured_at,
+      received_at: parsed.received_at,
+      id: parsed.id,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Register the event capture + listing routes:
+ *   - POST /v1/events            — paste/upload an event, classify, persist
+ *   - GET  /v1/events            — paginated list with filter/scope params
+ *
+ * Auth: every route requires a session (requireSession). Per-claimant ACL
+ * checks are deferred to RLS — the subject_tenant table's policy filters
+ * cross-firm rows automatically.
+ */
+export function registerEventsCrud(app: FastifyInstance): void {
+  app.post('/v1/events', { preHandler: requireSession }, async (req, reply) => {
+    const parsed = createEventBody.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.status(400).send({
+        error: 'invalid_body',
+        message: 'Body must be { subject_tenant_id, raw_text, captured_at? }',
+        requestId: req.id,
+      });
+    }
+    const { subject_tenant_id, raw_text, captured_at } = parsed.data;
+    const tenantId = req.user!.tenantId!;
+    const userId = req.user!.id;
+    const capturedAt = captured_at ? new Date(captured_at) : new Date();
+
+    // Step 1: confirm the subject_tenant is visible (and live) under RLS.
+    // 404 covers both "doesn't exist" and "exists in another firm".
+    const subjectVisible = await sql.begin(async (tx) => {
+      await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+      const rows = await tx<{ id: string }[]>`
+        SELECT id FROM subject_tenant
+         WHERE id = ${subject_tenant_id} AND deleted_at IS NULL
+      `;
+      return rows[0] != null;
+    });
+    if (!subjectVisible) {
+      return reply.status(404).send({
+        error: 'subject_tenant_not_found',
+        message: 'No subject_tenant with that id in this firm',
+        requestId: req.id,
+      });
+    }
+
+    // Step 2: classify with idempotency cache. Key = SHA256(prompt_version
+    // || NUL || raw_text). The cache is content-addressed across tenants
+    // (same paste in two firms legitimately gets the same answer).
+    //
+    // We bind the prompt version statically here so a deploy that bumps
+    // the prompt invalidates older cache entries — the wire format
+    // (computeIdempotencyKey input) folds prompt_version into the key, so
+    // this is automatic.
+    const PROMPT_KEY = 'classify@1.0.0';
+    // Two idempotency keys: same input feeds both, but they serve different
+    // unique-constraint surfaces and therefore need different granularities.
+    //
+    //  - `idempotencyKey` (content-only) → classifier cache. Legitimately
+    //    cross-tenant: the same paste in firm A and firm B should hit the
+    //    cached AI output, saving tokens. This is the cache_key column on
+    //    agent_call_cache and is content-addressed by design.
+    //
+    //  - `eventIdempotencyKey` (context-aware) → event.idempotency_key
+    //    column, which carries a GLOBAL unique constraint. Without context,
+    //    the same evidence uploaded to a second project (legitimate user
+    //    flow) collides with the first event row and 500s. Folding
+    //    tenantId + subject_tenant_id + captured_at into the key gives the
+    //    right granularity: within-context retry dedups (double-click safe),
+    //    across-context uploads don't collide.
+    const idempotencyKey = computeIdempotencyKey(PROMPT_KEY, raw_text);
+
+    let classification: ClassifierOutput;
+    try {
+      classification = await withAgentSpan(
+        'classify',
+        {
+          agent_name: 'classifier',
+          prompt_version: PROMPT_KEY,
+          model: process.env['CLASSIFIER_MODEL'] ?? 'haiku',
+          tenant_id: tenantId,
+          subject_tenant_id,
+        },
+        async (setAttr) => {
+          const cached = await lookupCache(idempotencyKey);
+          if (cached) {
+            setAttr({ cache_hit: true });
+            // Cached output shape matches ClassifierOutput by construction
+            // (writeCache below stores the same object).
+            return cached.output as ClassifierOutput;
+          }
+          setAttr({ cache_hit: false });
+          const out = await getClassifier().classify({ raw_text });
+          setAttr({
+            tokens_in: out.tokens_in,
+            tokens_out: out.tokens_out,
+            classification_kind: out.kind,
+            classification_confidence: out.confidence,
+          });
+          // ON CONFLICT DO NOTHING — first write wins; concurrent identical
+          // requests don't clobber each other (idempotency contract).
+          await writeCache({
+            idempotency_key: idempotencyKey,
+            agent_name: 'classifier',
+            prompt_version: out.prompt_version,
+            output: out,
+            tokens_in: out.tokens_in,
+            tokens_out: out.tokens_out,
+            model: out.model,
+          });
+          return out;
+        },
+      );
+    } catch (e) {
+      if (isAnthropicExhausted(e)) {
+        req.log.warn({ err: e }, 'classifier upstream exhausted');
+        return reply.status(503).send({
+          error: 'classifier_unavailable',
+          message: 'Classifier upstream is unavailable; retry shortly',
+          requestId: req.id,
+        });
+      }
+      throw e;
+    }
+
+    // Step 3: extend the chain. The chain helper holds a per-subject
+    // advisory lock so concurrent inserts on the same chain serialise.
+    const eventIdempotencyKey = computeIdempotencyKey(
+      PROMPT_KEY,
+      `${tenantId}|${subject_tenant_id}|${capturedAt.toISOString()}|${raw_text}`,
+    );
+    const inserted = await insertEventWithChain({
+      tenant_id: tenantId,
+      subject_tenant_id,
+      // Chain canonicalisation includes `kind` — set to the classifier's
+      // kind so the hash captures the classification at insert time.
+      kind: classification.kind,
+      payload: { _v: 1, source: 'paste', raw_text },
+      classification,
+      captured_at: capturedAt,
+      captured_by_user_id: userId,
+      override_of_event_id: null,
+      override_new_kind: null,
+      override_reason: null,
+      idempotency_key: eventIdempotencyKey,
+    });
+
+    // Step 4: read back via the view so effective_kind / is_overridden are
+    // populated. RLS-scoped — same tenantId GUC.
+    const fresh = await sql.begin(async (tx) => {
+      await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+      const rows = await tx<RawEventViewRow[]>`
+        SELECT * FROM event_with_effective_kind WHERE id = ${inserted.id}
+      `;
+      return rows[0];
+    });
+    if (!fresh) {
+      // Should be unreachable — we just inserted under the same tenant.
+      throw new Error('POST /v1/events: inserted row not visible via view');
+    }
+
+    // Step 5: if this is a file-upload event with extracted text, enqueue
+    // the document-analyzer job so the AI can propose activities + invoices.
+    // Non-fatal — if pg-boss is unavailable (e.g. tests) we just skip.
+    if (raw_text.includes('[FILE UPLOAD] ') && raw_text.includes('Extracted-Text:')) {
+      try {
+        if (process.env['NODE_ENV'] !== 'test') {
+          const boss = await getBoss();
+          await boss.send(DOCUMENT_EXTRACT_QUEUE, {
+            event_id: inserted.id,
+            tenant_id: tenantId,
+            subject_tenant_id,
+          });
+          // Mark as pending so the UI shows a "extracting…" state immediately.
+          await sql.begin(async (tx) => {
+            await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+            await tx`
+              UPDATE event
+                 SET extraction_status = 'pending'
+               WHERE id        = ${inserted.id}
+                 AND tenant_id = ${tenantId}
+            `;
+          });
+        }
+      } catch {
+        // pg-boss enqueue failure is non-fatal; the event is already persisted.
+        req.log.warn({ event_id: inserted.id }, 'document-extract enqueue failed');
+      }
+    }
+
+    return reply.status(201).send({ event: rowToEvent(fresh) });
+  });
+
+  app.get('/v1/events', { preHandler: requireSession }, async (req, reply) => {
+    const parsed = listEventsQuery.safeParse(req.query);
+    if (!parsed.success) {
+      // Surface Zod's per-issue messages so the caller learns WHICH constraint
+      // failed — the refine ('Either subject_tenant_id or activity_id is
+      // required') and the kind validator's per-token 'Unknown event kind: X'
+      // are the diagnostics consultants actually need. Joining with '; '
+      // keeps this single-line for log/UI consumption.
+      const message = parsed.error.issues.map((i) => i.message).join('; ') || 'Invalid query';
+      return reply.status(400).send({
+        error: 'invalid_query',
+        message,
+        requestId: req.id,
+      });
+    }
+    const { subject_tenant_id, activity_id, project_id, filter, limit, cursor, kind } = parsed.data;
+    const tenantId = req.user!.tenantId!;
+
+    // Decode the opaque cursor. Forward-pagination only (older first → next).
+    // The cursor encodes the tuple (captured_at, received_at, id) of the
+    // last row on the previous page; the next page is "rows strictly less
+    // than this tuple" since we sort DESC.
+    const decoded = cursor ? decodeCursor(cursor) : null;
+    if (cursor && !decoded) {
+      return reply.status(400).send({
+        error: 'invalid_cursor',
+        message: 'cursor is malformed',
+        requestId: req.id,
+      });
+    }
+
+    // When the caller supplies activity_id without subject_tenant_id we
+    // resolve the activity → subject_tenant_id under RLS so the
+    // visibility predicate still scopes by claimant. Cross-firm activity
+    // returns 404 (matches A3/A4 conventions). When BOTH are supplied we
+    // trust the caller's subject_tenant_id and use activity_id as an
+    // additional payload filter — the A6 register page passes both for
+    // belt-and-braces narrowing.
+    let scopedSubjectTenantId = subject_tenant_id;
+    if (activity_id !== undefined && scopedSubjectTenantId === undefined) {
+      const resolved = await sql.begin(async (tx) => {
+        await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+        const rows = await tx<{ subject_tenant_id: string }[]>`
+          SELECT c.subject_tenant_id
+            FROM activity a
+            JOIN claim c ON c.id = a.claim_id
+           WHERE a.id = ${activity_id}
+             AND a.tenant_id = ${tenantId}
+        `;
+        return rows[0] ?? null;
+      });
+      if (!resolved) {
+        return reply.status(404).send({
+          error: 'activity_not_found',
+          message: 'No activity with that id in this firm',
+          requestId: req.id,
+        });
+      }
+      scopedSubjectTenantId = resolved.subject_tenant_id;
+    }
+
+    return await sql.begin(async (tx) => {
+      await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+
+      // Use the view so effective_kind / is_overridden are pre-computed.
+      // RLS on the underlying `event` table still applies through the view.
+      // We over-fetch by 1 to know whether a next page exists.
+      const fetchN = limit + 1;
+
+      // Cursor predicate: lexicographic (captured_at, received_at, id) DESC.
+      // Postgres doesn't have a "row-tuple <" comparison that works cleanly
+      // with timestamps + uuid + nullable order columns, so we expand it.
+      // Explicit ::timestamptz casts on the cursor strings — same rationale
+      // as chain.ts insertEventWithChain (postgres-js + Node 22 doesn't
+      // round-trip Dates cleanly on the bind path).
+      const cursorClause = decoded
+        ? tx`AND (
+            captured_at < ${decoded.captured_at}::timestamptz
+            OR (captured_at = ${decoded.captured_at}::timestamptz AND received_at < ${decoded.received_at}::timestamptz)
+            OR (
+              captured_at = ${decoded.captured_at}::timestamptz
+              AND received_at = ${decoded.received_at}::timestamptz
+              AND id < ${decoded.id}::uuid
+            )
+          )`
+        : tx``;
+
+      const filterClause =
+        filter === 'needs_review'
+          ? tx`AND effective_kind <> 'OVERRIDE'
+                AND classification IS NOT NULL
+                AND (classification->>'confidence')::float < 0.7
+                AND NOT is_overridden`
+          : filter === 'ineligible'
+            ? tx`AND effective_kind = 'INELIGIBLE'`
+            : filter === 'overrides'
+              ? tx`AND kind = 'OVERRIDE'`
+              : tx``;
+
+      // Activity-scoped filter: events whose payload carries the
+      // matching activity_id. This catches both the
+      // ARTEFACT_LINKED/ARTEFACT_UNLINKED chain events (A4) and the
+      // ACTIVITY_UPDATED + classified narrative events that the A6
+      // register surfaces. Server-side filter so we don't ship
+      // unrelated rows over the wire.
+      //
+      // TODO(perf): payload->>'activity_id' is a sequential scan on `event`.
+      // The companion TODO in artefact-links.ts (around line 41) flagged this
+      // before A6 landed — A6 deferred the work. Plan: add an expression index
+      // in migrations/0017_event_activity_id_index.sql (or whatever the next
+      // available migration number is when this is picked up) — likely:
+      //   CREATE INDEX event_payload_activity_id_idx ON event ((payload->>'activity_id'))
+      //     WHERE kind IN ('ARTEFACT_LINKED','ARTEFACT_UNLINKED',
+      //                    'HYPOTHESIS','UNCERTAINTY','EXPERIMENT',
+      //                    'OBSERVATION','ITERATION','NEW_KNOWLEDGE',
+      //                    'ACTIVITY_UPDATED');
+      // Volume threshold: re-evaluate when any single tenant has >5k events.
+      const activityClause =
+        activity_id !== undefined ? tx`AND payload ->> 'activity_id' = ${activity_id}` : tx``;
+
+      // Project-scoped filter: events whose denormalised project_id
+      // column matches. Direct column predicate (not a payload->>
+      // extraction) — every emitter that knows the project sets this
+      // column at insert time, so the index path is fast.
+      // Mirrors Task 4.1's status filter and Task 4.2's claim project
+      // filter — same flag, same shape, same `tx`` no-op when absent.
+      const projectClause = project_id !== undefined ? tx`AND project_id = ${project_id}` : tx``;
+
+      // Kind filter: when present, narrow to the explicit list. We
+      // filter on `kind` (the canonical column) rather than
+      // `effective_kind` because the register feed wants chain rows of
+      // the literal kind asked for — overrides surface separately under
+      // filter=overrides. Empty list / undefined ⇒ no narrowing.
+      const kindClause = kind !== undefined && kind.length > 0 ? tx`AND kind IN ${tx(kind)}` : tx``;
+
+      const rows = await tx<RawEventViewRow[]>`
+        SELECT * FROM event_with_effective_kind
+         WHERE subject_tenant_id = ${scopedSubjectTenantId!}
+           ${cursorClause}
+           ${filterClause}
+           ${activityClause}
+           ${projectClause}
+           ${kindClause}
+         ORDER BY captured_at DESC, received_at DESC, id DESC
+         LIMIT ${fetchN}
+      `;
+
+      const hasMore = rows.length > limit;
+      const page = hasMore ? rows.slice(0, limit) : rows;
+      const last = page[page.length - 1];
+      const nextCursor =
+        hasMore && last
+          ? encodeCursor({
+              captured_at:
+                typeof last.captured_at === 'string'
+                  ? last.captured_at
+                  : last.captured_at.toISOString(),
+              received_at:
+                typeof last.received_at === 'string'
+                  ? last.received_at
+                  : last.received_at.toISOString(),
+              id: last.id,
+            })
+          : null;
+
+      return { events: page.map(rowToEvent), next_cursor: nextCursor };
+    });
+  });
+}
