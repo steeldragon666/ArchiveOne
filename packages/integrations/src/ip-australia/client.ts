@@ -71,7 +71,7 @@ const DEFAULT_MAX_RETRIES = 2;
 const BASE_BACKOFF_MS = 1_000;
 
 /** Identifies this client to the upstream API. */
-const USER_AGENT = 'cpa-platform/integrations-ip-australia (+https://claimsure.com.au/contact)';
+const USER_AGENT = 'ArchiveOne/ip-australia-client (+https://archiveone.com.au)';
 
 /**
  * Resolve the default production base URL for the requested dataset.
