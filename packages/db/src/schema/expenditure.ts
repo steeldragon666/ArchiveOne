@@ -82,6 +82,24 @@ export const EXPENDITURE_SOURCES = [
 ] as const;
 export type ExpenditureSource = (typeof EXPENDITURE_SOURCES)[number];
 
+/**
+ * Apportionment-basis enum (migration 0097). Drives the overhead-
+ * apportionment engine in packages/audit-score/src/overhead-apportionment.
+ * NULL on a row = "not yet apportioned"; 'direct' = 100% R&D, no
+ * apportionment math needed.
+ *
+ * Keep in sync with the `apportionment_basis` SQL ENUM in 0097 and the
+ * APPORTIONMENT_BASES Zod export in packages/schemas/src/expenditure.ts.
+ */
+export const APPORTIONMENT_BASES = [
+  'headcount',
+  'floorspace',
+  'time',
+  'revenue',
+  'direct',
+] as const;
+export type ApportionmentBasis = (typeof APPORTIONMENT_BASES)[number];
+
 export const expenditure = pgTable(
   'expenditure',
   {
@@ -127,6 +145,8 @@ export const expenditure = pgTable(
     // assigns them on first review. Identity uniqueness stays on
     // (tenant_id, source, source_external_id); claim_id is descriptive.
     claimId: uuid('claim_id').references(() => claim.id),
+    // Migration 0097 — drives the overhead-apportionment engine.
+    apportionmentBasis: text('apportionment_basis', { enum: APPORTIONMENT_BASES }),
   },
   (t) => ({
     tenantIdx: index('expenditure_tenant_idx').on(t.tenantId),

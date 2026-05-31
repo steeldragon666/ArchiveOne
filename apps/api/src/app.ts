@@ -18,6 +18,8 @@ import { createLogger } from '@cpa/observability';
 import { sessionPlugin } from '@cpa/auth';
 import { registerHostnameTenantResolver } from './middleware/hostname-tenant-resolver.js';
 import { registerActivities } from './routes/activities.js';
+import { registerNotionalAdjustments } from './routes/notional-adjustments.js';
+import { registerEmployeeRdAllocations } from './routes/employee-rd-allocations.js';
 import { registerActivityPdf } from './routes/activity-pdf.js';
 import { registerActivityRegister } from './routes/activity-register.js';
 import { registerNarrative } from './routes/narrative.js';
@@ -389,6 +391,16 @@ export function buildApp(options: BuildAppOptions = {}): App {
   });
   app.register((instance, _opts, done) => {
     registerActivityRegister(instance);
+    done();
+  });
+  // R&DTI gap foundation (migration 0097) — Subdiv 355-G notional
+  // adjustments + per-employee R&D % allocations.
+  app.register((instance, _opts, done) => {
+    registerNotionalAdjustments(instance);
+    done();
+  });
+  app.register((instance, _opts, done) => {
+    registerEmployeeRdAllocations(instance);
     done();
   });
   app.register((instance, _opts, done) => {

@@ -24,3 +24,5 @@ export * from './sla.js';
 export * from './portal-fields.js';
 export * from './cloud-sync.js';
 export * from './evidence.js';
+export * from './notional-adjustment.js';
+export * from './employee-rd-allocation.js';
