@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import type { Claim } from '@cpa/schemas';
 import { PipelineStatusBanner } from '@/components/pipeline-status-banner';
 import { InsightsStrip } from '@/components/insights-strip';
+import { LoadingState, ErrorState } from '@/components/async-state';
 import { getWorkflow } from '../_lib/workflow-client';
 import type { WorkflowResponse } from '../_lib/workflow-client';
 import { WizardStepper } from './wizard-stepper';
@@ -72,15 +73,16 @@ export function ClaimWizardPage({
   });
 
   if (workflow.isPending) {
-    return <p className="text-sm text-muted-foreground">Loading wizard...</p>;
+    return <LoadingState label="Loading wizard…" />;
   }
 
   if (workflow.error || !workflow.data) {
     return (
-      <p className="text-sm text-destructive">
-        Failed to load workflow:{' '}
-        {workflow.error instanceof Error ? workflow.error.message : 'Unknown error'}
-      </p>
+      <ErrorState
+        title="Couldn't load the claim workflow."
+        message={workflow.error instanceof Error ? workflow.error.message : 'Unknown error'}
+        onRetry={() => void workflow.refetch()}
+      />
     );
   }
 

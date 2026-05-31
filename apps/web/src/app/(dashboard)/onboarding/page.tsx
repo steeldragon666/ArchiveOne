@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { AppShell } from '@/components/app-shell';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { LoadingState } from '@/components/async-state';
 import { apiFetch } from '@/lib/api';
 
 /**
@@ -84,7 +85,7 @@ function OnboardingContent() {
   }
 
   if (loading) {
-    return <p className="text-sm text-muted-foreground">Loading onboarding status...</p>;
+    return <LoadingState label="Loading onboarding status…" variant="inline" />;
   }
 
   if (error) {
