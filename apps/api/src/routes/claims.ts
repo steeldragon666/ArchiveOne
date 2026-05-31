@@ -1515,6 +1515,55 @@ export function registerClaims(app: FastifyInstance, deps?: ClaimsRouteDeps): vo
   );
 
   // -----------------------------------------------------------------------
+  // GET /v1/claims/:id/finalisation-gates
+  //
+  // Read-only preview of the same compliance gates POST /finalise runs
+  // in its pre-flight check. Lets the wizard surface violations live on
+  // every page-load + after each activity / entity edit so the consultant
+  // sees what's blocking submission BEFORE clicking the Submit button.
+  //
+  // Returns { ok, violations[] } directly — same envelope shape the
+  // POST /finalise route uses in its 409 response, so the UI can share
+  // a single rendering component for both code paths.
+  // -----------------------------------------------------------------------
+  app.get<{ Params: { id: string } }>(
+    '/v1/claims/:id/finalisation-gates',
+    { preHandler: requireSession },
+    async (req, reply) => {
+      const { id } = req.params;
+      const tenantId = req.user!.tenantId!;
+
+      const result = await sql.begin(async (tx) => {
+        await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
+        // Confirm the claim is visible to the caller's tenant before
+        // running the gate — otherwise we'd leak "claim exists" via the
+        // empty-violations result for a cross-tenant id.
+        const claimRows = await tx<{ id: string }[]>`
+          SELECT id FROM claim WHERE id = ${id} AND tenant_id = ${tenantId}
+        `;
+        if (claimRows.length === 0) return { kind: 'not_found' as const };
+        const gates = await evaluateFinalisationGates(
+          tx as unknown as Parameters<typeof evaluateFinalisationGates>[0],
+          id,
+        );
+        return { kind: 'ok' as const, gates };
+      });
+
+      if (result.kind === 'not_found') {
+        return reply.status(404).send({
+          error: 'claim_not_found',
+          message: 'No claim with that id in this firm',
+          requestId: req.id,
+        });
+      }
+      return reply.status(200).send({
+        ok: result.gates.ok,
+        violations: result.gates.violations,
+      });
+    },
+  );
+
+  // -----------------------------------------------------------------------
   // GET /v1/claims/:id/finalisation-status
   // Returns { status, progress: { activities_drafted, total_activities, pdfs_generated, total_pdfs } }
   // -----------------------------------------------------------------------
