@@ -21,3 +21,19 @@ export type { ClawbackInput, ClawbackResult, ClawbackSummary } from './clawback-
 
 export { reconcileClaim } from './reconciliation.js';
 export type { ReconciliationFinding, ReconciliationInput } from './reconciliation.js';
+
+export {
+  OVERHEAD_CATEGORIES,
+  APPORTIONMENT_BASES,
+  ON_COST_RATES,
+  apportionOverhead,
+  apportionOnCosts,
+} from './overhead-apportionment.js';
+export type {
+  OverheadCategory,
+  ApportionmentBasis,
+  ApportionOverheadInput,
+  ApportionOverheadResult,
+  OnCostInput,
+  OnCostResult,
+} from './overhead-apportionment.js';
