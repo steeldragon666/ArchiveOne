@@ -191,6 +191,14 @@ export async function seedEvent(input: SeedEventInput): Promise<{ id: string; ha
   // captured_at bound as ISO string + ::timestamptz cast — same workaround
   // as packages/db/src/chain.ts insertEventWithChain. postgres-js + Node 22
   // doesn't round-trip Date params cleanly on the bind path.
+  //
+  // jsonb binds use the canonical ::text::jsonb double-cast — see chain.ts
+  // and audit-log.ts JSDocs. Under privilegedSql (default postgres-js
+  // serializer, not drizzle-mutated), a single ::jsonb cast on a
+  // pre-stringified JSON.stringify(...) text stores a JSON scalar string
+  // instead of a JSON object, so downstream `payload ->> 'k'` returns
+  // NULL. This broke canAdvance(3)'s ARTEFACT_LINKED projection in the
+  // wizard full-happy-path e2e (task #65).
   const capturedAtIso = capturedAt.toISOString();
   await privilegedSql`
     INSERT INTO event (
@@ -201,7 +209,8 @@ export async function seedEvent(input: SeedEventInput): Promise<{ id: string; ha
       captured_at, captured_by_user_id
     ) VALUES (
       ${id}, ${input.tenantId}, ${input.subjectTenantId}, ${projectId}, ${input.kind},
-      ${JSON.stringify(input.payload)}::jsonb, ${classification === null ? null : JSON.stringify(classification)}::jsonb,
+      ${JSON.stringify(input.payload)}::text::jsonb,
+      ${classification === null ? null : JSON.stringify(classification)}::text::jsonb,
       ${null}, ${null}, ${null},
       ${prevHash}, ${hash},
       ${capturedAtIso}::timestamptz, ${input.capturedByUserId}
