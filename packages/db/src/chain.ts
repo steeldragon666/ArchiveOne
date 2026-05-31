@@ -112,8 +112,31 @@ export type InsertedEvent = {
  * inserts against the same chain serialise (concurrent inserts against
  * different chains do NOT block each other).
  */
-export async function insertEventWithChain(input: InsertEventInput): Promise<InsertedEvent> {
-  return await sql.begin(async (tx) => {
+/**
+ * Optional structural type for an open postgres-js transaction. Mirrors
+ * the shape `sql.begin` hands to its callback. Declared inline so the
+ * chain module doesn't take a hard dep on the postgres-js TransactionSql
+ * type (which gets noisy in dts emission across workspaces).
+ *
+ * When a caller threads its OUTER mutation tx through this parameter,
+ * the chain INSERT lands in the SAME transaction as the row mutation —
+ * a process crash or network blip between the two awaits no longer
+ * leaves the row mutated but the chain event absent, which is the
+ * append-only audit invariant the Body-by-Michael compliance story
+ * hangs on. Pre-fix: every caller that ran a UPDATE inside sql.begin
+ * and then called insertEventWithChain afterward exposed a small but
+ * real divergence window. (See CLAUDE.md TODO #2 for history.)
+ */
+export type ChainTxClient = <T>(
+  strings: TemplateStringsArray,
+  ...args: unknown[]
+) => Promise<T> & PromiseLike<T>;
+
+export async function insertEventWithChain(
+  input: InsertEventInput,
+  outerTx?: ChainTxClient,
+): Promise<InsertedEvent> {
+  const work = async (tx: ChainTxClient): Promise<InsertedEvent> => {
     // Set the request-scoped tenant context (already set by middleware in API path,
     // but explicit here makes this fn callable from tools/scripts without a request).
     await tx`SELECT set_config('app.current_tenant_id', ${input.tenant_id}, true)`;
@@ -172,7 +195,15 @@ export async function insertEventWithChain(input: InsertEventInput): Promise<Ins
       )
     `;
     return { id, prev_hash: prevHash, hash: newHash };
-  });
+  };
+
+  if (outerTx) {
+    // Caller's tx already has the request-scoped GUC set (or the test
+    // harness has). Run the chain insert in their tx so it commits
+    // atomically with whatever mutation triggered it.
+    return await work(outerTx);
+  }
+  return await sql.begin(async (tx) => await work(tx as unknown as ChainTxClient));
 }
 
 export type ChainStatus = {

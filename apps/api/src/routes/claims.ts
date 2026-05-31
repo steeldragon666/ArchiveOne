@@ -419,6 +419,35 @@ export function registerClaims(app: FastifyInstance, deps?: ClaimsRouteDeps): vo
         if (!row) {
           throw new Error('PATCH /v1/claims/:id/stage: UPDATE returned no row');
         }
+
+        // Atomic chain insert — emit CLAIM_STAGE_ADVANCED in the SAME
+        // transaction as the UPDATE so a crash between the two awaits
+        // cannot leave the row mutated but the chain event absent.
+        // (Body-by-Michael compliance: append-only audit invariant must
+        // be unconditional.)
+        const advancedPayload = ClaimStageAdvancedPayload.parse({
+          claim_id: row.id,
+          from_stage: prev.stage,
+          to_stage: row.stage,
+          advanced_by_user_id: userId,
+        });
+        await insertEventWithChain(
+          {
+            tenant_id: tenantId,
+            subject_tenant_id: row.subject_tenant_id,
+            project_id: null,
+            kind: 'CLAIM_STAGE_ADVANCED',
+            payload: advancedPayload,
+            classification: null,
+            captured_at: new Date(),
+            captured_by_user_id: userId,
+            override_of_event_id: null,
+            override_new_kind: null,
+            override_reason: null,
+          },
+          tx as unknown as Parameters<typeof insertEventWithChain>[1],
+        );
+
         return { kind: 'advanced' as const, prev, row };
       });
 
@@ -459,30 +488,6 @@ export function registerClaims(app: FastifyInstance, deps?: ClaimsRouteDeps): vo
           requestId: req.id,
         });
       }
-
-      // Validate the payload via Zod before insert — same rationale as
-      // projects.ts: a future refactor that drifts the payload shape blows
-      // up at the boundary (programming error) rather than landing a
-      // malformed event on the chain.
-      const advancedPayload = ClaimStageAdvancedPayload.parse({
-        claim_id: result.row.id,
-        from_stage: result.prev.stage,
-        to_stage: result.row.stage,
-        advanced_by_user_id: userId,
-      });
-      await insertEventWithChain({
-        tenant_id: tenantId,
-        subject_tenant_id: result.row.subject_tenant_id,
-        project_id: null,
-        kind: 'CLAIM_STAGE_ADVANCED',
-        payload: advancedPayload,
-        classification: null,
-        captured_at: new Date(),
-        captured_by_user_id: userId,
-        override_of_event_id: null,
-        override_new_kind: null,
-        override_reason: null,
-      });
 
       return reply.status(200).send({ claim: toApi(result.row) });
     },
@@ -576,6 +581,42 @@ export function registerClaims(app: FastifyInstance, deps?: ClaimsRouteDeps): vo
         if (!row) {
           throw new Error('PATCH /v1/claims/:id: UPDATE returned no row');
         }
+
+        // Atomic chain insert — emit CLAIM_SUBMITTED in the SAME
+        // transaction as the UPDATE so a crash between the two awaits
+        // cannot leave the row stamped but the chain event absent.
+        // (Body-by-Michael compliance, same rationale as the stage-
+        // advance handler above.)
+        //
+        // CLAIM_SUBMITTED fires when the row first achieves the complete
+        // state (both ausindustry_reference + submitted_at non-null).
+        // Idempotent: if it was already complete, no event is emitted.
+        const wasComplete = prev.ausindustry_reference !== null && prev.submitted_at !== null;
+        const isComplete = row.ausindustry_reference !== null && row.submitted_at !== null;
+        if (isComplete && !wasComplete) {
+          const submittedPayload = ClaimSubmittedPayload.parse({
+            claim_id: row.id,
+            ausindustry_reference: row.ausindustry_reference!,
+            submitted_by_user_id: userId,
+          });
+          await insertEventWithChain(
+            {
+              tenant_id: tenantId,
+              subject_tenant_id: row.subject_tenant_id,
+              project_id: null,
+              kind: 'CLAIM_SUBMITTED',
+              payload: submittedPayload,
+              classification: null,
+              captured_at: new Date(),
+              captured_by_user_id: userId,
+              override_of_event_id: null,
+              override_new_kind: null,
+              override_reason: null,
+            },
+            tx as unknown as Parameters<typeof insertEventWithChain>[1],
+          );
+        }
+
         return { kind: 'updated' as const, prev, row };
       });
 
@@ -595,36 +636,6 @@ export function registerClaims(app: FastifyInstance, deps?: ClaimsRouteDeps): vo
       }
       if (result.kind === 'noop') {
         return reply.status(200).send({ claim: toApi(result.row) });
-      }
-
-      // CLAIM_SUBMITTED is emitted when the resulting row has BOTH
-      // ausindustry_reference AND submitted_at populated — and at least
-      // one of them was set (or transitioned non-null) in this patch.
-      // Idempotency: if both were already populated before the patch,
-      // we don't re-emit (avoids ledger pollution on retries).
-      const wasComplete =
-        result.prev.ausindustry_reference !== null && result.prev.submitted_at !== null;
-      const isComplete =
-        result.row.ausindustry_reference !== null && result.row.submitted_at !== null;
-      if (isComplete && !wasComplete) {
-        const submittedPayload = ClaimSubmittedPayload.parse({
-          claim_id: result.row.id,
-          ausindustry_reference: result.row.ausindustry_reference!,
-          submitted_by_user_id: userId,
-        });
-        await insertEventWithChain({
-          tenant_id: tenantId,
-          subject_tenant_id: result.row.subject_tenant_id,
-          project_id: null,
-          kind: 'CLAIM_SUBMITTED',
-          payload: submittedPayload,
-          classification: null,
-          captured_at: new Date(),
-          captured_by_user_id: userId,
-          override_of_event_id: null,
-          override_new_kind: null,
-          override_reason: null,
-        });
       }
 
       return reply.status(200).send({ claim: toApi(result.row) });
