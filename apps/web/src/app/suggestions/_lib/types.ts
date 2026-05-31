@@ -24,55 +24,35 @@
  */
 
 // =============================================================================
-// Enum literal unions — pinned from the SQL CHECK constraints in
-// `0038_prompt_suggestion_queue.sql`. Drift between this file and the
-// SQL constraint surfaces as 400/500 from the API on insert / read.
+// Enum literal unions — single source of truth lives in @cpa/schemas
+// (issue #28 / P7 C2). We re-export under the existing local names so the
+// rest of /suggestions doesn't churn. Three-way parity (SQL CHECK ↔ db
+// const ↔ @cpa/schemas Zod) is enforced by
+// `apps/api/src/routes/prompt-suggestions.contract.test.ts`.
 // =============================================================================
 
-/**
- * Source taxonomy for a flagged suggestion. Mirrors
- * `PROMPT_SUGGESTION_SOURCE_KINDS` in @cpa/db/schema/prompt_suggestion.
- */
-export const SUGGESTION_SOURCE_KINDS = [
-  'consultant_flag',
-  'rif_event',
-  'contract_test_failure',
-  'reviewer_disposition',
-] as const;
-export type SuggestionSourceKind = (typeof SUGGESTION_SOURCE_KINDS)[number];
+import {
+  PROMPT_SUGGESTION_SOURCE_KINDS,
+  PROMPT_SUGGESTION_STATUSES,
+  PROMPT_SUGGESTION_TRIAGE_CLASSIFICATIONS,
+  PROMPT_SUGGESTION_REVIEW_DISPOSITIONS,
+  type PromptSuggestionSourceKind,
+  type PromptSuggestionStatus,
+  type PromptSuggestionTriageClassification,
+  type PromptSuggestionReviewDisposition,
+} from '@cpa/schemas';
 
-/**
- * Lifecycle status. Mirrors `PROMPT_SUGGESTION_STATUSES`. State transitions
- * are validated at the API layer (B.3); the UI just renders + drives the
- * triage / review / generate-pr endpoints conditional on the current
- * status.
- */
-export const SUGGESTION_STATUSES = [
-  'open',
-  'triaged',
-  'pr_drafted',
-  'pr_merged',
-  'dismissed',
-] as const;
-export type SuggestionStatus = (typeof SUGGESTION_STATUSES)[number];
+export const SUGGESTION_SOURCE_KINDS = PROMPT_SUGGESTION_SOURCE_KINDS;
+export type SuggestionSourceKind = PromptSuggestionSourceKind;
 
-/** Reviewer-assigned classification at triage. Nullable until triaged. */
-export const SUGGESTION_TRIAGE_CLASSIFICATIONS = [
-  'prompt_change',
-  'schema_change',
-  'code_change',
-  'no_action_needed',
-] as const;
-export type SuggestionTriageClassification = (typeof SUGGESTION_TRIAGE_CLASSIFICATIONS)[number];
+export const SUGGESTION_STATUSES = PROMPT_SUGGESTION_STATUSES;
+export type SuggestionStatus = PromptSuggestionStatus;
 
-/** Disposition recorded by a reviewer on a `triaged` suggestion. */
-export const SUGGESTION_REVIEW_DISPOSITIONS = [
-  'approve_for_pr',
-  'request_more_info',
-  'dismiss',
-  'escalate_to_code_change',
-] as const;
-export type SuggestionReviewDisposition = (typeof SUGGESTION_REVIEW_DISPOSITIONS)[number];
+export const SUGGESTION_TRIAGE_CLASSIFICATIONS = PROMPT_SUGGESTION_TRIAGE_CLASSIFICATIONS;
+export type SuggestionTriageClassification = PromptSuggestionTriageClassification;
+
+export const SUGGESTION_REVIEW_DISPOSITIONS = PROMPT_SUGGESTION_REVIEW_DISPOSITIONS;
+export type SuggestionReviewDisposition = PromptSuggestionReviewDisposition;
 
 // =============================================================================
 // Wire shapes

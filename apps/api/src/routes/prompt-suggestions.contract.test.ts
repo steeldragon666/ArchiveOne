@@ -20,7 +20,7 @@
  *   4. Three-way parity  — for `source_kind`, `status`,
  *                           `triage_classification`, and `disposition`:
  *                           SQL CHECK constraint values from migration
- *                           0038 ↔ `@cpa/db` const arrays ↔ inline Zod
+ *                           0038 ↔ `@cpa/db` const arrays ↔ @cpa/schemas
  *                           enums in `prompt-suggestions.ts` (exposed
  *                           via `_internals`).
  *
@@ -56,6 +56,15 @@ import {
   PROMPT_SUGGESTION_TRIAGE_CLASSIFICATIONS,
   PROMPT_SUGGESTION_REVIEW_DISPOSITIONS,
 } from '@cpa/db/schema';
+// Issue #28: the route now imports its Zod enums from @cpa/schemas
+// (single source of truth). The three-way parity test compares
+//   SQL CHECK ↔ @cpa/db const arrays ↔ @cpa/schemas const arrays.
+import {
+  PROMPT_SUGGESTION_SOURCE_KINDS as SCHEMAS_SOURCE_KINDS,
+  PROMPT_SUGGESTION_STATUSES as SCHEMAS_STATUSES,
+  PROMPT_SUGGESTION_TRIAGE_CLASSIFICATIONS as SCHEMAS_TRIAGE_CLASSIFICATIONS,
+  PROMPT_SUGGESTION_REVIEW_DISPOSITIONS as SCHEMAS_REVIEW_DISPOSITIONS,
+} from '@cpa/schemas';
 import { _internals } from './prompt-suggestions.js';
 
 // =============================================================================
@@ -713,7 +722,7 @@ test('B.8: B.6 webhook — unknown github_pr_number returns 200 with action=unkn
 //   2. `@cpa/db` const array (the drizzle schema's source of truth).
 //   3. Inline Zod enum from `apps/api/src/routes/prompt-suggestions.ts`,
 //      exposed via `_internals` (the API-layer source of truth — Theme B
-//      did NOT promote these to `@cpa/schemas` per B.3's "inline Zod"
+//      did NOT promote these to `@cpa/schemas` per B.3's "@cpa/schemas"
 //      pattern; the contract is therefore inline-Zod ↔ db-const ↔
 //      SQL CHECK).
 //
@@ -733,7 +742,7 @@ test('B.8: B.6 webhook — unknown github_pr_number returns 200 with action=unkn
 const extractCheckValues = (constraintDef: string): string[] =>
   (constraintDef.match(/'([a-z_]+)'/g) ?? []).map((s) => s.slice(1, -1));
 
-test('B.8: three-way parity — source_kind (SQL CHECK ↔ db const ↔ inline Zod)', async (t) => {
+test('B.8: three-way parity — source_kind (SQL CHECK ↔ db const ↔ @cpa/schemas)', async (t) => {
   if (skipIfNoDb(t)) return;
 
   const constraintRow = await privilegedSql<{ pg_get_constraintdef: string }[]>`
@@ -748,18 +757,18 @@ test('B.8: three-way parity — source_kind (SQL CHECK ↔ db const ↔ inline Z
   const dbConst = [...PROMPT_SUGGESTION_SOURCE_KINDS].sort();
   // Read the Zod enum's values via the parsed schema's _def. Zod v3
   // surfaces enum values at `_def.values` for `z.enum([...])`. We extract
-  // them from the route's _internals.SOURCE_KINDS (the const array
+  // them from the route's SCHEMAS_SOURCE_KINDS (the const array
   // backing the Zod enum) — matching the inline-Zod pattern in
   // prompt-suggestions.ts where the const drives the enum.
-  const zodValues = [..._internals.SOURCE_KINDS].sort();
+  const zodValues = [...SCHEMAS_SOURCE_KINDS].sort();
   const sqlSorted = [...sqlValues].sort();
 
-  assert.deepEqual(dbConst, zodValues, 'db const ↔ inline Zod mismatch (source_kind)');
+  assert.deepEqual(dbConst, zodValues, 'db const ↔ @cpa/schemas mismatch (source_kind)');
   assert.deepEqual(dbConst, sqlSorted, 'db const ↔ SQL CHECK mismatch (source_kind)');
-  assert.deepEqual(zodValues, sqlSorted, 'inline Zod ↔ SQL CHECK mismatch (source_kind)');
+  assert.deepEqual(zodValues, sqlSorted, '@cpa/schemas ↔ SQL CHECK mismatch (source_kind)');
 });
 
-test('B.8: three-way parity — status (SQL CHECK ↔ db const ↔ inline Zod)', async (t) => {
+test('B.8: three-way parity — status (SQL CHECK ↔ db const ↔ @cpa/schemas)', async (t) => {
   if (skipIfNoDb(t)) return;
 
   const constraintRow = await privilegedSql<{ pg_get_constraintdef: string }[]>`
@@ -772,15 +781,15 @@ test('B.8: three-way parity — status (SQL CHECK ↔ db const ↔ inline Zod)',
   const sqlValues = extractCheckValues(constraintRow[0]!.pg_get_constraintdef);
 
   const dbConst = [...PROMPT_SUGGESTION_STATUSES].sort();
-  const zodValues = [..._internals.STATUSES].sort();
+  const zodValues = [...SCHEMAS_STATUSES].sort();
   const sqlSorted = [...sqlValues].sort();
 
-  assert.deepEqual(dbConst, zodValues, 'db const ↔ inline Zod mismatch (status)');
+  assert.deepEqual(dbConst, zodValues, 'db const ↔ @cpa/schemas mismatch (status)');
   assert.deepEqual(dbConst, sqlSorted, 'db const ↔ SQL CHECK mismatch (status)');
-  assert.deepEqual(zodValues, sqlSorted, 'inline Zod ↔ SQL CHECK mismatch (status)');
+  assert.deepEqual(zodValues, sqlSorted, '@cpa/schemas ↔ SQL CHECK mismatch (status)');
 });
 
-test('B.8: three-way parity — triage_classification (SQL CHECK ↔ db const ↔ inline Zod)', async (t) => {
+test('B.8: three-way parity — triage_classification (SQL CHECK ↔ db const ↔ @cpa/schemas)', async (t) => {
   if (skipIfNoDb(t)) return;
 
   const constraintRow = await privilegedSql<{ pg_get_constraintdef: string }[]>`
@@ -793,15 +802,19 @@ test('B.8: three-way parity — triage_classification (SQL CHECK ↔ db const �
   const sqlValues = extractCheckValues(constraintRow[0]!.pg_get_constraintdef);
 
   const dbConst = [...PROMPT_SUGGESTION_TRIAGE_CLASSIFICATIONS].sort();
-  const zodValues = [..._internals.TRIAGE_CLASSIFICATIONS].sort();
+  const zodValues = [...SCHEMAS_TRIAGE_CLASSIFICATIONS].sort();
   const sqlSorted = [...sqlValues].sort();
 
-  assert.deepEqual(dbConst, zodValues, 'db const ↔ inline Zod mismatch (triage_classification)');
+  assert.deepEqual(dbConst, zodValues, 'db const ↔ @cpa/schemas mismatch (triage_classification)');
   assert.deepEqual(dbConst, sqlSorted, 'db const ↔ SQL CHECK mismatch (triage_classification)');
-  assert.deepEqual(zodValues, sqlSorted, 'inline Zod ↔ SQL CHECK mismatch (triage_classification)');
+  assert.deepEqual(
+    zodValues,
+    sqlSorted,
+    '@cpa/schemas ↔ SQL CHECK mismatch (triage_classification)',
+  );
 });
 
-test('B.8: three-way parity — disposition (SQL CHECK ↔ db const ↔ inline Zod)', async (t) => {
+test('B.8: three-way parity — disposition (SQL CHECK ↔ db const ↔ @cpa/schemas)', async (t) => {
   if (skipIfNoDb(t)) return;
 
   const constraintRow = await privilegedSql<{ pg_get_constraintdef: string }[]>`
@@ -814,10 +827,10 @@ test('B.8: three-way parity — disposition (SQL CHECK ↔ db const ↔ inline Z
   const sqlValues = extractCheckValues(constraintRow[0]!.pg_get_constraintdef);
 
   const dbConst = [...PROMPT_SUGGESTION_REVIEW_DISPOSITIONS].sort();
-  const zodValues = [..._internals.REVIEW_DISPOSITIONS].sort();
+  const zodValues = [...SCHEMAS_REVIEW_DISPOSITIONS].sort();
   const sqlSorted = [...sqlValues].sort();
 
-  assert.deepEqual(dbConst, zodValues, 'db const ↔ inline Zod mismatch (disposition)');
+  assert.deepEqual(dbConst, zodValues, 'db const ↔ @cpa/schemas mismatch (disposition)');
   assert.deepEqual(dbConst, sqlSorted, 'db const ↔ SQL CHECK mismatch (disposition)');
-  assert.deepEqual(zodValues, sqlSorted, 'inline Zod ↔ SQL CHECK mismatch (disposition)');
+  assert.deepEqual(zodValues, sqlSorted, '@cpa/schemas ↔ SQL CHECK mismatch (disposition)');
 });
