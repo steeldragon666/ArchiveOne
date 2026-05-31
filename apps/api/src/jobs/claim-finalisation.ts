@@ -123,7 +123,7 @@ export async function runClaimFinalisationJob(
           'new_knowledge',
           1,
           'complete',
-          ${JSON.stringify([{ type: 'prose', text: prose }])}::jsonb,
+          ${JSON.stringify([{ type: 'prose', text: prose }])}::text::jsonb,
           encode(digest(${prose}, 'sha256'), 'hex'),
           'claim-finalisation-v1',
           'claim-finalisation@1.0.0',

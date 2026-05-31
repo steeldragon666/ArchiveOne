@@ -1,5 +1,7 @@
 'use client';
 
+import { AuthGuard } from '@/components/auth-guard';
+
 const kpis = [
   ['ACTIVE CLAIMS', '14', 'across 11 entities', '+3 vs last FY'],
   ['EVIDENCE INDEXED', '2,847', 'artefacts this FY', '+38%'],
@@ -17,8 +19,20 @@ const claims = [
 ];
 
 const watchSignals = [
-  ['ATO', 'TAXPAYER ALERT', 'TA 2026/03', 'Software development eligibility - new evidence standard', '3 CLAIMS EXPOSED'],
-  ['AUSINDUSTRY', 'GUIDANCE', 'GN 26-04', 'Updated guidance - supporting activities', '1 CLAIM EXPOSED'],
+  [
+    'ATO',
+    'TAXPAYER ALERT',
+    'TA 2026/03',
+    'Software development eligibility - new evidence standard',
+    '3 CLAIMS EXPOSED',
+  ],
+  [
+    'AUSINDUSTRY',
+    'GUIDANCE',
+    'GN 26-04',
+    'Updated guidance - supporting activities',
+    '1 CLAIM EXPOSED',
+  ],
   ['AAT', 'DECISION', '[2026] AATA 412', 'Body by Michael doctrine extended', '2 CLAIMS EXPOSED'],
 ];
 
@@ -35,7 +49,9 @@ function Diamond({ className = '' }: { className?: string }) {
 
 function Mono({ children, muted = false }: { children: React.ReactNode; muted?: boolean }) {
   return (
-    <span className={`font-mono text-[10px] uppercase tracking-[0.2em] ${muted ? 'text-[#8a857c]' : 'text-[#e1a23a]'}`}>
+    <span
+      className={`font-mono text-[10px] uppercase tracking-[0.2em] ${muted ? 'text-[#8a857c]' : 'text-[#e1a23a]'}`}
+    >
       {children}
     </span>
   );
@@ -59,6 +75,14 @@ function StatusPill({ status }: { status: string }) {
 }
 
 export function DashboardClient() {
+  return (
+    <AuthGuard>
+      <DashboardBody />
+    </AuthGuard>
+  );
+}
+
+function DashboardBody() {
   return (
     <div className="-m-8 min-h-[calc(100vh-64px)] bg-[#0b0b0d] p-7 text-[#f0ebe2]">
       <div className="mb-7 flex flex-col justify-between gap-5 lg:flex-row lg:items-end">
@@ -85,7 +109,9 @@ export function DashboardClient() {
         {kpis.map(([label, value, sub, trend]) => (
           <article key={label} className="border border-[#f0ebe2]/20 bg-[#131316] p-5">
             <Mono muted>{label}</Mono>
-            <div className={`mt-4 font-display text-5xl font-light leading-none tracking-[-0.025em] ${label === 'AT-RISK' ? 'text-[#c46a48]' : label === 'CHAIN COVERAGE' ? 'text-[#e1a23a]' : 'text-[#f0ebe2]'}`}>
+            <div
+              className={`mt-4 font-display text-5xl font-light leading-none tracking-[-0.025em] ${label === 'AT-RISK' ? 'text-[#c46a48]' : label === 'CHAIN COVERAGE' ? 'text-[#e1a23a]' : 'text-[#f0ebe2]'}`}
+            >
               {value}
             </div>
             <p className="mt-2 text-xs text-[#8a857c]">{sub}</p>
@@ -126,12 +152,18 @@ export function DashboardClient() {
               <span className="font-mono text-xs tracking-[0.08em] text-[#e1a23a]">{id}</span>
               <span className="flex items-center gap-2 text-sm font-medium text-[#f0ebe2]">
                 {client}
-                {gap ? <span className="h-1.5 w-1.5 rounded-full bg-[#c46a48] shadow-[0_0_8px_#c46a48]" /> : null}
+                {gap ? (
+                  <span className="h-1.5 w-1.5 rounded-full bg-[#c46a48] shadow-[0_0_8px_#c46a48]" />
+                ) : null}
               </span>
-              <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-[#8a857c]">{stage}</span>
+              <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-[#8a857c]">
+                {stage}
+              </span>
               <StatusPill status={status as string} />
               <span className="font-mono text-xs text-[#cdc7bd] lg:text-right">{evidence}</span>
-              <span className="font-mono text-sm tracking-[0.04em] text-[#f0ebe2] lg:text-right">{value}</span>
+              <span className="font-mono text-sm tracking-[0.04em] text-[#f0ebe2] lg:text-right">
+                {value}
+              </span>
             </div>
           ))}
         </section>
@@ -146,10 +178,15 @@ export function DashboardClient() {
               <Mono muted>Today - 3 signals</Mono>
             </div>
             {watchSignals.map(([src, tag, code, title, exposure]) => (
-              <article key={`${src}-${code}`} className="border-b border-[#f0ebe2]/10 px-5 py-4 last:border-b-0">
+              <article
+                key={`${src}-${code}`}
+                className="border-b border-[#f0ebe2]/10 px-5 py-4 last:border-b-0"
+              >
                 <div className="mb-2 flex items-baseline justify-between">
                   <Mono>{src}</Mono>
-                  <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-[#5d594f]">LIVE</span>
+                  <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-[#5d594f]">
+                    LIVE
+                  </span>
                 </div>
                 <p className="font-mono text-[9px] uppercase tracking-[0.14em] text-[#5d594f]">
                   {tag} - <span className="text-[#8a857c]">{code}</span>
@@ -171,11 +208,18 @@ export function DashboardClient() {
               <Mono muted>Height - 3,247</Mono>
             </div>
             {blocks.map(([id, kind, claim, time]) => (
-              <div key={id} className="grid grid-cols-[110px_1fr_54px] items-center gap-3 border-b border-[#f0ebe2]/10 px-5 py-3 last:border-b-0">
+              <div
+                key={id}
+                className="grid grid-cols-[110px_1fr_54px] items-center gap-3 border-b border-[#f0ebe2]/10 px-5 py-3 last:border-b-0"
+              >
                 <span className="font-mono text-[11px] tracking-[0.08em] text-[#e1a23a]">{id}</span>
                 <div>
-                  <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#8a857c]">{kind}</p>
-                  <p className="mt-1 font-mono text-[10px] tracking-[0.04em] text-[#f0ebe2]">{claim}</p>
+                  <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#8a857c]">
+                    {kind}
+                  </p>
+                  <p className="mt-1 font-mono text-[10px] tracking-[0.04em] text-[#f0ebe2]">
+                    {claim}
+                  </p>
                 </div>
                 <span className="text-right font-mono text-[10px] text-[#8a857c]">{time}</span>
               </div>

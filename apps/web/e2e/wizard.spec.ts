@@ -217,7 +217,7 @@ async function seedNarrativeDraft(args: {
       ${args.sectionKind},
       1,
       ${args.status},
-      ${JSON.stringify([{ type: 'prose', text: 'wizard-spec seed' }])}::jsonb,
+      ${JSON.stringify([{ type: 'prose', text: 'wizard-spec seed' }])}::text::jsonb,
       encode(digest(${'wizard-spec:' + args.sectionKind}, 'sha256'), 'hex'),
       'test-model-v1',
       'test-prompt@1.0.0',
@@ -777,12 +777,7 @@ test.describe('Claim wizard', () => {
   //   6. Step 5 mounts with honest "Coming soon" stub; all 4 prior
   //      pills checkmarked; no wizard-step-5-agree exists.
   // -----------------------------------------------------------------
-  // SKIPPED 2026-05-31: After the canAdvance projection refactor, the
-  // step-3 agree gate doesn't flip on the ARTEFACT_LINKED seed used
-  // here — the button stays disabled past the 10s timeout. The 11
-  // isolation tests above still pass, so a regression in the canonical
-  // CTE projection is the suspect. Follow-up tracked in task #65.
-  test.skip('full happy-path through all 4 canAdvance gates with real chain events', async ({
+  test('full happy-path through all 4 canAdvance gates with real chain events', async ({
     page,
     context,
   }) => {
@@ -1007,9 +1002,13 @@ test.describe('Claim wizard', () => {
     await page.getByTestId('wizard-step-4-agree').click();
     await expect(page).toHaveURL(/[?&]step=5(?:&|$)/, { timeout: 10_000 });
 
-    // -- (6) Step 5 mounts; honest stub; all prior pills checkmarked --------
+    // -- (6) Step 5 mounts; real drafter pre-flight; all prior pills checkmarked --
+    // The honest "Coming soon" stub was replaced by the live Sonnet
+    // application drafter — see wizard-step-5-generate.tsx. The terminal
+    // step still mounts no Agree button.
     await expect(page.getByTestId('wizard-step-5')).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByText(/Coming soon\./i)).toBeVisible();
+    await expect(page.getByText(/Ready to draft your application/i)).toBeVisible();
+    await expect(page.getByTestId('generate-application-button')).toBeEnabled();
     await expect(page.getByTestId('wizard-stepper-1')).toHaveText('✓');
     await expect(page.getByTestId('wizard-stepper-2')).toHaveText('✓');
     await expect(page.getByTestId('wizard-stepper-3')).toHaveText('✓');

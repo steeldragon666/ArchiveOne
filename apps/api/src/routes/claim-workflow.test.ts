@@ -179,7 +179,7 @@ const seedNarrativeDraft = async (args: {
       ${args.sectionKind},
       1,
       ${args.status},
-      ${JSON.stringify([{ type: 'prose', text: 'seed' }])}::jsonb,
+      ${JSON.stringify([{ type: 'prose', text: 'seed' }])}::text::jsonb,
       encode(digest('seed', 'sha256'), 'hex'),
       'test-model-v1',
       'test-prompt@1.0.0',
