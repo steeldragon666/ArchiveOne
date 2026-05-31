@@ -1,8 +1,7 @@
-import type { Metadata } from 'next';
-import { NarrativeClient } from './client';
+import { redirect } from 'next/navigation';
 
-export const metadata: Metadata = { title: 'Narrative' };
-
+// Legacy System B route. Narrative drafting now lives inside the per-claim
+// wizard at `/claims/:id` (step 4).
 export default function NarrativePage() {
-  return <NarrativeClient />;
+  redirect('/pipeline');
 }

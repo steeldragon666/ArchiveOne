@@ -52,7 +52,17 @@ export type OcrScanResult = {
    *   - 'noop'     — row was already processed; no DB write.
    */
   ocr_status: 'complete' | 'skipped' | 'noop';
-  virus_scan_status: 'clean' | 'infected' | 'failed';
+  /**
+   * Outcome of the scan stage:
+   *   - 'pending'  — no real scanner yet wired; the row stays untrusted
+   *                  until a future ClamAV/GuardDuty integration writes
+   *                  the verdict (default for prod).
+   *   - 'clean'    — scanned + verdict is no-threat (dev/CI stub path
+   *                  when VIRUS_SCAN_STUB_ALLOWED=1).
+   *   - 'infected' — malware detected; the file must be quarantined.
+   *   - 'failed'   — scanner errored; retry policy applies.
+   */
+  virus_scan_status: 'pending' | 'clean' | 'infected' | 'failed';
 };
 
 /**
@@ -79,9 +89,10 @@ export async function runOcrScanJob(input: OcrScanInput): Promise<OcrScanResult>
       s3_key: string;
       mime_type: string;
       ocr_status: 'pending' | 'complete' | 'failed' | 'skipped';
+      virus_scan_status: 'pending' | 'clean' | 'infected' | 'failed';
     }>
   >`
-    SELECT id, s3_key, mime_type, ocr_status
+    SELECT id, s3_key, mime_type, ocr_status, virus_scan_status
       FROM media_artefact
      WHERE id = ${input.media_artefact_id}
   `;
@@ -93,7 +104,7 @@ export async function runOcrScanJob(input: OcrScanInput): Promise<OcrScanResult>
   // Idempotency / re-entry guard: only act on rows still 'pending'.
   // Anything else is a no-op (the prior run won the race or succeeded).
   if (row.ocr_status !== 'pending') {
-    return { ocr_text: null, ocr_status: 'noop', virus_scan_status: 'clean' };
+    return { ocr_text: null, ocr_status: 'noop', virus_scan_status: row.virus_scan_status };
   }
 
   // STUB: real bytes fetch + Textract + ClamAV come in a later task.
@@ -105,7 +116,14 @@ export async function runOcrScanJob(input: OcrScanInput): Promise<OcrScanResult>
 
   const ocrText = ocrEligible ? `stub-ocr-${row.s3_key}` : null;
   const ocrStatus: 'complete' | 'skipped' = ocrEligible ? 'complete' : 'skipped';
-  const virusScanStatus = 'clean' as const;
+
+  // Virus scan: until a real ClamAV / GuardDuty integration lands, uploads
+  // sit in 'pending' so downstream consumers (presigned downloads, OCR-text
+  // displays in the consultant UI) must treat the file as untrusted. Setting
+  // VIRUS_SCAN_STUB_ALLOWED=1 keeps the prior auto-'clean' behaviour for
+  // local dev + CI; production deployments must NOT set it.
+  const virusScanStatus =
+    process.env.VIRUS_SCAN_STUB_ALLOWED === '1' ? ('clean' as const) : ('pending' as const);
 
   await privilegedSql`
     UPDATE media_artefact

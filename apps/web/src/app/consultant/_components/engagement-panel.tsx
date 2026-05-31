@@ -62,10 +62,22 @@ interface EngagementPanelProps {
 
 /**
  * Returns whether the engagement is in a state that unblocks the rest
- * of the wizard. Mirrors the wizard-view.tsx gate condition.
+ * of the wizard.
+ *
+ * As of 2026-05-31 the engagement letter is **no longer a precondition**
+ * for claim work or evidence capture. Consultants frequently begin evidence
+ * collection before the engagement is countersigned (real-world workflow:
+ * "let's start collecting while legal finalises"), so blocking the wizard
+ * on the signature was actively harmful. The EngagementPanel still
+ * surfaces the status as an in-flight reminder, but downstream steps stay
+ * interactive regardless. Compliance / submission-time checks (if any) live
+ * server-side at the lodgement boundary, not at the wizard.
+ *
+ * The `status` parameter is preserved so we can re-add a soft warning
+ * banner later without a fresh API call.
  */
-export function isEngagementUnblocked(status: EngagementStatus | undefined): boolean {
-  return status === 'signed' || status === 'countersigned';
+export function isEngagementUnblocked(_status: EngagementStatus | undefined): boolean {
+  return true;
 }
 
 export function EngagementPanel({ claimId, claimantName, fiscalYearLabel }: EngagementPanelProps) {

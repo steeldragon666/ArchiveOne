@@ -259,7 +259,11 @@ describe('POST /v1/federation/invitations/:id/accept', () => {
       payload: { token: crypto.randomBytes(32).toString('hex') },
     });
 
-    assert.equal(res.statusCode, 403);
+    // 404 (was 403) — invitation accept now collapses "id not found"
+    // and "token mismatch" into a uniform 404 so an attacker with a
+    // valid session cannot probe invitation UUIDs to learn which
+    // tenant pairs have pending federation relationships (timing oracle).
+    assert.equal(res.statusCode, 404);
     await app.close();
   });
 

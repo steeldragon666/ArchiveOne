@@ -484,6 +484,13 @@
       "when": 1779778800006,
       "tag": "0095_federation_rls_extension_subject_tenant",
       "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1779778800007,
+      "tag": "0096_audit_perf_and_dedup",
+      "breakpoints": true
     }
   ]
 }
