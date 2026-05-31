@@ -27,10 +27,19 @@ export function registerIntelligence(app: FastifyInstance): void {
     const limit = Math.min(Math.max(parseInt(request.query.limit || '50', 10) || 50, 1), 200);
     const offset = Math.max(parseInt(request.query.offset || '0', 10) || 0, 0);
 
+    // NOTE on the column rename: `regulatory_event` exposes the event URL as
+    // `raw_url` (not `source_url` — that's the column on `regulatory_source`,
+    // which is the URL of the *scraped index page*, not the news item).
+    // The wire shape `source_url` is what /intelligence and the consultant
+    // Watch page already consume, so we alias here instead of churning all
+    // the consumers. Prior to this fix the SELECT referenced `e.source_url`,
+    // which doesn't exist, and every request to /v1/intelligence/events
+    // 500'd with postgres 42703 (errorMissingColumn) — including every
+    // 45-second Watch-page poll.
     const events = await privilegedSql`
         SELECT
           e.id, e.source_id, e.external_id, e.raw_title, e.raw_content,
-          e.source_url, e.published_at, e.classified_at,
+          e.raw_url AS source_url, e.published_at, e.classified_at,
           e.classification_kind, e.classification_severity,
           s.source_name AS source_name
         FROM regulatory_event e
