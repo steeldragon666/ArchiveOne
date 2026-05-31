@@ -2012,11 +2012,14 @@ test('migration 0038: prompt_suggestion table exists with expected columns', asy
     'triage_classification',
     'resolved_at',
     'first_recorded_at',
+    // Migration 0099 (issue #29): appended via ALTER TABLE so the
+    // ordinal_position is at the end of the table.
+    'triage_notes',
   ];
   assert.deepEqual(
     cols.map((c) => c.column_name),
     expected,
-    'prompt_suggestion columns must match the Task B.1 spec in declared order',
+    'prompt_suggestion columns must match the Task B.1 spec + 0099 in declared order',
   );
 
   // Spot-check: source_payload is jsonb, not json or text.
