@@ -15,11 +15,30 @@ import {
   ruleStrong,
   rust,
 } from './tokens';
-import { Diamond, MonoLabel, StatusPill, type StatusKind } from './atoms';
+import { Diamond, MonoLabel } from './atoms';
 import Link from 'next/link';
 import { useConsultantRecentChainBlocks } from '@/lib/hooks/use-consultant-recent-chain-blocks';
 import { useConsultantSignals } from '@/lib/hooks/use-consultant-signals';
 import { useConsultantKpis, type ConsultantKpisResponse } from '@/lib/hooks/use-consultant-kpis';
+import { useWhoami } from '@/hooks/use-whoami';
+
+function greeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return 'Good morning';
+  if (h < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
+function firstNameFromWhoami(displayName: string | null, email: string): string {
+  if (displayName && displayName.length > 0) return displayName.split(/\s+/)[0] ?? displayName;
+  // Fall back to the local-part of the email — never show the raw email on
+  // the dashboard greeting (PII surface) but a stripped first token is
+  // friendly enough.
+  const local = email.split('@')[0] ?? '';
+  // dotted/underscored emails (e.g. aaron.smith@x) → "Aaron"
+  const token = local.split(/[._-]/)[0] ?? local;
+  return token.length > 0 ? token.charAt(0).toUpperCase() + token.slice(1).toLowerCase() : 'there';
+}
 
 export function DashboardView() {
   return (
@@ -32,36 +51,10 @@ export function DashboardView() {
           marginBottom: 26,
         }}
       >
-        <div>
-          <MonoLabel size={10} color={bone3} tracking="0.22em">
-            Dashboard · FY26
-          </MonoLabel>
-          <h1
-            style={{
-              fontFamily: fSerif,
-              fontWeight: 300,
-              fontSize: 44,
-              lineHeight: 1.0,
-              letterSpacing: '-0.025em',
-              color: bone,
-              margin: '10px 0 0',
-            }}
-          >
-            Good morning, Anna.
-          </h1>
-          <p
-            style={{
-              fontFamily: fSans,
-              fontSize: 15,
-              color: bone3,
-              margin: '8px 0 0',
-            }}
-          >
-            Three signals overnight. Two claims need your judgement today.
-          </p>
-        </div>
+        <DashboardHeader />
         <div style={{ display: 'flex', gap: 10 }}>
-          <button
+          <Link
+            href="/subject-tenants"
             style={{
               padding: '10px 18px',
               background: 'transparent',
@@ -72,11 +65,14 @@ export function DashboardView() {
               fontSize: 11,
               letterSpacing: '0.18em',
               cursor: 'pointer',
+              textDecoration: 'none',
+              display: 'inline-block',
             }}
           >
             + Import client
-          </button>
-          <button
+          </Link>
+          <Link
+            href="/pipeline?action=new"
             style={{
               padding: '10px 18px',
               background: amber,
@@ -88,10 +84,12 @@ export function DashboardView() {
               letterSpacing: '0.18em',
               cursor: 'pointer',
               fontWeight: 600,
+              textDecoration: 'none',
+              display: 'inline-block',
             }}
           >
             + New claim
-          </button>
+          </Link>
         </div>
       </div>
 
@@ -113,6 +111,52 @@ export function DashboardView() {
           <ChainPanel />
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * DashboardHeader — dynamic greeting + live subhead.
+ *
+ * Replaces the static "Good morning, Anna. / Three signals overnight..."
+ * placeholder. Greeting uses the session's display name (or email local-part
+ * fallback) so a paying consultant sees their own name, not a fixture.
+ * Subhead summarises the two real KPIs the consultant cares about on
+ * page-load: today's regulatory signal count + at-risk claim count.
+ */
+function DashboardHeader() {
+  const whoami = useWhoami();
+  const { data: signalsData } = useConsultantSignals({ window: '24h' });
+  const { data: kpis } = useConsultantKpis({ fy: 'FY26' });
+  const name = whoami.data?.user
+    ? firstNameFromWhoami(whoami.data.user.displayName, whoami.data.user.email)
+    : 'there';
+  const signalCount = signalsData?.signals.length ?? 0;
+  const atRisk = kpis?.atRisk ?? 0;
+  const subhead =
+    signalCount === 0 && atRisk === 0
+      ? 'No new regulatory signals overnight. Nothing flagged for review.'
+      : `${signalCount} new signal${signalCount === 1 ? '' : 's'} overnight. ${atRisk} claim${atRisk === 1 ? '' : 's'} ${atRisk === 1 ? 'needs' : 'need'} your judgement today.`;
+
+  return (
+    <div>
+      <MonoLabel size={10} color={bone3} tracking="0.22em">
+        Dashboard · FY26
+      </MonoLabel>
+      <h1
+        style={{
+          fontFamily: fSerif,
+          fontWeight: 300,
+          fontSize: 44,
+          lineHeight: 1.0,
+          letterSpacing: '-0.025em',
+          color: bone,
+          margin: '10px 0 0',
+        }}
+      >
+        {greeting()}, {name}.
+      </h1>
+      <p style={{ fontFamily: fSans, fontSize: 15, color: bone3, margin: '8px 0 0' }}>{subhead}</p>
     </div>
   );
 }
@@ -304,74 +348,19 @@ function KpiStrip({ fy }: { fy: string }) {
   );
 }
 
-interface Claim {
-  id: string;
-  client: string;
-  stage: string;
-  status: StatusKind;
-  value: string;
-  evidence: number;
-  gap: boolean;
-}
-
-const CLAIMS: Claim[] = [
-  {
-    id: 'VANT-7',
-    client: 'Vantage Industries',
-    stage: 'STAGE 04 · APPORTION',
-    status: 'review',
-    value: '$2.42M',
-    evidence: 47,
-    gap: false,
-  },
-  {
-    id: 'BORE-2',
-    client: 'Borealis Bio',
-    stage: 'STAGE 03 · ASSEMBLE',
-    status: 'drafting',
-    value: '$1.18M',
-    evidence: 28,
-    gap: true,
-  },
-  {
-    id: 'LYRA-1',
-    client: 'Lyra Compute',
-    stage: 'STAGE 02 · STAMP',
-    status: 'drafting',
-    value: '$ 840K',
-    evidence: 19,
-    gap: false,
-  },
-  {
-    id: 'GQHC-1',
-    client: 'GQHC Materials',
-    stage: 'STAGE 06 · SEAL',
-    status: 'sealed',
-    value: '$3.16M',
-    evidence: 92,
-    gap: false,
-  },
-  {
-    id: 'OREN-1',
-    client: 'Oren Robotics',
-    stage: 'STAGE 04 · APPORTION',
-    status: 'flagged',
-    value: '$ 610K',
-    evidence: 22,
-    gap: true,
-  },
-  {
-    id: 'ARI-3',
-    client: 'Aristocrat (sub-entity)',
-    stage: 'STAGE 06 · SEAL',
-    status: 'chain-lock',
-    value: '$5.04M',
-    evidence: 142,
-    gap: false,
-  },
-];
-
+/**
+ * ClaimsPanel — Active claims summary.
+ *
+ * Previously rendered a hardcoded mock list (Vantage Industries, Borealis
+ * Bio, etc.) that any paying consultant logging in would see as another
+ * firm's data. This empty-state version is the honest stop-gap until a
+ * dedicated `/v1/consultant/active-claims` endpoint ships. The /pipeline
+ * route already serves the canonical claims list with full filtering, so
+ * the panel funnels there rather than reimplementing the table.
+ */
 function ClaimsPanel() {
+  const { data: kpis } = useConsultantKpis({ fy: 'FY26' });
+  const activeClaims = kpis?.activeClaims ?? null;
   return (
     <div
       style={{
@@ -399,120 +388,94 @@ function ClaimsPanel() {
             · FY26 BOOK
           </MonoLabel>
         </div>
-        <div
+        <Link
+          href="/pipeline"
           style={{
-            display: 'flex',
-            gap: 8,
             fontFamily: fMono,
             fontSize: 10.5,
-            color: bone3,
+            color: amber,
             letterSpacing: '0.14em',
+            textDecoration: 'none',
           }}
         >
-          <span style={{ color: bone }}>ALL</span>
-          <span>·</span>
-          <span>DRAFTING</span>
-          <span>·</span>
-          <span>REVIEW</span>
-          <span>·</span>
-          <span>SEALED</span>
-        </div>
+          OPEN PIPELINE →
+        </Link>
       </div>
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '90px 1fr 200px 130px 80px 110px',
-          padding: '10px 20px',
-          borderBottom: `1px solid ${rule}`,
-          fontFamily: fMono,
-          fontSize: 10,
-          color: bone3,
-          letterSpacing: '0.16em',
-        }}
-      >
-        <span>ID</span>
-        <span>CLIENT</span>
-        <span>STAGE</span>
-        <span>STATUS</span>
-        <span style={{ textAlign: 'right' }}>EVID</span>
-        <span style={{ textAlign: 'right' }}>VALUE</span>
+      <div style={{ padding: '36px 24px', textAlign: 'center' }}>
+        {activeClaims === null ? (
+          <p style={{ fontFamily: fSans, fontSize: 13, color: bone3, margin: 0 }}>
+            Loading active claims…
+          </p>
+        ) : activeClaims === 0 ? (
+          <>
+            <p
+              style={{
+                fontFamily: fSerif,
+                fontSize: 20,
+                color: bone,
+                margin: '0 0 6px',
+                fontWeight: 300,
+              }}
+            >
+              No active claims yet.
+            </p>
+            <p style={{ fontFamily: fSans, fontSize: 13, color: bone3, margin: '0 0 20px' }}>
+              Start your first claim from the pipeline to begin capturing R&amp;D evidence.
+            </p>
+            <Link
+              href="/pipeline?action=new"
+              style={{
+                padding: '10px 18px',
+                background: amber,
+                color: ink,
+                borderRadius: 3,
+                fontFamily: fMono,
+                fontSize: 11,
+                letterSpacing: '0.18em',
+                fontWeight: 600,
+                textDecoration: 'none',
+                display: 'inline-block',
+              }}
+            >
+              + Start a claim
+            </Link>
+          </>
+        ) : (
+          <>
+            <p
+              style={{
+                fontFamily: fSerif,
+                fontSize: 28,
+                color: bone,
+                margin: '0 0 4px',
+                fontWeight: 300,
+              }}
+            >
+              {activeClaims} active claim{activeClaims === 1 ? '' : 's'} this FY
+            </p>
+            <p style={{ fontFamily: fSans, fontSize: 13, color: bone3, margin: '0 0 20px' }}>
+              Open the pipeline for full stage filters, drag-drop, and bulk actions.
+            </p>
+            <Link
+              href="/pipeline"
+              style={{
+                padding: '10px 18px',
+                background: 'transparent',
+                color: bone,
+                border: `1px solid ${ruleStrong}`,
+                borderRadius: 3,
+                fontFamily: fMono,
+                fontSize: 11,
+                letterSpacing: '0.18em',
+                textDecoration: 'none',
+                display: 'inline-block',
+              }}
+            >
+              Open pipeline →
+            </Link>
+          </>
+        )}
       </div>
-      {CLAIMS.map((c, i) => (
-        <div
-          key={c.id}
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '90px 1fr 200px 130px 80px 110px',
-            padding: '14px 20px',
-            borderBottom: i < CLAIMS.length - 1 ? `1px solid ${rule}` : 'none',
-            alignItems: 'center',
-            cursor: 'pointer',
-            background: i === 0 ? 'rgba(225,162,58,0.04)' : 'transparent',
-          }}
-        >
-          <span
-            style={{
-              fontFamily: fMono,
-              fontSize: 12,
-              color: amber,
-              letterSpacing: '0.06em',
-            }}
-          >
-            {c.id}
-          </span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontFamily: fSans, fontSize: 14, color: bone, fontWeight: 500 }}>
-              {c.client}
-            </span>
-            {c.gap && (
-              <span
-                title="Evidence gap"
-                style={{
-                  width: 6,
-                  height: 6,
-                  borderRadius: '50%',
-                  background: rust,
-                  boxShadow: `0 0 8px ${rust}`,
-                }}
-              />
-            )}
-          </div>
-          <span
-            style={{
-              fontFamily: fMono,
-              fontSize: 11,
-              color: bone3,
-              letterSpacing: '0.12em',
-            }}
-          >
-            {c.stage}
-          </span>
-          <span>
-            <StatusPill kind={c.status} />
-          </span>
-          <span
-            style={{
-              fontFamily: fMono,
-              fontSize: 12,
-              color: bone2,
-              textAlign: 'right',
-            }}
-          >
-            {c.evidence}
-          </span>
-          <span
-            style={{
-              fontFamily: fMono,
-              fontSize: 13,
-              color: bone,
-              textAlign: 'right',
-              letterSpacing: '0.04em',
-            }}
-          >
-            {c.value}
-          </span>
-        </div>
-      ))}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import cookie from '@fastify/cookie';
+import rateLimit from '@fastify/rate-limit';
 import * as Sentry from '@sentry/node';
 import Fastify from 'fastify';
 import type {
@@ -191,6 +192,31 @@ export function buildApp(options: BuildAppOptions = {}): App {
   // own integrity via jose; cookies are just transport. Registered before
   // routes so session-aware handlers can read req.cookies.
   app.register(cookie);
+
+  // Global rate limit — defence-in-depth across every route.
+  //
+  // The hard per-IP cap (300 req/min) catches stupid loops + opportunistic
+  // probing without troubling legitimate single-user traffic. Sensitive
+  // auth/magic-link endpoints layer tighter per-route limits on top via
+  // the per-route `config.rateLimit` option in their own registrations.
+  //
+  // `skipOnError: false` so a stuck redis/lru-cache hands back 503 rather
+  // than failing open. In-memory store is the default (per-instance, per-
+  // process); a multi-replica deployment should swap in `@fastify/redis`
+  // to share counters — tracked in the production-deploy plan.
+  //
+  // Tests bypass the limit by setting RATE_LIMIT_DISABLED=1 (CI seeds it).
+  if (process.env.RATE_LIMIT_DISABLED !== '1') {
+    app.register(rateLimit, {
+      global: true,
+      max: 300,
+      timeWindow: '1 minute',
+      skipOnError: false,
+      // Use the client IP (Fastify's req.ip already honours X-Forwarded-For
+      // when trust-proxy is set on the server, which app.ts does below).
+      // No keyGenerator override — default `req.ip` is correct.
+    });
+  }
 
   // Hostname → tenant resolver (T-F4). Runs as a global preHandler so any
   // route can read req.resolvedBrand. Registered BEFORE the session plugin

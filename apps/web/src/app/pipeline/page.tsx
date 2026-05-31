@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { Claim } from '@cpa/schemas';
 import { AppShell } from '@/components/app-shell';
+import { apiFetch } from '@/lib/api';
 import { StartClaimButton } from '@/components/start-claim-button';
 import { PipelineBulkToolbar } from './_components/pipeline-bulk-toolbar';
 import { PipelineFilters, type ConsultantOption } from './_components/pipeline-filters';
@@ -76,14 +77,34 @@ function Inner() {
       }));
   }, [usersQuery.data]);
 
-  // TODO(A2): replace with `listClaims({ stages, consultantId, fiscalYear, sector })`
-  // once Swimlane A's GET /v1/claims endpoint ships. Until then we render
-  // an empty list so the page shell + filter wiring is exercisable. The
-  // query key intentionally mirrors what the real fetch will use, so
-  // swapping in the API call is a one-line change.
+  // Wired to GET /v1/claims (apps/api/src/routes/claims.ts:225). The API
+  // returns the active tenant's full claim set; client-side filtering
+  // matches the prior contract (the API doesn't yet accept `consultantId`
+  // or `sector` as query params — server-side narrowing is a follow-up;
+  // for current single-firm volumes the in-memory filter is fine).
+  //
+  // fiscalYear IS honoured server-side via the existing query param.
   const claimsQuery = useQuery({
     queryKey: ['claims', { stages, consultantId, fiscalYear, sector }] as const,
-    queryFn: (): Promise<Claim[]> => Promise.resolve([]),
+    queryFn: async (): Promise<Claim[]> => {
+      const search = new URLSearchParams();
+      if (fiscalYear !== undefined) search.set('fiscal_year', String(fiscalYear));
+      const qs = search.toString();
+      const res = await apiFetch<{ claims: Claim[] }>(`/v1/claims${qs.length > 0 ? `?${qs}` : ''}`);
+      let claims = res.claims;
+      // Stage narrowing: API accepts a single `stage`; the UI passes a
+      // multi-stage filter set, so we keep it client-side.
+      if (stages && stages.length > 0) {
+        const allowed = new Set(stages);
+        claims = claims.filter((c) => allowed.has(c.stage));
+      }
+      // consultantId + sector are advisory filters that don't yet map to
+      // claim columns. The pipeline UI ignores them when no claim
+      // exposes the field; safe no-op until the schema catches up.
+      void consultantId;
+      void sector;
+      return claims;
+    },
   });
 
   // Role drives admin-only affordances inside the views (revert via

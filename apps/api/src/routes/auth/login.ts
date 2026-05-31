@@ -82,6 +82,28 @@ export function registerLoginRoute(app: FastifyInstance, cfg: LoginRouteConfig):
   const sessionCookieAttrs = `Path=/; HttpOnly; SameSite=Lax; Max-Age=${cfg.ttlSeconds}${cfg.cookieSecure ? '; Secure' : ''}`;
 
   app.post('/v1/auth/login', async (req, reply) => {
+    // PRODUCTION SAFETY GATE — passwordless email-only login refuses to mint a
+    // session unless ALLOW_PASSWORDLESS_LOGIN=1 is explicitly set in the env.
+    //
+    // The JSDoc above documents that this endpoint trusts the email alone:
+    // anyone who knows an approved consultant's email gets that consultant's
+    // session, gated only by a 30-req/hour per-IP rate limit. That trust
+    // model is appropriate for a single-firm internal pilot but is NOT
+    // acceptable for paying multi-tenant clients. Production deployments
+    // must NOT set ALLOW_PASSWORDLESS_LOGIN; users sign in via Microsoft /
+    // Google OAuth instead (see routes/auth/microsoft.ts + google.ts).
+    //
+    // Dev + CI seed ALLOW_PASSWORDLESS_LOGIN=1 so the existing test fixtures
+    // + local-dev signup-then-login cycle still work end-to-end.
+    if (process.env.ALLOW_PASSWORDLESS_LOGIN !== '1') {
+      return reply.status(403).send({
+        error: 'passwordless_login_disabled',
+        message:
+          'Email-only login is disabled in this environment. Sign in with Microsoft or Google instead.',
+        requestId: req.id,
+      });
+    }
+
     // CSRF / forced-login defense. This endpoint mints a session cookie from
     // an unauthenticated POST, so a cross-site page must not be able to drive
     // it. Browsers stamp `Sec-Fetch-Site` on fetch/form requests and send an

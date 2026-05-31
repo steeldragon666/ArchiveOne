@@ -1398,6 +1398,19 @@ export function registerClaims(app: FastifyInstance, deps?: ClaimsRouteDeps): vo
         });
       }
 
+      // Production guard — see claim-finalisation.ts. The job currently
+      // writes a hardcoded skeleton narrative rather than calling the real
+      // drafter; without this gate a paying tenant would receive a fake
+      // AI-branded narrative. Local dev + CI set CLAIM_FINALISATION_STUB_ALLOWED=1.
+      if (process.env.CLAIM_FINALISATION_STUB_ALLOWED !== '1') {
+        return reply.status(503).send({
+          error: 'feature_not_available',
+          message:
+            'Finalise is not yet available. The narrative-drafter wiring is in development; reach out at feedback@archiveone.com.au for the early-access rollout.',
+          requestId: req.id,
+        });
+      }
+
       const { id } = req.params;
       const tenantId = req.user!.tenantId!;
       const userId = req.user!.id;
