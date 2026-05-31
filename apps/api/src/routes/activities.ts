@@ -76,6 +76,21 @@ interface RawActivityRow {
     saved_at: string;
     source: 'agent' | 'edit';
   }>;
+  // R&DTI gap foundation columns (migration 0097). Booleans always
+  // present in the DB (NOT NULL with defaults), but optional here so
+  // the existing callers that don't SELECT them keep compiling. toApi
+  // supplies the same NOT-NULL defaults the schema enforces.
+  risk_level?: 'low' | 'medium' | 'high' | null;
+  risk_level_computed_at?: Date | string | null;
+  performed_overseas?: boolean;
+  overseas_country?: string | null;
+  overseas_findings_required?: boolean;
+  overseas_findings_obtained?: boolean;
+  overseas_findings_reference?: string | null;
+  supports_activity_id?: string | null;
+  performer_kind?: 'in_house' | 'contracted_arm_length' | 'contracted_associate';
+  contractor_name?: string | null;
+  contractor_abn?: string | null;
 }
 
 const isoOf = (v: Date | string): string => (typeof v === 'string' ? v : v.toISOString());
@@ -127,6 +142,25 @@ const toApi = (r: RawActivityRow): Activity => ({
   ...(r.portal_fields_history !== undefined
     ? { portal_fields_history: r.portal_fields_history }
     : { portal_fields_history: [] }),
+  // R&DTI gap foundation columns (migration 0097). Defaults mirror the
+  // DB NOT NULL defaults so callers that don't SELECT these columns still
+  // get the wire-shape Activity schema requires.
+  ...(r.risk_level !== undefined ? { risk_level: r.risk_level } : {}),
+  ...(r.risk_level_computed_at !== undefined
+    ? {
+        risk_level_computed_at:
+          r.risk_level_computed_at === null ? null : isoOf(r.risk_level_computed_at),
+      }
+    : {}),
+  performed_overseas: r.performed_overseas ?? false,
+  overseas_country: r.overseas_country ?? null,
+  overseas_findings_required: r.overseas_findings_required ?? false,
+  overseas_findings_obtained: r.overseas_findings_obtained ?? false,
+  overseas_findings_reference: r.overseas_findings_reference ?? null,
+  supports_activity_id: r.supports_activity_id ?? null,
+  performer_kind: r.performer_kind ?? 'in_house',
+  contractor_name: r.contractor_name ?? null,
+  contractor_abn: r.contractor_abn ?? null,
 });
 
 /**

@@ -47,3 +47,5 @@ export * from './cloud_sync_connection.js';
 export * from './ip-search.js';
 export * from './signup_decision.js';
 export * from './auth-magic-link.js';
+export * from './notional_adjustment.js';
+export * from './employee_rd_allocation.js';

@@ -14,6 +14,28 @@ export const ActivityKind = z.enum(['core', 'supporting']);
 export type ActivityKind = z.infer<typeof ActivityKind>;
 
 /**
+ * Holistic eligibility risk band (migration 0097).
+ *
+ * Mirrors the SQL `risk_level` ENUM AND the `RISK_LEVELS` Drizzle
+ * export. The audit-score eligibility-scorer derives this and writes
+ * it back; consumers display it as a coloured chip on the activity
+ * panel + as a sort key in the pipeline kanban.
+ */
+export const RiskLevel = z.enum(['low', 'medium', 'high']);
+export type RiskLevel = z.infer<typeof RiskLevel>;
+
+/**
+ * Who performed the R&D — drives Subdiv 355-G calculations + the
+ * overseas-permission rule (s.355-210). Migration 0097.
+ */
+export const RdPerformerKind = z.enum([
+  'in_house',
+  'contracted_arm_length',
+  'contracted_associate',
+]);
+export type RdPerformerKind = z.infer<typeof RdPerformerKind>;
+
+/**
  * Activity code regex — byte-identical to the `activity_code_format`
  * CHECK constraint in migration 0012_hard_titania.sql. Two-letter prefix
  * (CA = core, SA = supporting) + dash + 2-3 digits. Auto-generated
@@ -103,6 +125,31 @@ export const Activity = z.object({
       }),
     )
     .default([]),
+  /**
+   * R&DTI gap foundation columns (migration 0097). Optional on the wire
+   * so older clients + pre-0097 rows round-trip cleanly.
+   *
+   *   risk_level                — computed by audit-score; NULL until first run.
+   *   risk_level_computed_at    — when the scorer last ran.
+   *   performed_overseas        — TA 2023/5 audit focus; default false.
+   *   overseas_country          — required when performed_overseas=true.
+   *   overseas_findings_required/_obtained/_reference — Overseas Findings
+   *                                determination from AusIndustry (s.28A IR&D Act).
+   *   supports_activity_id      — s.355-30 supporting → core FK. NULL for core.
+   *   performer_kind            — in_house / contracted_arm_length / contracted_associate.
+   *   contractor_name + abn     — required when performer_kind != 'in_house'.
+   */
+  risk_level: RiskLevel.nullable().optional(),
+  risk_level_computed_at: Iso8601.nullable().optional(),
+  performed_overseas: z.boolean().default(false),
+  overseas_country: z.string().nullable().optional(),
+  overseas_findings_required: z.boolean().default(false),
+  overseas_findings_obtained: z.boolean().default(false),
+  overseas_findings_reference: z.string().nullable().optional(),
+  supports_activity_id: Uuid.nullable().optional(),
+  performer_kind: RdPerformerKind.default('in_house'),
+  contractor_name: z.string().nullable().optional(),
+  contractor_abn: z.string().nullable().optional(),
 });
 export type Activity = z.infer<typeof Activity>;
 

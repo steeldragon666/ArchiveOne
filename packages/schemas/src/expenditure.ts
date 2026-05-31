@@ -29,6 +29,25 @@ export const ExpenditureSource = z.enum(EXPENDITURE_SOURCES_LITERAL);
 export type ExpenditureSource = z.infer<typeof ExpenditureSource>;
 
 /**
+ * Apportionment-basis enum (migration 0097). Drives the overhead-
+ * apportionment engine for expenditures that need to be split between
+ * R&D and BAU. NULL = "not yet apportioned"; 'direct' = 100% R&D.
+ *
+ * KEEP IN SYNC WITH:
+ *   1. `APPORTIONMENT_BASES` in `@cpa/db/schema/expenditure.ts`
+ *   2. The `apportionment_basis` SQL ENUM declared in 0097
+ */
+export const APPORTIONMENT_BASES_LITERAL = [
+  'headcount',
+  'floorspace',
+  'time',
+  'revenue',
+  'direct',
+] as const;
+export const ApportionmentBasis = z.enum(APPORTIONMENT_BASES_LITERAL);
+export type ApportionmentBasis = z.infer<typeof ApportionmentBasis>;
+
+/**
  * Calendar date in YYYY-MM-DD form. Matches the postgres `date` column
  * type used for `expenditure.expenditure_date` (the date the expense
  * was incurred, distinct from the `ingested_at` timestamptz).
@@ -68,6 +87,8 @@ export const Expenditure = z.object({
   reimbursed_to_user_id: Uuid.nullable(),
   ingested_at: Iso8601,
   voided_at: Iso8601.nullable(),
+  // Migration 0097 — optional on the wire so pre-0097 rows round-trip.
+  apportionment_basis: ApportionmentBasis.nullable().optional(),
 });
 export type Expenditure = z.infer<typeof Expenditure>;
 

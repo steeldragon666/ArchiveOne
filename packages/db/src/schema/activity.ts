@@ -1,5 +1,15 @@
-import { index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import {
+  boolean,
+  index,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import { claim } from './claim.js';
 import { project } from './project.js';
 import { tenant } from './tenant.js';
@@ -44,6 +54,33 @@ import { tenant } from './tenant.js';
  */
 export const ACTIVITY_KINDS = ['core', 'supporting'] as const;
 export type ActivityKind = (typeof ACTIVITY_KINDS)[number];
+
+/**
+ * Holistic eligibility risk band. Computed by audit-score/eligibility-scorer.
+ * Migration 0097 added the column + enum; the value populates lazily on the
+ * next portal-fields recompute. NULL = "not yet scored".
+ *
+ * Keep in sync with the `risk_level` enum in migration 0097 and the
+ * RISK_LEVELS Zod export in packages/schemas/src/activity.ts.
+ */
+export const RISK_LEVELS = ['low', 'medium', 'high'] as const;
+export type RiskLevel = (typeof RISK_LEVELS)[number];
+
+/**
+ * Per s.355-205 (associate payments) / s.355-210 (overseas permission) /
+ * s.355-220 (associates), the application drafter + apportionment engine
+ * need to know who actually did the R&D work. Migration 0097 added the
+ * column + enum.
+ *
+ * Keep in sync with the `rd_performer_kind` enum in migration 0097 and the
+ * RD_PERFORMER_KINDS Zod export in packages/schemas/src/activity.ts.
+ */
+export const RD_PERFORMER_KINDS = [
+  'in_house',
+  'contracted_arm_length',
+  'contracted_associate',
+] as const;
+export type RdPerformerKind = (typeof RD_PERFORMER_KINDS)[number];
 
 export const activity = pgTable(
   'activity',
@@ -100,6 +137,23 @@ export const activity = pgTable(
     // (newest at the end). Each entry: { portal_fields, saved_at, source }.
     // Server caps at the most-recent 10 entries.
     portalFieldsHistory: jsonb('portal_fields_history').notNull().default([]),
+    // Migration 0097 — R&DTI gap foundation.
+    riskLevel: text('risk_level', { enum: RISK_LEVELS }),
+    riskLevelComputedAt: timestamp('risk_level_computed_at', { withTimezone: true }),
+    performedOverseas: boolean('performed_overseas').notNull().default(false),
+    overseasCountry: text('overseas_country'),
+    overseasFindingsRequired: boolean('overseas_findings_required').notNull().default(false),
+    overseasFindingsObtained: boolean('overseas_findings_obtained').notNull().default(false),
+    overseasFindingsReference: text('overseas_findings_reference'),
+    // Supporting → Core FK (s.355-30). NULL for core; set for supporting.
+    // Self-reference uses AnyPgColumn cast — Drizzle's standard pattern for
+    // composing a FK pointing back at the same table.
+    supportsActivityId: uuid('supports_activity_id').references((): AnyPgColumn => activity.id),
+    performerKind: text('performer_kind', { enum: RD_PERFORMER_KINDS })
+      .notNull()
+      .default('in_house'),
+    contractorName: text('contractor_name'),
+    contractorAbn: text('contractor_abn'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true })
       .notNull()
