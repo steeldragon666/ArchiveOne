@@ -148,6 +148,7 @@ interface SuggestionRow {
   issue_summary: string;
   status: (typeof STATUSES)[number];
   triage_classification: (typeof TRIAGE_CLASSIFICATIONS)[number] | null;
+  triage_notes: string | null;
   resolved_at: Date | string | null;
   first_recorded_at: Date | string;
 }
@@ -191,6 +192,7 @@ const toSuggestionApi = (r: SuggestionRow): Record<string, unknown> => ({
   issue_summary: r.issue_summary,
   status: r.status,
   triage_classification: r.triage_classification,
+  triage_notes: r.triage_notes,
   resolved_at: isoOf(r.resolved_at),
   first_recorded_at: isoOfNonNull(r.first_recorded_at),
 });
@@ -331,7 +333,7 @@ export function registerPromptSuggestions(
         )
         RETURNING id, tenant_id, flagged_by_user_id, flagged_at, source_kind,
                   source_payload, affected_prompt_module, affected_section_kind,
-                  issue_summary, status, triage_classification, resolved_at,
+                  issue_summary, status, triage_classification, triage_notes, resolved_at,
                   first_recorded_at
       `;
       const row = rows[0];
@@ -383,7 +385,7 @@ export function registerPromptSuggestions(
       const rows = await tx<SuggestionRow[]>`
         SELECT id, tenant_id, flagged_by_user_id, flagged_at, source_kind,
                source_payload, affected_prompt_module, affected_section_kind,
-               issue_summary, status, triage_classification, resolved_at,
+               issue_summary, status, triage_classification, triage_notes, resolved_at,
                first_recorded_at
           FROM prompt_suggestion
          WHERE tenant_id = ${tenantId}
@@ -431,7 +433,7 @@ export function registerPromptSuggestions(
         const suggestionRows = await tx<SuggestionRow[]>`
           SELECT id, tenant_id, flagged_by_user_id, flagged_at, source_kind,
                  source_payload, affected_prompt_module, affected_section_kind,
-                 issue_summary, status, triage_classification, resolved_at,
+                 issue_summary, status, triage_classification, triage_notes, resolved_at,
                  first_recorded_at
             FROM prompt_suggestion
            WHERE id = ${id} AND tenant_id = ${tenantId}
@@ -546,6 +548,7 @@ export function registerPromptSuggestions(
         const updatedRows = await tx<SuggestionRow[]>`
           UPDATE prompt_suggestion
              SET triage_classification = ${body.triage_classification},
+                 triage_notes = ${body.notes ?? null},
                  status = ${body.status_after},
                  resolved_at = CASE WHEN ${resolveNow} THEN NOW() ELSE resolved_at END
            WHERE id = ${id}
@@ -553,7 +556,7 @@ export function registerPromptSuggestions(
              AND status = 'open'
           RETURNING id, tenant_id, flagged_by_user_id, flagged_at, source_kind,
                     source_payload, affected_prompt_module, affected_section_kind,
-                    issue_summary, status, triage_classification, resolved_at,
+                    issue_summary, status, triage_classification, triage_notes, resolved_at,
                     first_recorded_at
         `;
         const row = updatedRows[0];
@@ -566,22 +569,10 @@ export function registerPromptSuggestions(
             requestId: req.id,
           });
         }
-        // TODO(p7-theme-b-followup): `notes` on the triage input is
-        // currently silently dropped — the prompt_suggestion table has
-        // no triage_notes column. Code-quality review on B.3 flagged
-        // this as Important #2. Resolution options for a follow-up
-        // ticket: (a) add a `triage_notes text` column to
-        // prompt_suggestion, or (b) write notes to a separate
-        // prompt_suggestion_triage table keyed on (id, status_change_at).
-        // For now the wire shape accepts notes (so the admin UI keeps
-        // working) but they are only logged at debug for observability;
-        // they do NOT persist past this request.
-        if (body.notes !== undefined) {
-          req.log.debug(
-            { id, notesLength: body.notes.length },
-            'triage notes accepted but not persisted',
-          );
-        }
+        // Triage notes are now persisted in `triage_notes` (migration 0099,
+        // issue #29). The UPDATE above writes `body.notes ?? null`, so the
+        // round-trip is `notes (request body) → triage_notes (DB column) →
+        // triage_notes (response shape)`.
         return { suggestion: toSuggestionApi(row) };
       });
     },
@@ -781,7 +772,7 @@ export function registerPromptSuggestions(
         const rows = await tx<SuggestionRow[]>`
           SELECT id, tenant_id, flagged_by_user_id, flagged_at, source_kind,
                  source_payload, affected_prompt_module, affected_section_kind,
-                 issue_summary, status, triage_classification, resolved_at,
+                 issue_summary, status, triage_classification, triage_notes, resolved_at,
                  first_recorded_at
             FROM prompt_suggestion
            WHERE id = ${id} AND tenant_id = ${tenantId}
@@ -961,7 +952,7 @@ export function registerPromptSuggestions(
                AND status = 'triaged'
             RETURNING id, tenant_id, flagged_by_user_id, flagged_at, source_kind,
                       source_payload, affected_prompt_module, affected_section_kind,
-                      issue_summary, status, triage_classification, resolved_at,
+                      issue_summary, status, triage_classification, triage_notes, resolved_at,
                       first_recorded_at
           `;
           if (flipped.length === 0) {

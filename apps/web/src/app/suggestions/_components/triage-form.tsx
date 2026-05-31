@@ -142,7 +142,7 @@ export function TriageForm({ suggestionId }: TriageFormProps): React.ReactElemen
           maxLength={1000}
         />
         <p className="text-xs text-muted-foreground" data-testid="triage-notes-caveat">
-          Notes are not yet persisted (P7 follow-up).
+          Notes are saved with the triage and shown on the suggestion detail.
         </p>
       </div>
 

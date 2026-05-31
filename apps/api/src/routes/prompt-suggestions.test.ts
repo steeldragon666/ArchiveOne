@@ -667,11 +667,40 @@ describe('POST /v1/suggestions/:id/triage', () => {
     });
     assert.equal(res.statusCode, 200);
     const body = res.json<{
-      suggestion: { status: string; triage_classification: string; resolved_at: string | null };
+      suggestion: {
+        status: string;
+        triage_classification: string;
+        triage_notes: string | null;
+        resolved_at: string | null;
+      };
     }>();
     assert.equal(body.suggestion.status, 'triaged');
     assert.equal(body.suggestion.triage_classification, 'prompt_change');
+    // Issue #29 fix: triage notes must round-trip through the DB column.
+    assert.equal(body.suggestion.triage_notes, 'looks like a prompt fix');
     assert.equal(body.suggestion.resolved_at, null);
+    await app.close();
+  });
+
+  test('200 — triage without notes persists triage_notes as null', async (t) => {
+    if (skipIfNoDb(t)) return;
+    const app = buildAppWithSuggestions();
+    const flagRes = await app.inject({
+      method: 'POST',
+      url: '/v1/suggestions',
+      cookies: { cpa_session: await consultantJwt() },
+      payload: dummyFlag({ issue_summary: 'triage without notes issue summary long' }),
+    });
+    const id = flagRes.json<{ suggestion: { id: string } }>().suggestion.id;
+    const res = await app.inject({
+      method: 'POST',
+      url: `/v1/suggestions/${id}/triage`,
+      cookies: { cpa_session: await consultantJwt() },
+      payload: { triage_classification: 'prompt_change', status_after: 'triaged' },
+    });
+    assert.equal(res.statusCode, 200);
+    const body = res.json<{ suggestion: { triage_notes: string | null } }>();
+    assert.equal(body.suggestion.triage_notes, null);
     await app.close();
   });
 
