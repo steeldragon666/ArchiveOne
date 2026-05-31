@@ -72,7 +72,9 @@ export default function HomeScreen() {
             <MonoLabel muted>FY26/27</MonoLabel>
           </View>
           <Text style={styles.projectTitle}>Vantage-7 alloy</Text>
-          <Text style={styles.projectBody}>Phase-stability program - furnace run N12 in progress</Text>
+          <Text style={styles.projectBody}>
+            Phase-stability program - furnace run N12 in progress
+          </Text>
           <View style={styles.projectStats}>
             <Text style={styles.statText}>
               <Text style={styles.statValue}>12</Text> ARTIFACTS TODAY

@@ -1,4 +1,4 @@
-displayName: "CPA Platform — Cloud Run p99 latency > 2s"
+displayName: 'CPA Platform — Cloud Run p99 latency > 2s'
 documentation:
   content: |
     ## Alert: Cloud Run p99 Latency
@@ -23,7 +23,7 @@ alertStrategy:
   autoClose: 1800s
 combiner: OR
 conditions:
-  - displayName: "p99 request latency > 2000ms over 5 min"
+  - displayName: 'p99 request latency > 2000ms over 5 min'
     conditionThreshold:
       filter: |
         resource.type = "cloud_run_revision"
@@ -39,5 +39,5 @@ conditions:
       duration: 300s
       trigger:
         count: 1
-notificationChannels: []  # populated by monitoring-setup.sh with PagerDuty channel ID
+notificationChannels: [] # populated by monitoring-setup.sh with PagerDuty channel ID
 severity: WARNING

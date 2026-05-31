@@ -25,3 +25,6 @@ Thumbs.db
 
 # coverage
 coverage/
+
+# Agent worktrees + transient agent state
+.claude/

@@ -235,7 +235,9 @@ export function buildWebSentryOptions(): BrowserOptions {
       // Do not send errors from browser extensions (they pollute the project).
       const frames = event.exception?.values?.[0]?.stacktrace?.frames ?? [];
       const isExtension = frames.some(
-        (f) => f.filename?.startsWith('chrome-extension://') || f.filename?.startsWith('moz-extension://'),
+        (f) =>
+          f.filename?.startsWith('chrome-extension://') ||
+          f.filename?.startsWith('moz-extension://'),
       );
       if (isExtension) return null;
 

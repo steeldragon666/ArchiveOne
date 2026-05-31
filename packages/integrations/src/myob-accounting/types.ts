@@ -35,4 +35,3 @@ export type MyobCompanyFile = {
   uri: string;
   product_id?: string;
 };
-

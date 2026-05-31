@@ -10,7 +10,7 @@ this file wins (raise a PR to change it deliberately, don't drift).
 
 **The claimant captures evidence in the moment and triggers "Prepare claim";
 the AI prepares the entire claim; the consultant renders judgement by
-approving it step-by-step.** The consultant's job is *approval*, not authoring.
+approving it step-by-step.** The consultant's job is _approval_, not authoring.
 
 This is the whole product. Every screen serves this loop.
 
@@ -23,7 +23,7 @@ This is the whole product. Every screen serves this loop.
   can trigger **"Prepare claim"** when a period's work is ready.
 - **Consultant** — the R&DTI advisory firm. Works in the **web workspace**.
   Their core action is **judgement**: reviewing and approving the AI-prepared
-  claim. The dashboard line "*N claims need your judgement today*" is literally
+  claim. The dashboard line "_N claims need your judgement today_" is literally
   the work queue.
 - **AI pipeline** — on "Prepare claim", does the authoring: classifies evidence,
   drafts activities against Division 355, runs IP/prior-art search per

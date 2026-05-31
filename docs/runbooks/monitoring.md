@@ -5,6 +5,7 @@
 **Owner:** Aaron (founder / primary on-call)
 
 This runbook covers the operational setup, verification, and maintenance of:
+
 - Cloud Monitoring alert policies (`tools/gcp/monitoring/`)
 - Cloud Logging → Sentry routing (currently via env-var DSN injection)
 - Grafana OTLP trace verification
@@ -36,12 +37,12 @@ policies.
 
 ### What each policy does
 
-| File | Alert | Threshold | Notification |
-|---|---|---|---|
-| `cloudrun-error-rate.yaml` | Cloud Run 5xx rate | >5%/min over 60s | PagerDuty (P1) |
-| `cloudrun-p99-latency.yaml` | Cloud Run p99 latency | >2000ms over 5 min | PagerDuty (P2) |
-| `cloudsql-cpu.yaml` | Cloud SQL CPU | >80% over 5 min | Email (P2) |
-| `cloudrun-min-instances.yaml` | cpa-api instance count | drops below 1 | PagerDuty (P1) |
+| File                          | Alert                  | Threshold          | Notification   |
+| ----------------------------- | ---------------------- | ------------------ | -------------- |
+| `cloudrun-error-rate.yaml`    | Cloud Run 5xx rate     | >5%/min over 60s   | PagerDuty (P1) |
+| `cloudrun-p99-latency.yaml`   | Cloud Run p99 latency  | >2000ms over 5 min | PagerDuty (P2) |
+| `cloudsql-cpu.yaml`           | Cloud SQL CPU          | >80% over 5 min    | Email (P2)     |
+| `cloudrun-min-instances.yaml` | cpa-api instance count | drops below 1      | PagerDuty (P1) |
 
 ### Verifying policies in Cloud Console
 
@@ -170,6 +171,7 @@ to Grafana Tempo. Verify it is receiving traces after each deployment.
 ### Verify traces are flowing
 
 1. Make a request to the production API:
+
    ```bash
    curl -s https://api.cpaplatform.com/health | jq
    ```
@@ -177,6 +179,7 @@ to Grafana Tempo. Verify it is receiving traces after each deployment.
 2. Open Grafana → Explore → set data source to Tempo.
 
 3. Search for traces with service name `cpa-api`:
+
    ```
    { resource.service.name = "cpa-api" }
    ```

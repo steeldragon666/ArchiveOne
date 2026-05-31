@@ -255,4 +255,3 @@ Working conclusion:
 - There is support for positioning around contemporaneous evidence, structured registration, and increasing scrutiny.
 - There is not enough support from the checked sources to publicly claim an official "one-strike examination model" or that any single missing record automatically disallows an entire claim.
 - Any legal-liability claim tied to specific cases should be reviewed by counsel before publication.
-

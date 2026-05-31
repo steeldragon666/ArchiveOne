@@ -67,10 +67,7 @@ export function ClientSection({
       if (newContact.trim()) extras.push(`Primary contact: ${newContact.trim()}`);
       if (extras.length > 0) {
         try {
-          await createEvidence(
-            created.id,
-            `Client onboarding details — ${extras.join('; ')}.`,
-          );
+          await createEvidence(created.id, `Client onboarding details — ${extras.join('; ')}.`);
         } catch {
           /* non-fatal: client still created */
         }
@@ -101,13 +98,23 @@ export function ClientSection({
   return (
     <Panel>
       <SectionHeading kicker="Step 2" title="Client company" />
-      <p style={{ fontFamily: fSans, fontSize: 13, color: bone3, marginBottom: 18, lineHeight: 1.5 }}>
+      <p
+        style={{ fontFamily: fSans, fontSize: 13, color: bone3, marginBottom: 18, lineHeight: 1.5 }}
+      >
         A client company is the entity making the R&amp;D claim. Pick one you&apos;ve already added,
         or create a new one.
       </p>
 
       {/* Mode toggle */}
-      <div style={{ display: 'inline-flex', marginBottom: 20, border: `1px solid ${ruleStrong}`, borderRadius: 3, overflow: 'hidden' }}>
+      <div
+        style={{
+          display: 'inline-flex',
+          marginBottom: 20,
+          border: `1px solid ${ruleStrong}`,
+          borderRadius: 3,
+          overflow: 'hidden',
+        }}
+      >
         {(['existing', 'new'] as Mode[]).map((m) => {
           const active = mode === m;
           return (
@@ -196,7 +203,9 @@ export function ClientSection({
                         textAlign: 'left',
                       }}
                     >
-                      <span style={{ fontFamily: fSans, fontSize: 13.5, color: bone, fontWeight: 500 }}>
+                      <span
+                        style={{ fontFamily: fSans, fontSize: 13.5, color: bone, fontWeight: 500 }}
+                      >
                         {c.name}
                       </span>
                       <span
@@ -222,7 +231,11 @@ export function ClientSection({
         <div>
           <div style={{ marginBottom: 16 }}>
             <FieldLabel>Company name *</FieldLabel>
-            <TextField value={newName} onChange={setNewName} placeholder="e.g. Vantage Industries" />
+            <TextField
+              value={newName}
+              onChange={setNewName}
+              placeholder="e.g. Vantage Industries"
+            />
           </div>
           <div style={{ marginBottom: 16 }}>
             <FieldLabel>ABN</FieldLabel>
@@ -236,7 +249,10 @@ export function ClientSection({
               placeholder="Name / email of the day-to-day contact"
             />
           </div>
-          <Button onClick={() => void handleCreate()} disabled={creating || newName.trim().length === 0}>
+          <Button
+            onClick={() => void handleCreate()}
+            disabled={creating || newName.trim().length === 0}
+          >
             {creating ? 'Creating…' : 'Create client'}
           </Button>
           {createStatus && <StatusLine tone={createStatus.tone}>{createStatus.msg}</StatusLine>}

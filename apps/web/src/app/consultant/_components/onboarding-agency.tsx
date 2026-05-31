@@ -15,11 +15,7 @@ import type { BrandConfig } from '@cpa/schemas';
 import { ForbiddenError, UnauthenticatedError } from '@/lib/api';
 import { amber, bone2, bone3, fMono, fSans, ink3, ruleStrong } from './tokens';
 import { Button, FieldLabel, Panel, SectionHeading, StatusLine, TextField } from './onboarding-ui';
-import {
-  getAdminBrandConfig,
-  requestLogoUploadUrl,
-  updateBrandConfig,
-} from './onboarding-api';
+import { getAdminBrandConfig, requestLogoUploadUrl, updateBrandConfig } from './onboarding-api';
 
 const MAX_LOGO_BYTES = 2 * 1024 * 1024;
 
@@ -34,9 +30,10 @@ export function AgencyDetailsSection({ onDone }: { onDone: () => void }) {
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<{ tone: 'error' | 'ok'; msg: string } | null>(null);
 
-  const [logoStatus, setLogoStatus] = useState<{ tone: 'error' | 'ok' | 'muted'; msg: string } | null>(
-    null,
-  );
+  const [logoStatus, setLogoStatus] = useState<{
+    tone: 'error' | 'ok' | 'muted';
+    msg: string;
+  } | null>(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -75,8 +72,7 @@ export function AgencyDetailsSection({ onDone }: { onDone: () => void }) {
     setSaving(true);
     setSaveStatus(null);
     try {
-      const existingLpc =
-        (config?.landing_page_config as Record<string, unknown> | null) ?? {};
+      const existingLpc = (config?.landing_page_config as Record<string, unknown> | null) ?? {};
       const updated = await updateBrandConfig({
         display_name: name.trim(),
         // landing_page_config is whitelisted (z.unknown()) in the PATCH
@@ -163,9 +159,11 @@ export function AgencyDetailsSection({ onDone }: { onDone: () => void }) {
   return (
     <Panel>
       <SectionHeading kicker="Step 1" title="Agency details" />
-      <p style={{ fontFamily: fSans, fontSize: 13, color: bone3, marginBottom: 18, lineHeight: 1.5 }}>
-        This is your own firm — it brands the client-facing surfaces and appears on every claim
-        you produce.
+      <p
+        style={{ fontFamily: fSans, fontSize: 13, color: bone3, marginBottom: 18, lineHeight: 1.5 }}
+      >
+        This is your own firm — it brands the client-facing surfaces and appears on every claim you
+        produce.
       </p>
 
       <div style={{ marginBottom: 16 }}>
@@ -199,11 +197,7 @@ export function AgencyDetailsSection({ onDone }: { onDone: () => void }) {
               textAlign: 'center',
             }}
           >
-            {config?.logo_s3_key ? (
-              <span style={{ color: amber }}>SET</span>
-            ) : (
-              'NONE'
-            )}
+            {config?.logo_s3_key ? <span style={{ color: amber }}>SET</span> : 'NONE'}
           </div>
           <input
             ref={fileRef}
@@ -215,11 +209,7 @@ export function AgencyDetailsSection({ onDone }: { onDone: () => void }) {
               if (f) void handleLogoFile(f);
             }}
           />
-          <Button
-            variant="ghost"
-            disabled={uploadingLogo}
-            onClick={() => fileRef.current?.click()}
-          >
+          <Button variant="ghost" disabled={uploadingLogo} onClick={() => fileRef.current?.click()}>
             {uploadingLogo ? 'Uploading…' : 'Upload logo'}
           </Button>
         </div>

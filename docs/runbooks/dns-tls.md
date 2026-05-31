@@ -32,11 +32,11 @@
 
 The following must be completed before running `dns-bootstrap.sh`:
 
-| Prerequisite | Script |
-|---|---|
-| GCP project `cpa-platform-prod` exists | `tools/gcp/project-bootstrap.sh` |
-| Cloud Run services `cpa-web` and `cpa-api` are deployed | `tools/gcp/cloudrun-deploy.sh` |
-| `dns.googleapis.com` API is enabled | Handled by `project-bootstrap.sh` |
+| Prerequisite                                            | Script                            |
+| ------------------------------------------------------- | --------------------------------- |
+| GCP project `cpa-platform-prod` exists                  | `tools/gcp/project-bootstrap.sh`  |
+| Cloud Run services `cpa-web` and `cpa-api` are deployed | `tools/gcp/cloudrun-deploy.sh`    |
+| `dns.googleapis.com` API is enabled                     | Handled by `project-bootstrap.sh` |
 
 Verify Cloud Run services are running:
 
@@ -52,6 +52,7 @@ Both `cpa-web` and `cpa-api` must appear with a `status.conditions` of `True`.
 ### Tools
 
 - **gcloud CLI** — version 450+ recommended.
+
   ```bash
   gcloud version
   ```
@@ -61,6 +62,7 @@ Both `cpa-web` and `cpa-api` must appear with a `status.conditions` of `True`.
   - `roles/run.admin` — to create Cloud Run domain mappings
 
   Authenticate:
+
   ```bash
   gcloud auth login
   gcloud auth application-default login
@@ -178,11 +180,11 @@ gcloud run domain-mappings describe \
 
 Each mapping returns records in one of two forms:
 
-| Record type | Value format | When used |
-|---|---|---|
-| `CNAME` | `ghs.googlehosted.com.` | Subdomains only (use this if available) |
-| `A` | One or more IPv4 addresses | When CNAME is not available |
-| `AAAA` | One or more IPv6 addresses | Accompanies A records |
+| Record type | Value format               | When used                               |
+| ----------- | -------------------------- | --------------------------------------- |
+| `CNAME`     | `ghs.googlehosted.com.`    | Subdomains only (use this if available) |
+| `A`         | One or more IPv4 addresses | When CNAME is not available             |
+| `AAAA`      | One or more IPv6 addresses | Accompanies A records                   |
 
 Add these records at your registrar exactly as shown. Use a TTL of 300 seconds (5 minutes) initially so that changes propagate quickly while you verify the configuration.
 
@@ -261,23 +263,23 @@ gcloud run domain-mappings describe \
 
 ### Status conditions to watch
 
-| Condition type | Status value | Meaning |
-|---|---|---|
-| `Ready` | `True` | Mapping is fully provisioned, TLS active |
-| `Ready` | `False` | Provisioning failed — check `message` field |
-| `Ready` | `Unknown` | Still provisioning — wait and retry |
-| `CertificateProvisioned` | `True` | TLS certificate issued and active |
-| `CertificateProvisioned` | `False` | Certificate provisioning failed |
-| `DomainMappingRegistered` | `True` | GCP has verified domain ownership |
+| Condition type            | Status value | Meaning                                     |
+| ------------------------- | ------------ | ------------------------------------------- |
+| `Ready`                   | `True`       | Mapping is fully provisioned, TLS active    |
+| `Ready`                   | `False`      | Provisioning failed — check `message` field |
+| `Ready`                   | `Unknown`    | Still provisioning — wait and retry         |
+| `CertificateProvisioned`  | `True`       | TLS certificate issued and active           |
+| `CertificateProvisioned`  | `False`      | Certificate provisioning failed             |
+| `DomainMappingRegistered` | `True`       | GCP has verified domain ownership           |
 
 ### Expected timeline
 
-| Stage | Typical duration |
-|---|---|
-| Nameserver propagation | 2–24 hours (up to 48 hours worst case) |
-| GCP domain verification | 5–30 minutes after DNS resolves |
+| Stage                    | Typical duration                            |
+| ------------------------ | ------------------------------------------- |
+| Nameserver propagation   | 2–24 hours (up to 48 hours worst case)      |
+| GCP domain verification  | 5–30 minutes after DNS resolves             |
 | TLS certificate issuance | 30 minutes – 24 hours after domain verified |
-| Total end-to-end | 3 hours – 2 days |
+| Total end-to-end         | 3 hours – 2 days                            |
 
 ### Poll until ready (optional)
 
@@ -335,13 +337,16 @@ The `notAfter` date must be at least 60 days from today. Cloud Run renews certif
 **Likely cause:** DNS is not resolving to the Cloud Run domain mapping target.
 
 1. Confirm DNS is resolving:
+
    ```bash
    dig app.cpa-platform.com.au +short
    dig api.cpa-platform.com.au +short
    ```
+
    If these return no results or wrong results, the nameserver or record configuration is incorrect. Revisit [step 3](#manual-step-configuring-nameservers-at-the-registrar).
 
 2. Check domain mapping conditions for error messages:
+
    ```bash
    gcloud run domain-mappings describe \
      --domain=app.cpa-platform.com.au \
@@ -349,6 +354,7 @@ The `notAfter` date must be at least 60 days from today. Cloud Run renews certif
      --project=cpa-platform-prod \
      --format="yaml(status.conditions)"
    ```
+
    The `message` field on a `False` condition contains the GCP error.
 
 3. Confirm Cloud Run domain verification status. GCP must be able to reach the domain over HTTP during the verification step. If the domain is behind a firewall or returning non-2xx for the `/.well-known/acme-challenge/` path, verification will fail.
@@ -356,6 +362,7 @@ The `notAfter` date must be at least 60 days from today. Cloud Run renews certif
 ### `DomainMappingRegistered: False` — domain ownership not verified
 
 Cloud Run uses a token-based verification. Ensure:
+
 - The domain mapping was created (check: `gcloud run domain-mappings list --region=australia-southeast1 --project=cpa-platform-prod`)
 - DNS is resolving and the service is reachable over HTTP (port 80)
 - No CDN or proxy is stripping ACME challenge requests
@@ -363,6 +370,7 @@ Cloud Run uses a token-based verification. Ensure:
 ### `CertificateProvisioned: False` — certificate issue failed
 
 1. Delete and recreate the domain mapping (this resets the certificate request):
+
    ```bash
    gcloud run domain-mappings delete \
      --domain=app.cpa-platform.com.au \
@@ -376,6 +384,7 @@ Cloud Run uses a token-based verification. Ensure:
      --region=australia-southeast1 \
      --project=cpa-platform-prod
    ```
+
 2. Wait 30–60 minutes and re-check status.
 3. If the failure persists after two attempts, file a GCP support ticket with the mapping name and project ID.
 
@@ -388,6 +397,7 @@ Cloud Run uses a token-based verification. Ensure:
 ### Certificate expiry warning
 
 Cloud Run auto-renews certificates at approximately 30 days before expiry. If a cert is within 30 days of expiry and has not renewed:
+
 1. Check the domain mapping conditions for errors.
 2. Confirm DNS is still resolving correctly (records may have been accidentally removed).
 3. Contact GCP support if auto-renewal has not triggered within 7 days of the 30-day threshold.

@@ -71,7 +71,10 @@ export function EvidenceSection({ client }: { client: SubjectTenant }) {
       } else if (err instanceof ForbiddenError) {
         setStatus({ tone: 'error', msg: 'Your role cannot add evidence.' });
       } else {
-        setStatus({ tone: 'error', msg: err instanceof Error ? err.message : 'Failed to add evidence.' });
+        setStatus({
+          tone: 'error',
+          msg: err instanceof Error ? err.message : 'Failed to add evidence.',
+        });
       }
     } finally {
       setSubmitting(false);
@@ -95,7 +98,9 @@ export function EvidenceSection({ client }: { client: SubjectTenant }) {
   return (
     <Panel>
       <SectionHeading kicker="Step 3 · Evidence" title="Evidence for this client" />
-      <p style={{ fontFamily: fSans, fontSize: 13, color: bone3, marginBottom: 18, lineHeight: 1.5 }}>
+      <p
+        style={{ fontFamily: fSans, fontSize: 13, color: bone3, marginBottom: 18, lineHeight: 1.5 }}
+      >
         Upload a document or paste a note. Each item is classified and sealed into the client&apos;s
         evidence chain.
       </p>
@@ -136,9 +141,7 @@ export function EvidenceSection({ client }: { client: SubjectTenant }) {
 
       {/* Existing evidence */}
       <div style={{ paddingTop: 16, borderTop: `1px solid ${rule}` }}>
-        <FieldLabel>
-          {items ? `Evidence on file (${items.length})` : 'Evidence on file'}
-        </FieldLabel>
+        <FieldLabel>{items ? `Evidence on file (${items.length})` : 'Evidence on file'}</FieldLabel>
         {loading && (
           <div style={{ fontFamily: fMono, fontSize: 11, color: bone3, letterSpacing: '0.1em' }}>
             LOADING EVIDENCE…
@@ -220,7 +223,13 @@ export function EvidenceSection({ client }: { client: SubjectTenant }) {
                 </div>
                 {it.classification && (
                   <span
-                    style={{ width: 6, height: 6, borderRadius: '50%', background: sage, marginTop: 6 }}
+                    style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: '50%',
+                      background: sage,
+                      marginTop: 6,
+                    }}
                     aria-hidden
                   />
                 )}

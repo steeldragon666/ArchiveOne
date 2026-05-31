@@ -92,4 +92,3 @@ function toOAuthTokens(data: MyobTokenResponse): OAuthTokens {
   if (data.scope !== undefined) tokens.scopes = data.scope.split(' ');
   return tokens;
 }
-

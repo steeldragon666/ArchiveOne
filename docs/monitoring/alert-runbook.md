@@ -11,11 +11,11 @@ This runbook defines response procedures for all production alerts. Read
 
 ## Quick-reference severity matrix
 
-| Severity | Definition | Acknowledge | War room | Status page |
-|---|---|---|---|---|
-| **P1 — Site down** | Platform unavailable or data integrity at risk | 5 min | 15 min | Immediately |
-| **P2 — Degraded** | Significant but partial service degradation | 30 min | If escalated | Within 15 min |
-| **P3 — Warning** | Below-threshold issue; no immediate customer impact | Next business day | No | No |
+| Severity           | Definition                                          | Acknowledge       | War room     | Status page   |
+| ------------------ | --------------------------------------------------- | ----------------- | ------------ | ------------- |
+| **P1 — Site down** | Platform unavailable or data integrity at risk      | 5 min             | 15 min       | Immediately   |
+| **P2 — Degraded**  | Significant but partial service degradation         | 30 min            | If escalated | Within 15 min |
+| **P3 — Warning**   | Below-threshold issue; no immediate customer impact | Next business day | No           | No            |
 
 ---
 
@@ -221,25 +221,25 @@ Alert fatigue is the primary cause of on-call burnout and missed real incidents.
 
 ### Alert audit cadence
 
-| Review | Frequency | Owner | Output |
-|---|---|---|---|
-| False-positive review | Monthly | Aaron | List of tuned thresholds |
-| Alert coverage review | Quarterly | Aaron | New alerts for uncovered failure modes |
-| Runbook accuracy review | After each P1 incident | Aaron | Runbook updates from learnings |
-| Full alert audit | Annually | Aaron (+ fractional CISO for ISO evidence) | Signed-off alert register |
+| Review                  | Frequency              | Owner                                      | Output                                 |
+| ----------------------- | ---------------------- | ------------------------------------------ | -------------------------------------- |
+| False-positive review   | Monthly                | Aaron                                      | List of tuned thresholds               |
+| Alert coverage review   | Quarterly              | Aaron                                      | New alerts for uncovered failure modes |
+| Runbook accuracy review | After each P1 incident | Aaron                                      | Runbook updates from learnings         |
+| Full alert audit        | Annually               | Aaron (+ fractional CISO for ISO evidence) | Signed-off alert register              |
 
 ---
 
 ## Contact and escalation directory
 
-| Role | Contact | Available |
-|---|---|---|
-| Primary on-call | Aaron | 24/7 via PagerDuty |
-| Backup (designate before launch) | [TBD] | 24/7 via PagerDuty step 3 |
-| Supabase support | support.supabase.com | Business hours; P1 SLA if on paid plan |
-| Google Cloud support | cloud.google.com/support | 24/7 on Premium support |
-| Sentry support | sentry.io/support | Business hours |
-| PagerDuty support | pagerduty.com/support | Business hours |
+| Role                             | Contact                  | Available                              |
+| -------------------------------- | ------------------------ | -------------------------------------- |
+| Primary on-call                  | Aaron                    | 24/7 via PagerDuty                     |
+| Backup (designate before launch) | [TBD]                    | 24/7 via PagerDuty step 3              |
+| Supabase support                 | support.supabase.com     | Business hours; P1 SLA if on paid plan |
+| Google Cloud support             | cloud.google.com/support | 24/7 on Premium support                |
+| Sentry support                   | sentry.io/support        | Business hours                         |
+| PagerDuty support                | pagerduty.com/support    | Business hours                         |
 
 ---
 

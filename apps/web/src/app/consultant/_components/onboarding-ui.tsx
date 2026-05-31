@@ -7,7 +7,20 @@
  */
 
 import type { CSSProperties, ReactNode } from 'react';
-import { amber, bone, bone2, bone3, fMono, fSans, ink2, ink3, rule, ruleStrong, rust, sage } from './tokens';
+import {
+  amber,
+  bone,
+  bone2,
+  bone3,
+  fMono,
+  fSans,
+  ink2,
+  ink3,
+  rule,
+  ruleStrong,
+  rust,
+  sage,
+} from './tokens';
 import { MonoLabel } from './atoms';
 
 /** Bordered ink panel — the standard card surface in the workspace. */
@@ -45,7 +58,13 @@ interface TextFieldProps {
   type?: string;
 }
 
-export function TextField({ value, onChange, placeholder, disabled, type = 'text' }: TextFieldProps) {
+export function TextField({
+  value,
+  onChange,
+  placeholder,
+  disabled,
+  type = 'text',
+}: TextFieldProps) {
   return (
     <input
       type={type}
@@ -133,7 +152,13 @@ export function Button({ children, onClick, disabled, variant = 'primary', style
 }
 
 /** Inline status line — error (rust), success (sage), or neutral. */
-export function StatusLine({ tone, children }: { tone: 'error' | 'ok' | 'muted'; children: ReactNode }) {
+export function StatusLine({
+  tone,
+  children,
+}: {
+  tone: 'error' | 'ok' | 'muted';
+  children: ReactNode;
+}) {
   const color = tone === 'error' ? rust : tone === 'ok' ? sage : bone3;
   return (
     <div
@@ -148,7 +173,9 @@ export function StatusLine({ tone, children }: { tone: 'error' | 'ok' | 'muted';
         gap: 8,
       }}
     >
-      <span style={{ width: 5, height: 5, borderRadius: '50%', background: color, flexShrink: 0 }} />
+      <span
+        style={{ width: 5, height: 5, borderRadius: '50%', background: color, flexShrink: 0 }}
+      />
       <span>{children}</span>
     </div>
   );

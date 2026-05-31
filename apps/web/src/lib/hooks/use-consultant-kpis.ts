@@ -32,7 +32,6 @@ export function useConsultantKpis(params: { fy: string | number }) {
   const search = new URLSearchParams({ fy: String(params.fy) });
   return useQuery({
     queryKey: ['consultant-kpis', params.fy],
-    queryFn: () =>
-      apiFetch<ConsultantKpisResponse>(`/v1/consultant/kpis?${search.toString()}`),
+    queryFn: () => apiFetch<ConsultantKpisResponse>(`/v1/consultant/kpis?${search.toString()}`),
   });
 }

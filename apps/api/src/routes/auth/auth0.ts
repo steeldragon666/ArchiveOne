@@ -90,10 +90,7 @@ async function findOrCreateAuth0User(input: {
  * through Auth0, we accept only a verified email claim and attach the session
  * to the existing user row instead of creating a duplicate account.
  */
-export async function registerAuth0Auth(
-  app: FastifyInstance,
-  cfg: Auth0AuthConfig,
-): Promise<void> {
+export async function registerAuth0Auth(app: FastifyInstance, cfg: Auth0AuthConfig): Promise<void> {
   const client = await buildClient(cfg);
 
   app.get('/v1/auth/auth0/login', async (_req, reply) => {
