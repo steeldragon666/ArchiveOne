@@ -17,6 +17,7 @@ import {
   type ClaimStage,
 } from '@cpa/schemas';
 import { validateStageTransition } from '../lib/claim-stage.js';
+import { evaluateFinalisationGates } from '../lib/finalisation-gates.js';
 import { emitClaimUsageRecord } from '../jobs/emit-claim-usage-record.js';
 import { getBoss } from '../lib/pg-boss-client.js';
 import {
@@ -1426,22 +1427,45 @@ export function registerClaims(app: FastifyInstance, deps?: ClaimsRouteDeps): vo
       const tenantId = req.user!.tenantId!;
       const userId = req.user!.id;
 
-      // Verify claim exists.
-      const claimRow = await sql.begin(async (tx) => {
+      // Verify claim exists + run pre-flight compliance gates inside the
+      // same tx so a concurrent activity edit can't slip violations past
+      // the snapshot we evaluate here. evaluateFinalisationGates enforces
+      // the post-0097 rules: overseas Findings present where required,
+      // supporting activities point at a parent core, hypothesis_formed_at
+      // populated everywhere (see lib/finalisation-gates.ts for the full
+      // matrix).
+      const preflight = await sql.begin(async (tx) => {
         await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
         const rows = await tx<{ id: string; stage: string }[]>`
           SELECT id, stage FROM claim WHERE id = ${id} AND tenant_id = ${tenantId}
         `;
-        return rows[0] ?? null;
+        const row = rows[0] ?? null;
+        if (row === null) return { kind: 'not_found' as const };
+        const gates = await evaluateFinalisationGates(
+          tx as unknown as Parameters<typeof evaluateFinalisationGates>[0],
+          id,
+        );
+        return { kind: 'ok' as const, row, gates };
       });
 
-      if (!claimRow) {
+      if (preflight.kind === 'not_found') {
         return reply.status(404).send({
           error: 'claim_not_found',
           message: 'No claim with that id in this firm',
           requestId: req.id,
         });
       }
+      if (!preflight.gates.ok) {
+        return reply.status(409).send({
+          error: 'finalisation_blocked',
+          message: `Finalise blocked by ${preflight.gates.violations.length} compliance violation${preflight.gates.violations.length === 1 ? '' : 's'}. Resolve them and try again.`,
+          violations: preflight.gates.violations,
+          requestId: req.id,
+        });
+      }
+      // preflight.row is intentionally not read further — the existence
+      // check above is the only need. (404 already handled via
+      // preflight.kind === 'not_found'.)
 
       // Advance stage to narrative_drafting.
       await sql.begin(async (tx) => {
