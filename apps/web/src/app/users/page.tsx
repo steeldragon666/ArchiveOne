@@ -4,6 +4,7 @@ import { AppShell } from '@/components/app-shell';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/empty-state';
 import { UsersTable } from '@/components/users-table';
+import { LoadingState, ErrorState } from '@/components/async-state';
 import { useUsers } from '@/hooks/use-users';
 import { useWhoami } from '@/hooks/use-whoami';
 
@@ -55,9 +56,14 @@ function Inner() {
         </Button>
       </header>
 
-      {users.isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
+      {users.isLoading && <LoadingState label="Loading firm members…" variant="inline" />}
       {users.error && (
-        <p className="text-sm text-destructive">Failed to load users. Refresh to retry.</p>
+        <ErrorState
+          title="Couldn't load firm members."
+          message={users.error instanceof Error ? users.error.message : undefined}
+          onRetry={() => void users.refetch()}
+          variant="inline"
+        />
       )}
       {users.data && users.data.length === 0 && (
         <EmptyState
