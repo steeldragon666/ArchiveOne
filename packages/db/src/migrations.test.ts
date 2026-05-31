@@ -1956,7 +1956,6 @@ test('migration 0037: trigger does NOT fire on other column updates', async () =
 });
 
 test('migration 0037: AuditKind three-way parity (Zod ↔ db AUDIT_KINDS const ↔ SQL CHECK)', async () => {
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
   const { AUDIT_KINDS: zodKinds } = await import('@cpa/schemas');
   const { AUDIT_KINDS: dbKinds } = await import('./schema/audit_log.js');
 
@@ -1968,9 +1967,7 @@ test('migration 0037: AuditKind three-way parity (Zod ↔ db AUDIT_KINDS const �
     s.slice(1, -1),
   );
 
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
   assert.deepEqual([...zodKinds].sort(), [...dbKinds].sort(), 'Zod ↔ db const mismatch');
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
   assert.deepEqual([...zodKinds].sort(), [...sqlValues].sort(), 'Zod ↔ SQL CHECK mismatch');
 });
 
@@ -2711,13 +2708,21 @@ test('migration 0041: processed_webhook_events uses stripe_event_id text PK', as
 });
 
 test('migration 0041: RLS enabled on tenant-scoped subscription tables', async () => {
+  // Scope to the public schema. pg-boss installs its own `pgboss.subscription`
+  // table the first time the queue is initialised (which the pg-boss-client
+  // test does locally), and without the schema filter that extra row would
+  // make the count assertion below trip 6 !== 5.
   const rows = await privilegedSql<{ relname: string; relrowsecurity: boolean }[]>`
-    SELECT relname, relrowsecurity FROM pg_class
-     WHERE relname IN (
-       'subscription', 'subscription_item', 'onboarding_payment',
-       'claimant_mobile_subscription', 'floor_topup_invoice'
-     )
-     ORDER BY relname
+    SELECT c.relname, c.relrowsecurity
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+     WHERE n.nspname = 'public'
+       AND c.relkind = 'r'
+       AND c.relname IN (
+         'subscription', 'subscription_item', 'onboarding_payment',
+         'claimant_mobile_subscription', 'floor_topup_invoice'
+       )
+     ORDER BY c.relname
   `;
   assert.equal(rows.length, 5, 'all 5 tenant-scoped tables must be in pg_class');
   for (const row of rows) {
