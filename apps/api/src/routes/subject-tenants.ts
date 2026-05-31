@@ -19,6 +19,13 @@ interface RawSubjectTenantRow {
   kind: 'claimant' | 'financier';
   created_at: Date | string;
   updated_at: Date | string;
+  // Migration 0098 — multi-entity fields. Optional on the raw row because
+  // older SELECTs don't pick them up; toApi supplies the documented
+  // defaults so the wire shape stays consistent for all callers.
+  entity_kind?: 'standalone' | 'head_company' | 'r_and_d_entity' | 'associate_entity';
+  head_company_id?: string | null;
+  aggregated_turnover_aud?: string | null;
+  aggregated_turnover_fy_label?: string | null;
 }
 
 const isoOf = (v: Date | string): string => (typeof v === 'string' ? v : v.toISOString());
@@ -30,6 +37,12 @@ const toApi = (r: RawSubjectTenantRow): SubjectTenant => ({
   kind: r.kind,
   created_at: isoOf(r.created_at),
   updated_at: isoOf(r.updated_at),
+  // Migration 0098 defaults — match the SQL NOT NULL default for
+  // entity_kind; the three turnover columns are nullable by design.
+  entity_kind: r.entity_kind ?? 'standalone',
+  head_company_id: r.head_company_id ?? null,
+  aggregated_turnover_aud: r.aggregated_turnover_aud ?? null,
+  aggregated_turnover_fy_label: r.aggregated_turnover_fy_label ?? null,
 });
 
 /**
@@ -61,14 +74,18 @@ export function registerSubjectTenants(app: FastifyInstance): void {
 
       const rows = kind
         ? await tx<RawSubjectTenantRow[]>`
-            SELECT id, tenant_id, name, kind, created_at, updated_at
+            SELECT id, tenant_id, name, kind, created_at, updated_at,
+                   entity_kind, head_company_id, aggregated_turnover_aud,
+                   aggregated_turnover_fy_label
               FROM subject_tenant
              WHERE kind = ${kind}
                AND deleted_at IS NULL
              ORDER BY created_at ASC
           `
         : await tx<RawSubjectTenantRow[]>`
-            SELECT id, tenant_id, name, kind, created_at, updated_at
+            SELECT id, tenant_id, name, kind, created_at, updated_at,
+                   entity_kind, head_company_id, aggregated_turnover_aud,
+                   aggregated_turnover_fy_label
               FROM subject_tenant
              WHERE deleted_at IS NULL
              ORDER BY created_at ASC
@@ -179,7 +196,9 @@ export function registerSubjectTenants(app: FastifyInstance): void {
         await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
 
         const rows = await tx<RawSubjectTenantRow[]>`
-          SELECT id, tenant_id, name, kind, created_at, updated_at
+          SELECT id, tenant_id, name, kind, created_at, updated_at,
+                 entity_kind, head_company_id, aggregated_turnover_aud,
+                 aggregated_turnover_fy_label
             FROM subject_tenant
            WHERE id = ${id} AND deleted_at IS NULL
         `;
@@ -249,7 +268,9 @@ export function registerSubjectTenants(app: FastifyInstance): void {
       const result = await sql.begin(async (tx) => {
         await tx`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
         const before = await tx<RawSubjectTenantRow[]>`
-          SELECT id, tenant_id, name, kind, created_at, updated_at
+          SELECT id, tenant_id, name, kind, created_at, updated_at,
+                 entity_kind, head_company_id, aggregated_turnover_aud,
+                 aggregated_turnover_fy_label
             FROM subject_tenant
            WHERE id = ${id} AND deleted_at IS NULL
         `;
@@ -261,14 +282,35 @@ export function registerSubjectTenants(app: FastifyInstance): void {
 
         const setName = patch.name !== undefined ? tx`name = ${patch.name},` : tx``;
         const setKind = patch.kind !== undefined ? tx`kind = ${patch.kind},` : tx``;
+        // Migration 0098 — multi-entity fields editable via PATCH.
+        const setEntityKind =
+          patch.entity_kind !== undefined ? tx`entity_kind = ${patch.entity_kind},` : tx``;
+        const setHeadCompanyId =
+          patch.head_company_id !== undefined
+            ? tx`head_company_id = ${patch.head_company_id},`
+            : tx``;
+        const setTurnoverAud =
+          patch.aggregated_turnover_aud !== undefined
+            ? tx`aggregated_turnover_aud = ${patch.aggregated_turnover_aud},`
+            : tx``;
+        const setTurnoverFy =
+          patch.aggregated_turnover_fy_label !== undefined
+            ? tx`aggregated_turnover_fy_label = ${patch.aggregated_turnover_fy_label},`
+            : tx``;
 
         const updated = await tx<RawSubjectTenantRow[]>`
           UPDATE subject_tenant
              SET ${setName}
                  ${setKind}
+                 ${setEntityKind}
+                 ${setHeadCompanyId}
+                 ${setTurnoverAud}
+                 ${setTurnoverFy}
                  updated_at = NOW()
            WHERE id = ${id} AND deleted_at IS NULL
-           RETURNING id, tenant_id, name, kind, created_at, updated_at
+           RETURNING id, tenant_id, name, kind, created_at, updated_at,
+                     entity_kind, head_company_id, aggregated_turnover_aud,
+                     aggregated_turnover_fy_label
         `;
         const row = updated[0];
         if (!row) {
@@ -295,6 +337,41 @@ export function registerSubjectTenants(app: FastifyInstance): void {
       }
       if (patch.kind !== undefined && result.prev.kind !== result.row.kind) {
         fieldsChanged['kind'] = { from: result.prev.kind, to: result.row.kind };
+      }
+      if (patch.entity_kind !== undefined && result.prev.entity_kind !== result.row.entity_kind) {
+        fieldsChanged['entity_kind'] = {
+          from: result.prev.entity_kind ?? null,
+          to: result.row.entity_kind ?? null,
+        };
+      }
+      if (
+        patch.head_company_id !== undefined &&
+        (result.prev.head_company_id ?? null) !== (result.row.head_company_id ?? null)
+      ) {
+        fieldsChanged['head_company_id'] = {
+          from: result.prev.head_company_id ?? null,
+          to: result.row.head_company_id ?? null,
+        };
+      }
+      if (
+        patch.aggregated_turnover_aud !== undefined &&
+        (result.prev.aggregated_turnover_aud ?? null) !==
+          (result.row.aggregated_turnover_aud ?? null)
+      ) {
+        fieldsChanged['aggregated_turnover_aud'] = {
+          from: result.prev.aggregated_turnover_aud ?? null,
+          to: result.row.aggregated_turnover_aud ?? null,
+        };
+      }
+      if (
+        patch.aggregated_turnover_fy_label !== undefined &&
+        (result.prev.aggregated_turnover_fy_label ?? null) !==
+          (result.row.aggregated_turnover_fy_label ?? null)
+      ) {
+        fieldsChanged['aggregated_turnover_fy_label'] = {
+          from: result.prev.aggregated_turnover_fy_label ?? null,
+          to: result.row.aggregated_turnover_fy_label ?? null,
+        };
       }
 
       if (Object.keys(fieldsChanged).length > 0) {

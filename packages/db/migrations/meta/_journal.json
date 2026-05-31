@@ -498,6 +498,13 @@
       "when": 1779778800008,
       "tag": "0097_rdti_gap_foundation",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1779778800009,
+      "tag": "0098_subject_tenant_multi_entity",
+      "breakpoints": true
     }
   ]
 }
