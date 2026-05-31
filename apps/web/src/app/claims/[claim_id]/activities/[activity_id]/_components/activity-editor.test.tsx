@@ -40,6 +40,13 @@ const baseActivity: Activity = {
   portal_fields: {},
   // portal_fields_history landed in migration 0080 with default `[]`.
   portal_fields_history: [],
+  // R&DTI gap-foundation columns (migration 0097) — required by the
+  // Activity Zod schema with documented defaults. computeChangedFields
+  // doesn't touch any of them, so default-empty is fine for these tests.
+  performed_overseas: false,
+  overseas_findings_required: false,
+  overseas_findings_obtained: false,
+  performer_kind: 'in_house',
 };
 
 test('computeChangedFields: returns {} when no fields changed', () => {
