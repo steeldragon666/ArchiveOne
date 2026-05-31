@@ -165,6 +165,10 @@ export const promptSuggestion = pgTable(
     triageClassification: text('triage_classification', {
       enum: PROMPT_SUGGESTION_TRIAGE_CLASSIFICATIONS,
     }),
+    // Nullable: consultant's free-text rationale recorded at triage time.
+    // Added by migration 0099 (issue #29 — silent-drop fix). Pre-existing
+    // rows triaged before 0099 keep NULL.
+    triageNotes: text('triage_notes'),
     // Nullable: populated when status flips to pr_merged or dismissed.
     resolvedAt: timestamp('resolved_at', { withTimezone: true }),
     firstRecordedAt: timestamp('first_recorded_at', { withTimezone: true }).notNull().defaultNow(),
