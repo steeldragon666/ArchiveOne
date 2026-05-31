@@ -4,7 +4,10 @@ import { apiFetch } from '@/lib/api';
 
 interface Source {
   id: string;
-  name: string;
+  // /v1/intelligence/sources returns `source_name` (matches the column);
+  // this banner previously declared `name` and rendered `s.name`, so any
+  // future stale source would have shown up as "undefined, undefined".
+  source_name: string;
   stale: boolean;
   last_polled_at: string | null;
   last_polled_status: string | null;
@@ -34,8 +37,8 @@ export function IntelligenceStaleBanner() {
       <p className="text-sm font-medium text-amber-800">Stale sources detected</p>
       <p className="text-xs text-amber-700 mt-1">
         {staleSources.length} source{staleSources.length > 1 ? 's have' : ' has'} not been polled in
-        over 7 days: {staleSources.map((s) => s.name).join(', ')}. The daily scrape may be failing —
-        check the source connectors.
+        over 7 days: {staleSources.map((s) => s.source_name).join(', ')}. The daily scrape may be
+        failing — check the source connectors.
       </p>
     </div>
   );
