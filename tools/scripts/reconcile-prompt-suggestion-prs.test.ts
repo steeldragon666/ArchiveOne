@@ -140,7 +140,9 @@ const seedPr = async (opts: {
   github_pr_number: number;
   /** Offset in ms applied to created_at (negative = older than now). */
   ageMs: number;
-  parentStatus?: 'pr_drafted' | 'triaged';
+  // Issue #30: 'dismissed' is the canonical divergent-case seed — a
+  // suggestion the consultant rejected after PR drafting.
+  parentStatus?: 'pr_drafted' | 'triaged' | 'dismissed';
   merged_at?: string | null;
 }): Promise<{ suggestion_id: string; pr_id: string }> => {
   const suggestionId = crypto.randomUUID();
@@ -332,4 +334,61 @@ test('reconciler skips rows whose GitHub state is unmerged', async (t) => {
     SELECT merged_at FROM prompt_suggestion_pr WHERE id = ${seeded.pr_id}
   `;
   assert.equal(pr[0]?.merged_at, null);
+});
+
+test('issue #30: dismissed parent + merged-on-github child → surface as parent_status_unchanged (no silent revival)', async (t) => {
+  if (skipIfNoDb(t)) return;
+  // Seed a divergent case: PR drafted, then the consultant dismissed the
+  // parent suggestion before GitHub said the PR landed.
+  const tenMinAgoMs = -10 * 60 * 1000;
+  const seeded = await seedPr({
+    github_pr_number: 7030,
+    ageMs: tenMinAgoMs,
+    parentStatus: 'dismissed',
+  });
+
+  const fetchStub = buildFetchStub({
+    7030: {
+      merged: true,
+      merged_at: '2026-05-04T13:30:00Z',
+      merge_commit_sha: 'recon-sha-7030',
+    },
+  });
+
+  // Capture warn-level structured logs so we can assert the divergence
+  // surfaces with the right fields.
+  const warns: Array<{ msg: string; ctx: unknown }> = [];
+  const summary = await reconcilePromptSuggestionPrs({
+    env: FAKE_ENV,
+    fetch: fetchStub,
+    getHeaders: stubGetHeaders,
+    logger: {
+      info: () => {},
+      warn: (msg: string, ctx?: unknown) => warns.push({ msg, ctx }),
+    },
+  });
+
+  // Summary counts the divergence separately from `reconciled`.
+  assert.equal(summary.parent_status_unchanged, 1);
+  assert.equal(summary.reconciled, 0);
+
+  // Child row IS marked merged — GitHub says it's merged, that's a real fact.
+  const childRows = await privilegedSql<{ merged_at: Date | null }[]>`
+      SELECT merged_at FROM prompt_suggestion_pr WHERE id = ${seeded.pr_id}
+    `;
+  assert.ok(childRows[0]?.merged_at, 'child PR row should be marked merged');
+
+  // Parent stays dismissed — we don't silently revive a consultant rejection.
+  const parentRows = await privilegedSql<{ status: string }[]>`
+      SELECT status FROM prompt_suggestion WHERE id = ${seeded.suggestion_id}
+    `;
+  assert.equal(parentRows[0]?.status, 'dismissed');
+
+  // The divergence is logged at warn level with structured fields.
+  const divergenceWarn = warns.find((w) => w.msg.includes('parent suggestion status unchanged'));
+  assert.ok(divergenceWarn, 'divergence must be logged at warn level');
+  const ctx = divergenceWarn.ctx as Record<string, unknown> | undefined;
+  assert.equal(ctx?.['suggestion_id'], seeded.suggestion_id);
+  assert.equal(ctx?.['parent_status'], 'dismissed');
+  assert.equal(ctx?.['github_pr_number'], 7030);
 });

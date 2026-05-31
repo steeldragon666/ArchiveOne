@@ -81,6 +81,14 @@ export interface ReconcileSummary {
   candidates: number;
   reconciled: number;
   skipped_unmerged_on_github: number;
+  /**
+   * Issue #30: the child PR row was flipped to merged on GitHub but the parent
+   * suggestion's status was outside the allowed set (typically `dismissed`),
+   * so the parent UPDATE returned 0 rows. We do NOT silently re-open the
+   * suggestion; instead we surface the divergence here (and via a warn log)
+   * so it's visible in run summaries + dashboards.
+   */
+  parent_status_unchanged: number;
   errors: Array<{ pr_id: string; github_pr_number: number; message: string }>;
 }
 
@@ -129,22 +137,37 @@ function readEnv(env: NodeJS.ProcessEnv): ReconcilerEnv | { missing: string[] } 
 }
 
 /**
+ * Outcome of one merge-flip attempt.
+ *
+ * - `already_merged`: the child PR row was already merged before us — webhook
+ *   landed between our GET and UPDATE. No-op; not counted as a reconcile.
+ * - `flipped`: both the child PR row AND the parent suggestion row flipped.
+ *   This is the healthy success case.
+ * - `parent_unchanged`: the child PR row flipped, but the parent suggestion's
+ *   status is outside the allowed set (`pr_drafted` / `triaged`) — typically
+ *   `dismissed`. The child UPDATE committed (real merge on GitHub), but the
+ *   parent stays as-is so we don't silently undo a consultant's dismissal.
+ *   The caller logs a structured warn so the divergence is observable, and
+ *   bumps the `parent_status_unchanged` summary counter.
+ */
+type MergeFlipOutcome =
+  | { kind: 'already_merged' }
+  | { kind: 'flipped' }
+  | { kind: 'parent_unchanged'; parent_status: string | null };
+
+/**
  * Apply the merge-flip to one row. Mirrors the webhook handler's
  * logic but is duplicated here intentionally — the script lives in
  * tools/ and shouldn't reach into apps/api internals; if the two
  * paths diverge we want to notice in PR review, not have one silently
  * follow the other's refactor.
- *
- * Returns true if the row was flipped, false if it was already merged
- * (someone else won the race — webhook landed between our GET and
- * UPDATE) so the caller can keep accurate counts.
  */
 async function applyMergeFlip(opts: {
   pr: UnreconciledPrRow;
   github: GithubPullPayload;
-}): Promise<boolean> {
+}): Promise<MergeFlipOutcome> {
   const { pr, github } = opts;
-  return await sql.begin(async (tx) => {
+  return await sql.begin(async (tx): Promise<MergeFlipOutcome> => {
     await tx`SELECT set_config('app.current_tenant_id', ${pr.tenant_id}, true)`;
 
     const updated = await tx<{ id: string }[]>`
@@ -158,18 +181,34 @@ async function applyMergeFlip(opts: {
     `;
     if (updated.length === 0) {
       // Webhook landed between our GET and UPDATE — already merged.
-      return false;
+      return { kind: 'already_merged' };
     }
 
-    await tx`
+    // Parent flip. RETURNING id lets us detect "child marked merged but
+    // parent suggestion's status was already terminal (e.g. dismissed)".
+    // Without it (issue #30) the divergence was invisible — child=merged,
+    // parent=dismissed, run summary counted it as `reconciled`.
+    const flipped = await tx<{ id: string }[]>`
       UPDATE prompt_suggestion
          SET status = 'pr_merged',
              resolved_at = NOW()
        WHERE id = ${pr.suggestion_id}
          AND tenant_id = ${pr.tenant_id}
          AND status IN ('pr_drafted', 'triaged')
+      RETURNING id
     `;
-    return true;
+    if (flipped.length > 0) {
+      return { kind: 'flipped' };
+    }
+
+    // Child flipped but parent didn't — look up the parent's current status
+    // so the caller can include it in the structured warn log.
+    const parent = await tx<{ status: string }[]>`
+      SELECT status FROM prompt_suggestion
+       WHERE id = ${pr.suggestion_id}
+         AND tenant_id = ${pr.tenant_id}
+    `;
+    return { kind: 'parent_unchanged', parent_status: parent[0]?.status ?? null };
   });
 }
 
@@ -215,6 +254,7 @@ export async function reconcilePromptSuggestionPrs(
     candidates: rows.length,
     reconciled: 0,
     skipped_unmerged_on_github: 0,
+    parent_status_unchanged: 0,
     errors: [],
   };
 
@@ -257,17 +297,30 @@ export async function reconcilePromptSuggestionPrs(
         summary.skipped_unmerged_on_github += 1;
         continue;
       }
-      const flipped = await applyMergeFlip({ pr, github });
-      if (flipped) {
+      const outcome = await applyMergeFlip({ pr, github });
+      if (outcome.kind === 'flipped') {
         summary.reconciled += 1;
         logger.info('reconciler: flipped to pr_merged', {
           pr_id: pr.id,
           github_pr_number: pr.github_pr_number,
         });
+      } else if (outcome.kind === 'parent_unchanged') {
+        // Issue #30: child marked merged but parent suggestion's status
+        // is outside the allowed set (typically `dismissed`). We do NOT
+        // re-open the parent; surface the divergence loudly instead so a
+        // human can decide whether to restore it.
+        summary.parent_status_unchanged += 1;
+        logger.warn(
+          'reconciler: child PR row marked merged but parent suggestion status unchanged',
+          {
+            pr_id: pr.id,
+            suggestion_id: pr.suggestion_id,
+            parent_status: outcome.parent_status,
+            github_pr_number: pr.github_pr_number,
+          },
+        );
       } else {
-        // Already merged in our DB by a webhook delivery that beat us
-        // here. Count it as a no-op (not an error, not "reconciled by
-        // us").
+        // 'already_merged' — webhook delivery beat us. No-op count.
         logger.info('reconciler: row already merged by concurrent writer', {
           pr_id: pr.id,
           github_pr_number: pr.github_pr_number,
@@ -337,6 +390,7 @@ async function main(): Promise<void> {
         `  candidates:                  ${summary.candidates}`,
         `  reconciled:                  ${summary.reconciled}`,
         `  skipped (unmerged on GH):    ${summary.skipped_unmerged_on_github}`,
+        `  parent_status_unchanged:     ${summary.parent_status_unchanged}`,
         `  errors:                      ${summary.errors.length}`,
         '',
       ].join('\n'),
