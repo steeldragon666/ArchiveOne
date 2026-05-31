@@ -1,6 +1,12 @@
 import crypto from 'node:crypto';
 import { test, after, before } from 'node:test';
 import assert from 'node:assert/strict';
+
+// PR #146 hardened the OCR job: virus_scan_status only auto-flips to 'clean'
+// when VIRUS_SCAN_STUB_ALLOWED=1 (production must NOT set this). These tests
+// exercise the v1 stub path, so we opt in before importing the module.
+process.env['VIRUS_SCAN_STUB_ALLOWED'] = '1';
+
 import { sql, privilegedSql } from '@cpa/db/client';
 import { runOcrScanJob } from './ocr-scan.js';
 
