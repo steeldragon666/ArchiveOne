@@ -1,13 +1,15 @@
 import type { Metadata } from 'next';
-import { DashboardClient } from './client';
+import { redirect } from 'next/navigation';
 
 export const metadata: Metadata = { title: 'Dashboard' };
 
 /**
- * /dashboard — the Claimsure shell home. DashboardClient internally
- * wraps its body in AuthGuard so anonymous users land on the approved-
- * signup flow instead of seeing placeholder fixture data (task #66).
+ * /dashboard — legacy Claimsure-shell home. The (claimsure) route group
+ * + components/claimsure/* are retired System B; the live consultant
+ * dashboard is the System A workspace at `/consultant`. This page now
+ * server-redirects so old bookmarks + tests continue to land somewhere
+ * useful instead of rendering hardcoded fixture data.
  */
 export default function DashboardPage() {
-  return <DashboardClient />;
+  redirect('/consultant');
 }

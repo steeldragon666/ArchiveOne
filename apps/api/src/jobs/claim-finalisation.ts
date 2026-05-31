@@ -45,10 +45,39 @@ export type ClaimFinalisationJobResult = {
  * Called both by the pg-boss worker and by the API route status check
  * (progress is persisted in the DB so it survives restarts).
  */
+/**
+ * Production guard.
+ *
+ * This job currently writes a **hardcoded skeleton narrative** per activity
+ * (the prose template a few lines below) rather than calling the real
+ * narrative-drafter agent. Without the guard, a paying tenant clicking
+ * "Finalise" would receive a fake AI-branded narrative.
+ *
+ * Until the narrative-drafter wiring lands, the job refuses to run unless
+ * the `CLAIM_FINALISATION_STUB_ALLOWED=1` env is explicitly set. Local dev
+ * + CI seed that var; production deployments must NOT set it.
+ *
+ * Track the real-drafter wiring in the P9 implementation plan, Phase 1.
+ */
+function finalisationStubAllowed(): boolean {
+  return process.env.CLAIM_FINALISATION_STUB_ALLOWED === '1';
+}
+
 export async function runClaimFinalisationJob(
   input: ClaimFinalisationJobInput,
 ): Promise<ClaimFinalisationJobResult> {
   const { claim_id, tenant_id } = input;
+
+  if (!finalisationStubAllowed()) {
+    return {
+      status: 'failed',
+      activities_drafted: 0,
+      total_activities: 0,
+      pdfs_generated: 0,
+      error:
+        'Finalise is not yet available in production. The narrative-drafter wiring is in development; reach out at feedback@archiveone.com.au for the early-access rollout.',
+    };
+  }
 
   // 1. Load activities for this claim (privileged read — no RLS).
   const activities = await privilegedSql<
