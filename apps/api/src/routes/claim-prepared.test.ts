@@ -99,9 +99,9 @@ beforeEach(async () => {
   await privilegedSql`
     INSERT INTO claim (id, tenant_id, subject_tenant_id, project_id, fiscal_year, stage, workflow_state)
     VALUES
-      (${CLAIM_EMPTY}, ${TENANT_A}, ${SUBJECT_A}, ${PROJECT_A}, 2025, 'engagement', ${WS}::jsonb),
-      (${CLAIM_FULL},  ${TENANT_A}, ${SUBJECT_A}, ${PROJECT_A}, 2026, 'engagement', ${WS}::jsonb),
-      (${CLAIM_B},     ${TENANT_B}, ${SUBJECT_B}, ${PROJECT_B}, 2025, 'engagement', ${WS}::jsonb)
+      (${CLAIM_EMPTY}, ${TENANT_A}, ${SUBJECT_A}, ${PROJECT_A}, 2025, 'engagement', ${WS}::text::jsonb),
+      (${CLAIM_FULL},  ${TENANT_A}, ${SUBJECT_A}, ${PROJECT_A}, 2026, 'engagement', ${WS}::text::jsonb),
+      (${CLAIM_B},     ${TENANT_B}, ${SUBJECT_B}, ${PROJECT_B}, 2025, 'engagement', ${WS}::text::jsonb)
   `;
 });
 
@@ -179,7 +179,7 @@ const seedFullClaim = async (): Promise<void> => {
     INSERT INTO event (id, tenant_id, subject_tenant_id, project_id, kind, payload,
                        prev_hash, hash, captured_at, captured_by_user_id)
     VALUES (gen_random_uuid(), ${TENANT_A}, ${SUBJECT_A}, ${PROJECT_A},
-            'ACTIVITY_REGISTER_DRAFTED', ${JSON.stringify(draftPayload)}::jsonb,
+            'ACTIVITY_REGISTER_DRAFTED', ${JSON.stringify(draftPayload)}::text::jsonb,
             NULL, encode(digest('cba-draft', 'sha256'), 'hex'),
             '2025-06-02T00:00:00Z'::timestamptz, ${CONSULTANT_USER})
   `;
@@ -203,7 +203,7 @@ const seedFullClaim = async (): Promise<void> => {
               artefact_kind: 'event',
               artefact_id: EVIDENCE_EVENT,
               link_reason: 'auto-allocated by evidence binder',
-            })}::jsonb,
+            })}::text::jsonb,
             NULL, encode(digest('cba-link', 'sha256'), 'hex'),
             '2025-06-04T00:00:00Z'::timestamptz, ${CONSULTANT_USER})
   `;
@@ -234,7 +234,7 @@ const seedFullClaim = async (): Promise<void> => {
                 text: 'The benchmark confirmed the hypothesis.',
                 citing_events: [EVIDENCE_EVENT],
               },
-            ])}::jsonb,
+            ])}::text::jsonb,
             encode(digest('cba', 'sha256'), 'hex'),
             'draft-narrative@1.1.0', 'draft-narrative@1.1.0', ${CONSULTANT_USER})
   `;
