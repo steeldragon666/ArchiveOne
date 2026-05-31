@@ -21,7 +21,7 @@ import { privilegedSql } from '@cpa/db/client';
  *     `stub-ocr-${s3_key}` (so tests can assert text was set).
  *   - anything else (audio, video, octet-stream) → ocr_status='skipped',
  *     ocr_text = null.
- *   - virus_scan_status always flips to 'clean' for v1 — there's no
+ *   - virus_scan_status flips to 'clean' only when VIRUS_SCAN_STUB_ALLOWED=1
  *     traffic from a real malicious sample test corpus yet.
  *
  * Idempotency: if ocr_status is anything other than 'pending' the job
