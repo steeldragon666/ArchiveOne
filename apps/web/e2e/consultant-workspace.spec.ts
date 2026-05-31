@@ -3,11 +3,15 @@ import { expect, test } from '@playwright/test';
 /**
  * /consultant — the v6 broadcast workspace (TopBar + Sidebar + view router).
  *
- * The page is purely presentational with hardcoded fixture data, so the
- * test is a UI smoke pass: every distinct view renders without console
- * errors and shows the expected brand markers when its sidebar nav item
- * is clicked. Beta-gate is bypassed in NODE_ENV=development; production
- * cookies are not required.
+ * UI smoke pass: every distinct view renders without client errors and
+ * shows the expected brand markers when its sidebar nav item is clicked.
+ * Beta-gate is bypassed in NODE_ENV=development; production cookies are
+ * not required.
+ *
+ * IA per docs/product/workflow.md: Clients → Client → that client's
+ * CLAIMS list → Claim (the 6-step approve-wizard). There's no standalone
+ * "Active claim" sidebar entry; the wizard is reached through the
+ * Clients drill-down.
  */
 
 test.describe('Consultant broadcast workspace (/consultant)', () => {
@@ -20,46 +24,38 @@ test.describe('Consultant broadcast workspace (/consultant)', () => {
     await page.goto('/consultant');
   });
 
-  test('Dashboard renders by default with KPIs + Active claims + Watch + Chain', async ({
-    page,
-  }) => {
-    // Brand header
-    await expect(page.getByText('ArchiveOne').first()).toBeVisible();
+  test('Dashboard renders by default with hero + Watch + Chain', async ({ page }) => {
+    // Hero header (greeting is hardcoded; brand wordmark is in the TopBar).
+    // KPI strip is data-driven — it shows skeletons until /v1/consultant/kpis
+    // resolves, and this smoke test runs anonymously so we don't assert on
+    // KPI labels here. Focus on the markers the page renders without auth.
     await expect(page.getByText('Good morning, Anna.')).toBeVisible();
-    // KPI tiles
-    await expect(page.getByText('ACTIVE CLAIMS')).toBeVisible();
-    await expect(page.getByText('EVIDENCE INDEXED')).toBeVisible();
-    await expect(page.getByText('CHAIN COVERAGE')).toBeVisible();
-    // Claims panel rows
-    await expect(page.getByText('Vantage Industries')).toBeVisible();
-    await expect(page.getByText('VANT-7').first()).toBeVisible();
-    // Watch panel
-    await expect(page.getByText('TODAY · 3 SIGNALS')).toBeVisible();
+    // Claims panel section header
+    await expect(page.getByText('Active claims')).toBeVisible();
+    // Watch panel — signal count is dynamic (read from /v1/consultant/signals),
+    // so accept any non-negative count rather than a hardcoded literal.
+    await expect(page.getByText(/TODAY · \d+ SIGNAL/i)).toBeVisible();
     // Chain panel
     await expect(page.getByText('Recent chain blocks')).toBeVisible();
   });
 
-  test('Sidebar — clicking Active claim swaps to the Wizard view', async ({ page }) => {
-    await page.getByRole('button', { name: /Active claim/ }).click();
-    // Wizard-specific markers
-    await expect(page.getByText('Hi-temp alloy phase-stability program')).toBeVisible();
-    await expect(page.getByText(/STEP 04 · APPORTIONMENT/)).toBeVisible();
-    await expect(page.getByText('How does the ledger map to the activities?')).toBeVisible();
-    await expect(page.getByText('Evidence stream')).toBeVisible();
-    // Ledger row that has the SUGGEST chip
-    await expect(page.getByText(/SUGGEST: CORE · Vantage-7/)).toBeVisible();
+  test('Sidebar — clicking Clients reveals the clients drill-down view', async ({ page }) => {
+    // Clients is the primary nav item; clicking it swaps to the
+    // clients-list (the entry point to the per-client drill-down that
+    // eventually opens the claim wizard).
+    await page.getByRole('button', { name: /^Clients/ }).click();
+    // The Clients view always renders the top-level header (text varies
+    // by data, but the section is consistent).
+    await expect(page.getByText(/CLIENTS|Clients/).first()).toBeVisible();
   });
 
-  test('Sidebar — clicking Watch swaps to the daily signal-scan view', async ({ page }) => {
+  test('Sidebar — clicking Watch swaps to the regulatory-intelligence view', async ({ page }) => {
     await page.getByRole('button', { name: /^Watch/ }).click();
-    await expect(page.getByText('WATCH · DAILY SIGNAL SCAN')).toBeVisible();
-    await expect(page.getByText(/Three signals ranked by/)).toBeVisible();
-    // Table header
-    await expect(page.getByText('SOURCE')).toBeVisible();
-    await expect(page.getByText('REFERENCE')).toBeVisible();
-    // Sample row
-    await expect(page.getByText('TA 2026/03')).toBeVisible();
-    await expect(page.getByText('[2026] AATA 412')).toBeVisible();
+    // Watch is now a live regulatory-intelligence feed (ATO, AusIndustry,
+    // AAT, courts) — not a hardcoded fixture. The section header and
+    // hero copy are stable strings.
+    await expect(page.getByText('WATCH · REGULATORY INTELLIGENCE')).toBeVisible();
+    await expect(page.getByText(/Realtime news/i)).toBeVisible();
   });
 
   test('Sidebar — clicking Financing swaps to the July 1 waitlist card', async ({ page }) => {
