@@ -88,10 +88,13 @@ export function registerLoginRoute(app: FastifyInstance, cfg: LoginRouteConfig):
     // The JSDoc above documents that this endpoint trusts the email alone:
     // anyone who knows an approved consultant's email gets that consultant's
     // session, gated only by a 30-req/hour per-IP rate limit. That trust
-    // model is appropriate for a single-firm internal pilot but is NOT
-    // acceptable for paying multi-tenant clients. Production deployments
-    // must NOT set ALLOW_PASSWORDLESS_LOGIN; users sign in via Microsoft /
-    // Google OAuth instead (see routes/auth/microsoft.ts + google.ts).
+    // model is fine for a single-firm internal pilot but is NOT acceptable
+    // for paying multi-tenant clients. The intended long-term path is
+    // Microsoft / Google OIDC (routes/auth/microsoft.ts + google.ts), which
+    // are themselves gated on PUBLIC_LOGIN_ROUTES_ENABLED=true + provider
+    // client credentials and currently have NO button surface in the web UI
+    // — so the error message below stays neutral and deliberately does NOT
+    // advertise sign-in paths the user can't actually click on.
     //
     // Dev + CI seed ALLOW_PASSWORDLESS_LOGIN=1 so the existing test fixtures
     // + local-dev signup-then-login cycle still work end-to-end.
@@ -99,7 +102,7 @@ export function registerLoginRoute(app: FastifyInstance, cfg: LoginRouteConfig):
       return reply.status(403).send({
         error: 'passwordless_login_disabled',
         message:
-          'Email-only login is disabled in this environment. Sign in with Microsoft or Google instead.',
+          'Email login is currently disabled in this environment. Contact your administrator for access.',
         requestId: req.id,
       });
     }
