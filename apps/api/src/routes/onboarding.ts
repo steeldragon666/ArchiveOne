@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { privilegedSql } from '@cpa/db/client';
+import { requireSession } from '@cpa/auth';
 
 /**
  * Onboarding routes (T1.8).
@@ -59,9 +60,13 @@ export function registerOnboarding(app: FastifyInstance): void {
    * All steps are computed from live database state so the checklist is
    * always current — no stale cache to invalidate.
    */
-  app.get('/v1/onboarding/status', async (req, reply) => {
+  app.get('/v1/onboarding/status', { preHandler: requireSession }, async (req, reply) => {
     const user = req.user;
     if (!user?.tenantId) {
+      // requireSession already guarantees req.user is populated; keep this
+      // defense-in-depth null-check so the privilegedSql query below is
+      // never called with a null tenantId (which would silently no-op
+      // instead of erroring).
       return reply
         .code(401)
         .send(errEnvelope('UNAUTHENTICATED', 'Authentication required', req.id));
@@ -181,7 +186,7 @@ export function registerOnboarding(app: FastifyInstance): void {
    * may still show incomplete steps — that's OK for white-glove
    * onboarding where some steps are handled offline.
    */
-  app.post('/v1/onboarding/complete', async (req, reply) => {
+  app.post('/v1/onboarding/complete', { preHandler: requireSession }, async (req, reply) => {
     const user = req.user;
     if (!user?.tenantId) {
       return reply

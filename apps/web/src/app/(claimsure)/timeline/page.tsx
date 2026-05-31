@@ -1,8 +1,7 @@
-import type { Metadata } from 'next';
-import { TimelineClient } from './client';
+import { redirect } from 'next/navigation';
 
-export const metadata: Metadata = { title: 'Evidence & Timeline' };
-
+// Legacy System B route. Evidence + timeline live inside the per-claim
+// detail view at `/claims/:id?tab=evidence` / `?tab=timeline`.
 export default function TimelinePage() {
-  return <TimelineClient />;
+  redirect('/pipeline');
 }

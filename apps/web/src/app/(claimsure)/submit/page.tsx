@@ -1,8 +1,7 @@
-import type { Metadata } from 'next';
-import { SubmitClient } from './client';
+import { redirect } from 'next/navigation';
 
-export const metadata: Metadata = { title: 'Submit Claim' };
-
+// Legacy System B route. Submission lives in the per-claim wizard
+// at `/claims/:id` (step 5 — Generate / submit).
 export default function SubmitPage() {
-  return <SubmitClient />;
+  redirect('/pipeline');
 }

@@ -162,22 +162,32 @@ export function registerFederationInvitations(app: FastifyInstance): void {
         WHERE id = ${id}
       `;
 
-      if (invitations.length === 0) {
+      // Uniform 404 for both "id not found" AND "token mismatch" so an
+      // attacker with a valid session cannot probe invitation UUIDs to
+      // confirm which tenant pairs have pending federation relationships
+      // (a 403-vs-404 oracle on competitive industry data). The timing-
+      // safe `crypto.timingSafeEqual` guards against length-based timing
+      // distinguishers between the two failure modes.
+      const found = invitations[0];
+      const provided = Buffer.from(tokenHash, 'hex');
+      // 32-byte zero buffer for the "no-row" case so timingSafeEqual still
+      // sees equal-length inputs and runs in O(constant) time regardless of
+      // existence.
+      const expected =
+        found !== undefined ? Buffer.from(found.token_hash, 'hex') : Buffer.alloc(provided.length);
+      const tokenOk =
+        found !== undefined &&
+        provided.length === expected.length &&
+        crypto.timingSafeEqual(provided, expected);
+
+      if (!found || !tokenOk) {
         return reply.code(404).send({
           error: 'NotFound',
-          message: 'Invitation not found',
+          message: 'Invitation not found or token invalid',
         });
       }
 
-      const invitation = invitations[0]!;
-
-      // Verify token hash matches
-      if (invitation.token_hash !== tokenHash) {
-        return reply.code(403).send({
-          error: 'Forbidden',
-          message: 'Invalid invitation token',
-        });
-      }
+      const invitation = found;
 
       // Validate: status='pending', not expired
       if (invitation.status !== 'pending') {

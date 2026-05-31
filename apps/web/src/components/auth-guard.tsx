@@ -29,24 +29,24 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
 
   if (isLoading) {
     return (
-      <main className="min-h-screen flex items-center justify-center">
-        <p className="text-slate-500">Loading…</p>
+      <main className="min-h-screen flex items-center justify-center bg-background text-foreground">
+        <p className="text-muted-foreground">Loading…</p>
       </main>
     );
   }
 
   if (error instanceof UnauthenticatedError) {
     return (
-      <main className="min-h-screen flex items-center justify-center">
-        <p className="text-slate-500">Redirecting to approved signup...</p>
+      <main className="min-h-screen flex items-center justify-center bg-background text-foreground">
+        <p className="text-muted-foreground">Redirecting to approved signup…</p>
       </main>
     );
   }
 
   if (error) {
     return (
-      <main className="min-h-screen flex items-center justify-center">
-        <p className="text-red-600">Error loading session: {error.message}</p>
+      <main className="min-h-screen flex items-center justify-center bg-background text-foreground">
+        <p className="text-destructive">Error loading session: {error.message}</p>
       </main>
     );
   }
